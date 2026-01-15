@@ -1,5 +1,9 @@
 # Visual Studio 2015 user specific files
+.vscode/
 .vs/
+!.vscode/unreal-clangd/addCompletions.h
+!.vscode/unreal-clangd/addMacroCompletions.h
+!.vscode/unreal-clangd/.code-workspace.backup
 
 # Compiled Object files
 *.slo
