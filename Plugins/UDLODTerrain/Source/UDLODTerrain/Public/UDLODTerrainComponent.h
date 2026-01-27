@@ -46,7 +46,7 @@ public:
     float morph_start_ratio = 1.5;
 
     virtual FPrimitiveSceneProxy* CreateSceneProxy() override;
-    virtual FBoxSphereBounds CalcBounds(const FTransform& LocalToWorld) const override;
+    virtual FBoxSphereBounds CalcBounds(const FTransform& local_to_world) const override;
 
     virtual void OnRegister() override;
 };

@@ -70,7 +70,7 @@ FPrimitiveViewRelevance FUDLODTerrainSceneProxy::GetViewRelevance(const FSceneVi
     return r;
 }
 
-/// @remaks Intentionally left empty as rendering will happend via an RDG pass (gpu-driven indirect).
+/// @remaks Intentionally left empty as rendering will happen via an RDG pass (gpu-driven indirect).
 void FUDLODTerrainSceneProxy::GetDynamicMeshElements(
     const TArray<const FSceneView*>& Views,
     const FSceneViewFamily& ViewFamily,
