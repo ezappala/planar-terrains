@@ -200,43 +200,54 @@ void FUDLODTerrainRenderer::add_udlod_draw_args_pass(
 }
 
 void FUDLODTerrainRenderer::add_udlod_draw_pass(
-    FRDGBuilder& graph_builder, const FSceneView& view,
+    FRDGBuilder& graph_builder,
+    const FSceneView& view,
     const FUDLODTerrainSettingsRT& s,
-    const FTextureRHIRef& height_texture_rhi, const FSamplerStateRHIRef& height_sampler_rhi,
-    const FUDLODTerrainResources& r, const FRDGBufferSRVRef final_tiles_srv,
-    const FRDGBufferRef draw_args, const FRDGTextureRef scene_color, const FRDGTextureRef scene_depth
+    const FTextureRHIRef& height_texture_rhi,
+    const FSamplerStateRHIRef& height_sampler_rhi,
+    const FUDLODTerrainResources& r,
+    const FRDGBufferSRVRef final_tiles_srv,
+    const FRDGBufferRef draw_args,
+    const FRDGTextureRef scene_color,
+    const FRDGTextureRef scene_depth
 ) {
+    auto* pass_params = graph_builder.AllocParameters<FUDLOD_TerrainDrawPassParameters>();
+
     const auto* global_shader_map = GetGlobalShaderMap(GMaxRHIFeatureLevel);
     const TShaderMapRef<FUDLOD_TerrainVS> vs{global_shader_map};
     check(vs.IsValid())
     const TShaderMapRef<FUDLOD_TerrainPS> ps{global_shader_map};
     check(ps.IsValid())
 
-    auto* pass_params = graph_builder.AllocParameters<FUDLOD_TerrainPassParameters>();
-    pass_params->view = view.ViewUniformBuffer;
-    pass_params->final_tiles = final_tiles_srv;
-    pass_params->height_texture = height_texture_rhi;
-    pass_params->height_sampler = height_sampler_rhi;
-    pass_params->world_min_xy_ws = s.world_min_xy_ws;
-    pass_params->world_size_xy_ws = s.world_size_xy_ws;
-    pass_params->height_minmax_ws = FVector2f(s.height_min_ws, s.height_max_ws);
-    pass_params->grid_resolution = s.grid_resolution;
-    pass_params->RenderTargets[0] = FRenderTargetBinding(scene_color, ERenderTargetLoadAction::ELoad);
-    pass_params->RenderTargets.DepthStencil = FDepthStencilBinding(
+    pass_params->shader.view = view.ViewUniformBuffer;
+    pass_params->shader.final_tiles = final_tiles_srv;
+    pass_params->shader.height_texture = height_texture_rhi;
+    pass_params->shader.height_sampler = height_sampler_rhi;
+    pass_params->shader.world_min_xy_ws = s.world_min_xy_ws;
+    pass_params->shader.world_size_xy_ws = s.world_size_xy_ws;
+    pass_params->shader.height_minmax_ws = FVector2f(s.height_min_ws, s.height_max_ws);
+    pass_params->shader.grid_resolution = s.grid_resolution;
+    pass_params->shader.RenderTargets[0] = {scene_color, ERenderTargetLoadAction::ELoad};
+    pass_params->shader.RenderTargets.DepthStencil = {
         scene_depth,
-        ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilNop
-    );
+        ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilWrite
+    };
+
+    pass_params->indirect_args = draw_args;
 
     graph_builder.AddPass(
         RDG_EVENT_NAME("UDLOD.Draw"),
         pass_params,
         ERDGPassFlags::Raster,
-        [&](FRHICommandList& cmd) {
+        [pass_params, &view, &r, &ps, &vs](FRHICommandList& cmd) {
             check(r.vertex_decl.IsValid());
             check(r.grid_vb.IsValid());
             check(r.grid_ib.IsValid());
             check(ps.IsValid());
             check(vs.IsValid());
+
+            const FIntRect vr = view.CameraConstrainedViewRect;
+            cmd.SetViewport(vr.Min.X, vr.Min.Y, 0., vr.Max.X, vr.Max.Y, 0.);
 
             FGraphicsPipelineStateInitializer pso{};
             cmd.ApplyCachedRenderTargets(pso);
@@ -251,11 +262,11 @@ void FUDLODTerrainRenderer::add_udlod_draw_pass(
             pso.BoundShaderState.PixelShaderRHI = ps.GetPixelShader();
 
             SetGraphicsPipelineState(cmd, pso, 0);
-            SetShaderParameters(cmd, vs, vs.GetVertexShader(), *pass_params);
-            SetShaderParameters(cmd, ps, ps.GetPixelShader(), *pass_params);
+            SetShaderParameters(cmd, vs, vs.GetVertexShader(), pass_params->shader);
+            SetShaderParameters(cmd, ps, ps.GetPixelShader(), pass_params->shader);
 
             cmd.SetStreamSource(0, r.grid_vb, 0);
-            cmd.DrawIndexedPrimitiveIndirect(r.grid_ib, draw_args->GetRHI(), 0);
+            cmd.DrawIndexedPrimitiveIndirect(r.grid_ib, pass_params->indirect_args->GetRHI(), 0);
         }
     );
 }

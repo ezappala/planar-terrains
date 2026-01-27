@@ -98,3 +98,8 @@ class FUDLOD_TerrainPS : public FGlobalShader {
     SHADER_USE_PARAMETER_STRUCT(FUDLOD_TerrainPS, FGlobalShader);
     using FParameters = FUDLOD_TerrainPassParameters;
 };
+
+BEGIN_SHADER_PARAMETER_STRUCT(FUDLOD_TerrainDrawPassParameters,)
+    SHADER_PARAMETER_STRUCT_INCLUDE(FUDLOD_TerrainPassParameters, shader)
+    RDG_BUFFER_ACCESS(indirect_args, ERHIAccess::IndirectArgs)
+END_SHADER_PARAMETER_STRUCT()
