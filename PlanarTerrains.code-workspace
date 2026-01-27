@@ -30,7 +30,7 @@
 			"-function-arg-placeholders=true",
 			"-log=info"
 		],
-		"clangd.path": "c:\\Users\\ellie\\scoop\\apps\\current\\bin\\clangd.exe",
+		"clangd.path": "c:\\Users\\ellie\\scoop\\apps\\llvm\\current\\bin\\clangd.exe",
 		"clangd.detectExtensionConflicts": false,
 		"files.associations": {
 			"*.clangd": "yaml",

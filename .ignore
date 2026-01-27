@@ -1,5 +1,8 @@
+/.git
 /.vscode
 /Content
 /DerivedDataCache
 /Intermediate
 /Saved
+/Plugins/UDLODTerrain/Content
+/Plugins/UDLODTerrain/Intermediate

@@ -1,0 +1,28 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="ClangTidy" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="clangTidyChecks" value="*,-abseil-*,-altera-*,-android-*,-boost-*,-concurrency-*,-darwin-*,-fuchsia-*,-llvmlibc-*,-objc-*,-cert-*,cert-err52-cpp,cert-err60-cpp,cert-err34-c,cert-str34-c,cert-msc50-cpp,cert-msc51-cpp,cert-dcl58-cpp,cert-flp30-c,-hicpp-*,hicpp-multiway-paths-covered,hicpp-exception-baseclass,-google-readability-braces-around-statements,-readability-braces-around-statements" />
+    </inspection_tool>
+    <inspection_tool class="Clazy" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="clazyChecks" value="level0, level1, level2" />
+    </inspection_tool>
+    <inspection_tool class="CppEnforceCVQualifiersOrder" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="CppEnforceCVQualifiersPlacement" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="CppEnforceDoStatementBraces" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="CppEnforceForStatementBraces" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="CppEnforceIfStatementBraces" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="CppEnforceWhileStatementBraces" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="CppInconsistentNaming" enabled="true" level="HINT" enabled_by_default="true" />
+    <inspection_tool class="CppLocalVariableWithNonTrivialDtorIsNeverUsed" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="CppRemoveRedundantBraces" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="CppTabsAreDisallowed" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="CppUnnecessaryWhitespace" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="EmptyDirectory" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="InconsistentLineSeparators" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="IncorrectFormatting" enabled="true" level="WEAK WARNING" enabled_by_default="true" />
+    <inspection_tool class="LongLine" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="ProblematicWhitespace" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="TodoComment" enabled="true" level="TEXT ATTRIBUTES" enabled_by_default="true" editorAttributes="WARNING_ATTRIBUTES" />
+  </profile>
+</component>

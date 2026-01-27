@@ -7,11 +7,9 @@
 #include "PlanarTerrainsGameModeBase.generated.h"
 
 /**
- * 
+ *
  */
 UCLASS()
-class PLANARTERRAINS_API APlanarTerrainsGameModeBase : public AGameModeBase
-{
-	GENERATED_BODY()
-	
+class PLANARTERRAINS_API APlanarTerrainsGameModeBase : public AGameModeBase {
+    GENERATED_BODY()
 };

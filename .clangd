@@ -7,6 +7,15 @@ CompileFlags:
   CompilationDatabase: .vscode/unreal-clangd
   Compiler: C:/Users/ellie/scoop/apps/llvm/current/bin/clang-cl.exe
   Add:
+    - /X
+    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\cppwinrt
+    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\km
+    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared
+    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt
+    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um
+    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\winrt
+    - /imsvcC:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\include
+    - -fms-compatibility-version=19.44.35221
     - /std:c++20
     - /FIC:\Users\ellie\dev\PlanarTerrains\.vscode\unreal-clangd\macroCompletionHelper.h
     - /TP
