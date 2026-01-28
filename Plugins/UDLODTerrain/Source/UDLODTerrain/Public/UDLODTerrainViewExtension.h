@@ -4,7 +4,7 @@
 #include "UDLODTerrainSceneProxy.h"
 
 struct FUDLODTerrainViewExtension final : FSceneViewExtensionBase {
-    static FUDLODTerrainViewExtension& Get();
+    static TSharedPtr<FUDLODTerrainViewExtension> Get();
     FUDLODTerrainViewExtension(const FAutoRegister& auto_reg);
 
     void RegisterProxy_RenderThread(const FUDLODTerrainSceneProxy* proxy);

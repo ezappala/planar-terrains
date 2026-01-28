@@ -2,7 +2,6 @@
 
 #include <PrimitiveSceneProxy.h>
 
-#include "RHIGPUReadback.h"
 #include "UDLODTerrainComponent.h"
 #include "UDLODTerrainResources.h"
 

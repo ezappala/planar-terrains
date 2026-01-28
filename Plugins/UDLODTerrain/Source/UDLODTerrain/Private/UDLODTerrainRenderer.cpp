@@ -1,7 +1,5 @@
 ﻿#include "UDLODTerrainRenderer.h"
 
-#include <any>
-
 #include "PixelShaderUtils.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
@@ -12,6 +10,12 @@
 #include "Engine/GameViewportClient.h"
 #include "Logging/StructuredLog.h"
 
+///
+/// @brief Given a [`FUDLODTerrainSceneProxy`] that has a zero-value grid resolution, initialize its settings and resources
+/// @param proxy the proxy to ensure resources for
+/// @param cmd a reference to an [`FRHIComputeCommandList`] which is passed down to [`create_buffer`] which initializes
+///     the proxy's resources vertex and pixel buffers.
+///
 void FUDLODTerrainRenderer::ensure_resources(const FUDLODTerrainSceneProxy& proxy, FRHIComputeCommandList& cmd) {
     if (proxy.resources().grid_resolution == 0) {
         const FUDLODTerrainSettingsRT settings_rt = proxy.settings();
@@ -19,7 +23,14 @@ void FUDLODTerrainRenderer::ensure_resources(const FUDLODTerrainSceneProxy& prox
     }
 }
 
-/// @details root tile pass is a 1-thread compute shader which performs the following:
+///
+/// @brief Adds a tile pass for just the root tile: the tile which the camera is currently in.
+/// @param graph_builder a reference to a [`FRDGBuilder`], should be the same one used across all UDLOD compute and
+///     raster passes
+/// @param working_tiles_uav buffer of tiles currently being processed by the compute shader
+/// @param working_count_uav length of the [`working_tiles_uav`] buffer, will always be 1 for the root tile pass
+/// @param final_count_uav output parameter of the final tiel count
+/// @remark Root tile pass is a 1-thread compute shader which performs the following:
 /// - writes WorkingTiles[0] = {Lod=0, X=0, Y=0, ...}
 /// - writes WorkingCount = 1
 /// - clears FinalCount = 0
@@ -32,9 +43,9 @@ void FUDLODTerrainRenderer::add_root_tile_pass(
     check(cs.IsValid());
     auto* p = graph_builder.AllocParameters<FUDLOD_RootTileCS::FParameters>();
 
-    p->working_tiles_uav = working_tiles_uav;
-    p->working_count_uav = working_count_uav;
-    p->final_count_uav = final_count_uav;
+    p->root_working_tiles = working_tiles_uav;
+    p->root_working_count = working_count_uav;
+    p->root_final_count = final_count_uav;
 
     FComputeShaderUtils::AddPass(
         graph_builder,
@@ -46,6 +57,14 @@ void FUDLODTerrainRenderer::add_root_tile_pass(
     );
 }
 
+///
+/// @brief Create the uniform buffer of Frustum Planes so that the compute shader understands what the camera is
+///     "looking at".
+/// @param view Reference the representation of the current [`FSceneView`]
+/// @param out_pre_view_translation Translation component of the world space camera transform, output param
+/// @param out_focal_len_px The focal length of the main camera in pixels, output param
+/// @param out_frustum_planes_tws Frustum planes of the main camera in translated world space, output param.
+///
 void FUDLODTerrainRenderer::make_view_uniforms(
     const FSceneView& view,
     FVector3f& out_pre_view_translation,
@@ -84,6 +103,20 @@ void FUDLODTerrainRenderer::make_view_uniforms(
     }
 }
 
+///
+/// @brief Add passes to refine the tiles computed in [`make_view_uniforms`]. This function specifically
+/// @param graph_builder
+/// @param view
+/// @param s
+/// @param height_texture_rhi
+/// @param height_sampler_rhi
+/// @param working_tiles_a
+/// @param working_count_a
+/// @param working_tiles_b
+/// @param working_count_b
+/// @param final_tiles
+/// @param final_count
+///
 void FUDLODTerrainRenderer::add_udlod_refine_passes(
     FRDGBuilder& graph_builder, const FSceneView& view,
     const FUDLODTerrainSettingsRT& s,
@@ -116,9 +149,14 @@ void FUDLODTerrainRenderer::add_udlod_refine_passes(
         TShaderMapRef<FUDLOD_MakeDispatchArgsCS> args_cs(GetGlobalShaderMap(GMaxRHIFeatureLevel));
         check(args_cs.IsValid())
         auto* args_p = graph_builder.AllocParameters<FUDLOD_MakeDispatchArgsCS::FParameters>();
-        args_p->in_count_srv = graph_builder.CreateSRV(in_count, PF_R32_UINT);
-        args_p->out_args_uav = indirect_args_uav;
-        args_p->group_size = group_size;
+        auto* uniform_args_p = graph_builder.AllocParameters<UDLOD_DispatchCB>();
+        uniform_args_p->group_size = group_size;
+
+        auto* uniform_buffer_args_p = graph_builder.CreateUniformBuffer<UDLOD_DispatchCB>(uniform_args_p);
+
+        args_p->dispatch_in_count = graph_builder.CreateSRV(in_count, PF_R32_UINT);
+        args_p->dispatch_out_args = indirect_args_uav;
+        args_p->DispatchCB = uniform_buffer_args_p;
         FComputeShaderUtils::AddPass(
             graph_builder,
             RDG_EVENT_NAME("UDLOD.MakeDispatchArgs"),
@@ -132,32 +170,35 @@ void FUDLODTerrainRenderer::add_udlod_refine_passes(
         TShaderMapRef<FUDLOD_RefineCS> cs(GetGlobalShaderMap(GMaxRHIFeatureLevel));
         check(cs.IsValid())
         auto* p = graph_builder.AllocParameters<FUDLOD_RefineCS::FParameters>();
+        auto* uniform_p = graph_builder.AllocParameters<UDLOD_RefineCB>();
+        uniform_p->world_min_xy_ws = s.world_min_xy_ws;
+        uniform_p->world_size_xy_ws = s.world_size_xy_ws;
+        uniform_p->height_minmax_ws = FVector2f(s.height_min_ws, s.height_max_ws);
 
-        p->in_tiles_srv = graph_builder.CreateSRV(FRDGBufferSRVDesc(in_tiles));
-        p->in_count_srv = graph_builder.CreateSRV(in_count, PF_R32_UINT);
-        p->out_tiles_uav = graph_builder.CreateUAV(out_tiles);
-        p->out_count_uav = graph_builder.CreateUAV(out_count, PF_R32_UINT);
-        p->final_tiles_uav = graph_builder.CreateUAV(final_tiles);
-        p->final_count_uav = graph_builder.CreateUAV(final_count, PF_R32_UINT);
+        uniform_p->grid_resolution = s.grid_resolution;
+        uniform_p->max_lod = s.max_lod;
+        uniform_p->error_pixels = s.error_pixels;
+        uniform_p->height_error_0ws = s.height_error_0ws;
+        uniform_p->focal_len_px = focal_len_px;
+        uniform_p->morph_start_ratio = s.morph_start_ratio;
+        uniform_p->pre_view_translation = pre_view_translation;
+
+        p->in_tiles = graph_builder.CreateSRV(FRDGBufferSRVDesc(in_tiles));
+        p->in_count = graph_builder.CreateSRV(in_count, PF_R32_UINT);
+        p->out_tiles = graph_builder.CreateUAV(out_tiles);
+        p->out_count = graph_builder.CreateUAV(out_count, PF_R32_UINT);
+        p->final_tiles = graph_builder.CreateUAV(final_tiles);
+        p->final_count = graph_builder.CreateUAV(final_count, PF_R32_UINT);
 
         p->height_texture = height_texture_rhi;
         p->height_sampler = height_sampler_rhi;
 
-        p->world_min_xy_ws = s.world_min_xy_ws;
-        p->world_size_xy_ws = s.world_size_xy_ws;
-        p->height_minmax_ws = FVector2f(s.height_min_ws, s.height_max_ws);
-
-        p->grid_resolution = s.grid_resolution;
-        p->max_lod = s.max_lod;
-        p->error_pixels = s.error_pixels;
-        p->height_error_0ws = s.height_error_0ws;
-        p->focal_len_px = focal_len_px;
-        p->morph_start_ratio = s.morph_start_ratio;
-        p->pre_view_translation = pre_view_translation;
-
         // ReSharper disable once CppLocalVariableMayBeConst, reason idk compilers are dumb. this should be constexpr
-        int32 N = FMath::Min(6, p->frustum_planes_tws.Num());
-        for (int32 i = 0; i < N; ++i) { p->frustum_planes_tws[i] = frustum_planes_tws[i]; }
+        int32 N = FMath::Min(6, uniform_p->frustum_planes_tws.Num());
+        for (int32 i = 0; i < N; ++i) { uniform_p->frustum_planes_tws[i] = frustum_planes_tws[i]; }
+
+        auto* uniform_buffer_p = graph_builder.CreateUniformBuffer<UDLOD_RefineCB>(uniform_p);
+        p->RefineCB = uniform_buffer_p;
 
         check(p != nullptr);
         check(indirect_args != nullptr);
@@ -184,10 +225,14 @@ void FUDLODTerrainRenderer::add_udlod_draw_args_pass(
     const TShaderMapRef<FUDLOD_DrawArgsCS> cs(GetGlobalShaderMap(GMaxRHIFeatureLevel));
     check(cs.IsValid());
     auto* p = graph_builder.AllocParameters<FUDLOD_DrawArgsCS::FParameters>();
+    auto* uniform_p = graph_builder.AllocParameters<UDLOD_DrawArgsCB>();
+    uniform_p->index_count_per_instance = index_count_per_instance;
 
-    p->final_count_srv = graph_builder.CreateSRV(final_count, PF_R32_UINT);
-    p->draw_args_uav = draw_args_uav;
-    p->index_count_per_instance = index_count_per_instance;
+    auto* uniform_buffer_p = graph_builder.CreateUniformBuffer<UDLOD_DrawArgsCB>(uniform_p);
+
+    p->draw_in_final_count = graph_builder.CreateSRV(final_count, PF_R32_UINT);
+    p->draw_out_args = draw_args_uav;
+    p->DrawArgsCB = uniform_buffer_p;
 
     FComputeShaderUtils::AddPass(
         graph_builder,
@@ -212,6 +257,14 @@ void FUDLODTerrainRenderer::add_udlod_draw_pass(
     const FRDGTextureRef scene_depth
 ) {
     auto* pass_params = graph_builder.AllocParameters<FUDLOD_TerrainDrawPassParameters>();
+    auto* uniform_pass_params = graph_builder.AllocParameters<UDLOD_VSParamsCB>();
+
+    uniform_pass_params->vs_world_min_xy_ws = s.world_min_xy_ws;
+    uniform_pass_params->vs_world_size_xy_ws = s.world_size_xy_ws;
+    uniform_pass_params->vs_height_minmax_ws = {s.height_min_ws, s.height_max_ws};
+    uniform_pass_params->vs_grid_resolution = s.grid_resolution;
+
+    auto* uniform_buffer_pass_params = graph_builder.CreateUniformBuffer<UDLOD_VSParamsCB>(uniform_pass_params);
 
     const auto* global_shader_map = GetGlobalShaderMap(GMaxRHIFeatureLevel);
     const TShaderMapRef<FUDLOD_TerrainVS> vs{global_shader_map};
@@ -220,18 +273,15 @@ void FUDLODTerrainRenderer::add_udlod_draw_pass(
     check(ps.IsValid())
 
     pass_params->shader.view = view.ViewUniformBuffer;
-    pass_params->shader.final_tiles = final_tiles_srv;
-    pass_params->shader.height_texture = height_texture_rhi;
-    pass_params->shader.height_sampler = height_sampler_rhi;
-    pass_params->shader.world_min_xy_ws = s.world_min_xy_ws;
-    pass_params->shader.world_size_xy_ws = s.world_size_xy_ws;
-    pass_params->shader.height_minmax_ws = FVector2f(s.height_min_ws, s.height_max_ws);
-    pass_params->shader.grid_resolution = s.grid_resolution;
+    pass_params->shader.vs_final_tiles = final_tiles_srv;
+    pass_params->shader.vs_height_texture = height_texture_rhi;
+    pass_params->shader.vs_height_sampler = height_sampler_rhi;
     pass_params->shader.RenderTargets[0] = {scene_color, ERenderTargetLoadAction::ELoad};
     pass_params->shader.RenderTargets.DepthStencil = {
         scene_depth,
         ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilWrite
     };
+    pass_params->shader.VSParamsCB = uniform_buffer_pass_params;
 
     pass_params->indirect_args = draw_args;
 

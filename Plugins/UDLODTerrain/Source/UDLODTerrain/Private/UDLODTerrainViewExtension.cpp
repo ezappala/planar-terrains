@@ -9,10 +9,10 @@
 
 static TSharedPtr<FUDLODTerrainViewExtension> GUDLODViewExt = nullptr;
 
-FUDLODTerrainViewExtension& FUDLODTerrainViewExtension::Get() {
+TSharedPtr<FUDLODTerrainViewExtension> FUDLODTerrainViewExtension::Get() {
     if (!GUDLODViewExt.IsValid()) { GUDLODViewExt = FSceneViewExtensions::NewExtension<FUDLODTerrainViewExtension>(); }
 
-    return *GUDLODViewExt.Get();
+    return GUDLODViewExt;
 }
 
 FUDLODTerrainViewExtension::FUDLODTerrainViewExtension(const FAutoRegister& auto_reg)

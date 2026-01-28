@@ -1,6 +1,7 @@
 ﻿#include "UDLODTerrainComponent.h"
 
 #include "UDLODTerrainSceneProxy.h"
+#include "UDLODTerrainViewExtension.h"
 #include "Engine/Texture2D.h"
 
 UUDLODTerrainComponent::UUDLODTerrainComponent() {
@@ -28,4 +29,6 @@ FBoxSphereBounds UUDLODTerrainComponent::CalcBounds(const FTransform& local_to_w
 void UUDLODTerrainComponent::OnRegister() {
     Super::OnRegister();
     heightmap->UpdateResource();
+
+    [[maybe_unused]] auto sve = FUDLODTerrainViewExtension::Get();
 }

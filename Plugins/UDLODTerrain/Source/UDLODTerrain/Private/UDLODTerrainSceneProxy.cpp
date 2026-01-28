@@ -42,7 +42,7 @@ void FUDLODTerrainSceneProxy::CreateRenderThreadResources(FRHICommandListBase& c
     FPrimitiveSceneProxy::CreateRenderThreadResources(cmd);
 
     check(IsInRenderingThread());
-    FUDLODTerrainViewExtension::Get().RegisterProxy_RenderThread(this);
+    FUDLODTerrainViewExtension::Get()->RegisterProxy_RenderThread(this);
     if (resources_rt.grid_resolution == 0) {
         resources_rt.init(settings_rt.grid_resolution, settings_rt.max_tiles, cmd.GetAsImmediate());
     }
@@ -51,7 +51,7 @@ void FUDLODTerrainSceneProxy::CreateRenderThreadResources(FRHICommandListBase& c
 void FUDLODTerrainSceneProxy::DestroyRenderThreadResources() {
     UE_LOGFMT(LogTemp, Log, "[FUDLODTerrainSceneProxy] Called DestroyRenderThreadResources");
     check(IsInRenderingThread())
-    FUDLODTerrainViewExtension::Get().UnregisterProxy_RenderThread(this);
+    FUDLODTerrainViewExtension::Get()->UnregisterProxy_RenderThread(this);
 
     resources_rt.release();
     height_texture.SafeRelease();

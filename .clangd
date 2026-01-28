@@ -1,92 +1,33 @@
 ---
-If:
-  PathMatch:
-    - .vscode/unreal-clangd/completionHelper.cpp
-    - Source/.*\.(cpp|h)
 CompileFlags:
-  CompilationDatabase: .vscode/unreal-clangd
-  Compiler: C:/Users/ellie/scoop/apps/llvm/current/bin/clang-cl.exe
-  Add:
-    - /X
-    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\cppwinrt
-    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\km
-    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared
-    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\ucrt
-    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um
-    - /imsvcC:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\winrt
-    - /imsvcC:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\include
-    - -fms-compatibility-version=19.44.35221
-    - /std:c++20
-    - /FIC:\Users\ellie\dev\PlanarTerrains\.vscode\unreal-clangd\macroCompletionHelper.h
-    - /TP
-    - -mwaitpkg
-    - /we4668
-    - /wd4244
-    - /wd4838
-    - /W4
-    - /wd5054
-    - -Werror
-    - -Wdelete-non-virtual-dtor
-    - -Wenum-conversion
-    - -Wbitfield-enum-conversion
-    - -Wno-enum-enum-conversion
-    - -Wno-enum-float-conversion
-    - -Wno-ambiguous-reversed-operator
-    - -Wno-deprecated-anon-enum-enum-conversion
-    - -Wno-deprecated-volatile
-    - -Wno-unused-but-set-variable
-    - -Wno-unused-but-set-parameter
-    - -Wno-ordered-compare-function-pointers
-    - -Wno-bitwise-instead-of-logical
-    - -Wno-gnu-string-literal-operator-template
-    - -Wno-inconsistent-missing-override
-    - -Wno-invalid-offsetof
-    - -Wno-switch
-    - -Wno-tautological-compare
-    - -Wno-unknown-pragmas
-    - -Wno-unused-function
-    - -Wno-unused-lambda-capture
-    - -Wno-unused-local-typedef
-    - -Wno-unused-private-field
-    - -Wno-unused-variable
-    - -Wno-undefined-var-template
-    - -Wshadow
-    - -Wundef
-    - -Wno-float-conversion
-    - -Wno-implicit-float-conversion
-    - -Wno-implicit-int-conversion
-    - -Wno-c++11-narrowing
-    - -Wno-microsoft
-    - -Wno-msvc-include
-    - -Wno-pragma-pack
-    - -Wno-inline-new-delete
-    - -Wno-implicit-exception-spec-mismatch
-    - -Wno-undefined-bool-conversion
-    - -Wno-deprecated-writable-strings
-    - -Wno-deprecated-register
-    - -Wno-switch-enum
-    - -Wno-logical-op-parentheses
-    - -Wno-null-arithmetic
-    - -Wno-deprecated-declarations
-    - -Wno-return-type-c-linkage
-    - -Wno-ignored-attributes
-    - -Wno-uninitialized
-    - -Wno-return-type
-    - -Wno-unused-parameter
-    - -Wno-ignored-qualifiers
-    - -Wno-expansion-to-defined
-    - -Wno-sign-compare
-    - -Wno-missing-field-initializers
-    - -Wno-nonportable-include-path
-    - -Wno-invalid-token-paste
-    - -Wno-null-pointer-arithmetic
-    - -Wno-constant-logical-operand
-    - -Wno-unused-value
-    - -Wno-bitfield-enum-conversion
-InlayHints:
-  Enabled: Yes
-  DeducedTypes: Yes
-  ParameterNames: Yes
-  Designators: Yes
+  # Treat code as C++, use C++23 standard, enable more warnings.
+  Add: [-xc++, -std=c++23, -Wall]
+  # Remove extra warnings specified in compile commands.
+  # Single value is also acceptable, same as "Remove: [-mabi]"
+  Remove: -mabi
 Diagnostics:
-  UnusedIncludes: None
+  # Tweak Clang-Tidy checks.
+  ClangTidy:
+    Add: [performance*, modernize*, readability*]
+    Remove: [modernize-use-trailing-return-type]
+    CheckOptions:
+      readability-identifier-naming.VariableCase:
+      readability-identifier-naming.VariableCase: CamelCase
+      readability-identifier-length.IgnoredVariableNames: "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|id"
+      readability-identifier-length.IgnoredVariableNames: "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|id"
+      readability-identifier-length.IgnoredParameterNames: "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|id"
+      readability-identifier-naming.NamespaceCase: lower_case
+      readability-identifier-naming.ClassCase: CamelCase
+      readability-identifier-naming.Structcase: CamelCase
+      readability-identifier-naming.FunctionCase: lower_case
+      readability-identifier-naming.VariableCase: lower_case
+      readability-identifier-naming.GlobalConstantCase: UPPER_CASE
+      readability-identifier-naming.ClassMemberCase: lower_case
+      readability-identifier-naming.ClassMethodCase: lower_case
+      readability-identifier-naming.EnumConstantCase: CamelCase
+      readability-identifier-naming.ParameterCase: lower_case
+      readability-identifier-naming.TypedefCase: CamelCase
+      readability-identifier-naming.AgressiveDependentMemberLookup: true
+      readability-identifier-naming.TypeAliasCase: CamelCase
+      readability-identifier-naming.TypeAliasIgnoredRegexp: "u8|u16|u32|u64|i8|i16|i32|i64|c8|c16|c32|c64|f32|f64|f128|isize|usize|str"
+    }

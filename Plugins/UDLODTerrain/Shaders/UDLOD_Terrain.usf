@@ -4,6 +4,7 @@
 #include "/Engine/Private/DoubleFloat.ush"
 #include "/Engine/Private/LargeWorldCoordinates.ush"
 #include "/Engine/Private/InstancedStereo.ush"
+#include "/Engine/Generated/GeneratedUniformBuffers.ush"
 
 struct FTile {
     uint lod;
@@ -26,10 +27,11 @@ RWByteAddressBuffer final_count : register(u3);
 Texture2D height_texture : register(t2);
 SamplerState height_sampler : register(s0);
 
-cbuffer UDLOD_RefineCB : register(b0) {
+// cbuffer UDLOD_RefineCB : register(b0) {
+struct UDLOD_RefineCB {
     float2 world_min_xy_ws;
     float2 world_size_xy_ws;
-    float2 height_minmax_wx;
+    float2 height_minmax_ws;
 
     uint grid_resolution;
     uint max_lod;
@@ -41,7 +43,20 @@ cbuffer UDLOD_RefineCB : register(b0) {
     float3 pre_view_translation;
 
     float4 frustum_planes_tws[6];
-}
+};
+
+// uniform UDLOD_RefineCB RefineCB;
+#define world_min_xy_ws RefineCB.world_min_xy_ws
+#define world_size_xy_ws RefineCB.world_size_xy_ws
+#define height_minmax_ws RefineCB.height_minmax_ws
+#define grid_resolution RefineCB.grid_resolution
+#define max_lod RefineCB.max_lod
+#define error_pixels RefineCB.error_pixels
+#define height_error_0ws RefineCB.height_error_0ws
+#define focal_len_px RefineCB.focal_len_px
+#define morph_start_ratio RefineCB.morph_start_ratio
+#define pre_view_translation RefineCB.pre_view_translation
+#define frustum_planes_tws RefineCB.frustum_planes_tws
 
 uint2 make_child(uint2 parent_xy, uint child_index /*0..3*/) {
     // (bx, by) ∈ {0,1}^2
@@ -60,8 +75,8 @@ void compute_bounds_tws(uint lod, uint2 xy, out float3 center_tws, out float rad
     float size = tile_size_ws(lod);
     float2 cxy = world_min_xy_ws + (float2(xy) + 0.5f) * size;
 
-    float hmin = height_minmax_wx.x;
-    float hmax = height_minmax_wx.y;
+    float hmin = height_minmax_ws.x;
+    float hmax = height_minmax_ws.y;
     float cz = 0.5f * (hmin + hmax);
 
     float half_diag_xy = 0.5 * size * 1.41421356237; // sqrt(2) * size / 2
@@ -75,22 +90,16 @@ void compute_bounds_tws(uint lod, uint2 xy, out float3 center_tws, out float rad
 
 /// @brief tile world error scale
 /// @details e(L) = e0 * 2^L (in world units)
-float error_scale_ws(uint lod) {
-    return height_error_0ws * (float)(1u << lod);
-}
+float error_scale_ws(uint lod) { return height_error_0ws * (float)(1u << lod); }
 
 /// @brief a conservative distance from camera at origin in TWS to some bound sphere
-float distance_to_tile(float3 center_tws, float radius) {
-    return max(0.0f, length(center_tws) - radius);
-}
+float distance_to_tile(float3 center_tws, float radius) { return max(0.0f, length(center_tws) - radius); }
 
 bool sphere_in_frustum(float3 c, float r) {
     [unroll] for (int i = 0; i < 6; ++i) {
         float4 p = frustum_planes_tws[i];
         float d = dot(p.xyz, c) + p.w;
-        if (d < -r) {
-            return false;
-        }
+        if (d < -r) { return false; }
     }
 
     return true;
@@ -114,9 +123,7 @@ uint compute_morph_mask(uint lod, uint2 xy, float3 my_center_tws, float my_radiu
         float3 c;
         float r;
         compute_bounds_tws(lod, uint2(xy.x - 1, xy.y), c, r);
-        if (!should_split(lod, distance_to_tile(c, r))) {
-            mask |= 1u;
-        }
+        if (!should_split(lod, distance_to_tile(c, r))) { mask |= 1u; }
     }
 
     // East
@@ -124,9 +131,7 @@ uint compute_morph_mask(uint lod, uint2 xy, float3 my_center_tws, float my_radiu
         float3 c;
         float r;
         compute_bounds_tws(lod, uint2(xy.x + 1, xy.y), c, r);
-        if (!should_split(lod, distance_to_tile(c, r))) {
-            mask |= 2u;
-        }
+        if (!should_split(lod, distance_to_tile(c, r))) { mask |= 2u; }
     }
 
     // South
@@ -134,9 +139,7 @@ uint compute_morph_mask(uint lod, uint2 xy, float3 my_center_tws, float my_radiu
         float3 c;
         float r;
         compute_bounds_tws(lod, uint2(xy.x, xy.y - 1), c, r);
-        if (!should_split(lod, distance_to_tile(c, r))) {
-            mask |= 4u;
-        }
+        if (!should_split(lod, distance_to_tile(c, r))) { mask |= 4u; }
     }
 
     // North
@@ -144,18 +147,14 @@ uint compute_morph_mask(uint lod, uint2 xy, float3 my_center_tws, float my_radiu
         float3 c;
         float r;
         compute_bounds_tws(lod, uint2(xy.x, xy.y + 1), c, r);
-        if (!should_split(lod, distance_to_tile(c, r))) {
-            mask |= 8u;
-        }
+        if (!should_split(lod, distance_to_tile(c, r))) { mask |= 8u; }
     }
 
     return mask;
 }
 
 /// @brief decode from normalized sample
-float decode_height_ws(float h01) {
-    return lerp(height_minmax_ws.x, height_minmax_wx.y, h01);
-}
+float decode_height_ws(float h01) { return lerp(height_minmax_ws.x, height_minmax_ws.y, h01); }
 
 /// @brief sample height form global uv in [0..1]
 float sample_height_ws(float2 uv) {
@@ -186,9 +185,15 @@ void MainCS_Root(uint3 dtid : SV_DispatchThreadID) {
 // ---- INDIRECT DISPATCH ARGS ----
 ByteAddressBuffer dispatch_in_count : register(t0);
 RWByteAddressBuffer dispatch_out_args : register(u0);
-cbuffer DispatchCB : register(b0) {
+
+// cbuffer DispatchCB : register(b0) {
+struct UDLOD_DispatchCB {
     uint group_size;
-}
+};
+
+// uniform UDLOD_DispatchCB DispatchCB;
+
+#define group_size DispatchCB.group_size
 
 [numthreads(1, 1, 1)]
 void MainCS_Dispatch(uint3 dtid : SV_DispatchThreadID) {
@@ -204,9 +209,7 @@ void MainCS_Dispatch(uint3 dtid : SV_DispatchThreadID) {
 void MainCS_Refine(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID, uint3 dtid : SV_DispatchThreadID) {
     uint idx = dtid.x;
     uint count = in_count.Load(0);
-    if (idx >= count) {
-        return;
-    }
+    if (idx >= count) { return; }
 
     FTile t = in_tiles[idx];
 
@@ -217,9 +220,7 @@ void MainCS_Refine(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID, uint3 
     float r;
     compute_bounds_tws(lod, xy, c, r);
 
-    if (!sphere_in_frustum(c, r)) {
-        return;
-    }
+    if (!sphere_in_frustum(c, r)) { return; }
 
     float dist = distance_to_tile(c, r);
     bool split = lod < max_lod && should_split(lod, dist);
@@ -260,9 +261,15 @@ void MainCS_Refine(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID, uint3 
 // ---- DRAW ARGS PASS (5 uints) ----
 ByteAddressBuffer draw_in_final_count : register(t0);
 RWByteAddressBuffer draw_out_args : register(u0);
-cbuffer DrawArgsCB : register(b0) {
+
+// cbuffer UDLOD_DrawArgsCB : register(b0) {
+struct UDLOD_DrawArgsCB {
     uint index_count_per_instance;
-}
+};
+
+// uniform UDLOD_DrawArgsCB DrawArgsCB;
+
+#define index_count_per_instance DrawArgsCB.index_count_per_instance
 
 [numthreads(1, 1, 1)]
 void MainCS_DrawArgs(uint3 dtid : SV_DispatchThreadID) {
@@ -291,25 +298,29 @@ StructuredBuffer<FTile> vs_final_tiles : register(t0);
 Texture2D vs_height_texture : register(t1);
 SamplerState vs_height_sampler : register(s0);
 
-cbuffer VSParams : register(b0) {
+// cbuffer UDLOD_VSParamsCB : register(b0) {
+struct UDLOD_VSParamsCB {
     float2 vs_world_min_xy_ws;
     float2 vs_world_size_xy_ws;
     float2 vs_height_minmax_ws;
     uint vs_grid_resolution;
-}
+};
+
+#define vs_world_min_xy_ws VSParamsCB.vs_world_min_xy_ws
+#define vs_world_size_xy_ws VSParamsCB.vs_world_size_xy_ws
+#define vs_height_minmax_ws VSParamsCB.vs_height_minmax_ws
+#define vs_grid_resolution VSParamsCB.vs_grid_resolution
+
+// uniform UDLOD_VSParamsCB VSParamsCB;
 
 float2 tile_origin_ws(uint lod, uint2 xy) {
     float size = max(vs_world_size_xy_ws.x, vs_world_size_xy_ws.y) * rcp((float)(1u << lod));
     return vs_world_min_xy_ws + float2(xy) * size;
 }
 
-float2 domain_uv_from_world_xy(float2 world_xy) {
-    return (world_xy - vs_world_min_xy_ws) / vs_world_size_xy_ws;
-}
+float2 domain_uv_from_world_xy(float2 world_xy) { return (world_xy - vs_world_min_xy_ws) / vs_world_size_xy_ws; }
 
-float decode_height_ws_vs(float h01) {
-    return lerp(vs_height_minmax_ws.x, vs_height_minmax_ws.y, h01);
-}
+float decode_height_ws_vs(float h01) { return lerp(vs_height_minmax_ws.x, vs_height_minmax_ws.y, h01); }
 
 float sample_height_ws_vs(float2 uv) {
     float h = vs_height_texture.SampleLevel(vs_height_sampler, uv, 0).r;
@@ -326,10 +337,10 @@ float morph_snap_coord(float u, uint grid_res, float alpha) {
 }
 
 /// @brief compute morph alpha based on distance relative to split threshold
-float morph_alpha(uint lod, float dist, float focal_len_px, float error_pixels, float e0, float morph_start_ratio) {
+float morph_alpha(uint lod, float dist, float _focal_len_px, float _error_pixels, float e0, float _morph_start_ratio) {
     float eL = e0 * (float)(1u << lod);
-    float split_dist = focal_len_px * eL / max(1e-4, error_pixels);
-    float start_dist = split_dist * morph_start_ratio;
+    float split_dist = _focal_len_px * eL / max(1e-4, _error_pixels);
+    float start_dist = split_dist * _morph_start_ratio;
 
     // far dist >= start_dist => 0, near: dist <= split_dist => 1
     return saturate((start_dist - dist) / max(1e-4, start_dist - split_dist));
@@ -354,9 +365,6 @@ VS_Out MainVS(VS_In i) {
     float dist = max(0.0, length(t.center_tws) - t.radius);
 
     // Use View uniform from focal/error.
-    // TODO: wire focal/error via a "view" cbuffer.
-    // NOTE: currently this is a simple, mild, fixed alpha based on dist and tile size.
-    // In c++, we set proper values via the refine pass; for VS we do a simpler morp
     // TODO: wire focal/error via a "view" cbuffer.
     // NOTE: currently this is a simple, mild, fixed alpha based on dist and tile size.
     // In c++, we set proper values via the refine pass; for VS we do a simpler morph for now.
@@ -419,4 +427,3 @@ float3 MainPS(VS_Out i) : SV_Target0 {
     float3 base = lerp(float3(0.08, 0.10, 0.12), float3(0.25, 0.22, 0.18), h01);
     return float4(base * (0.25 + 0.75 * ndl), 1.0);
 }
-
