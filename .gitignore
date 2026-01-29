@@ -6,7 +6,8 @@
 !.vscode/unreal-clangd/.code-workspace.backup
 
 # Clang
-compile_commnads.json
+compile_commands.json
+.cache
 
 # Compiled Object files
 *.slo
