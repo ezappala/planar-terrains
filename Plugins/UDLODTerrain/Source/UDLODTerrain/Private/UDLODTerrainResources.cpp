@@ -57,7 +57,7 @@ void FUDLODTerrainResources::build_grid_buffers(const uint32 n, FRHIComputeComma
 
     for (uint32 y = 0; y < n - 1; ++y) {
         if (y > 0) {
-            // degenerate: repert first vertex of row
+            // degenerate: repeat first vertex of row
             indices.Add(y * n);
         }
 
@@ -75,12 +75,31 @@ void FUDLODTerrainResources::build_grid_buffers(const uint32 n, FRHIComputeComma
 
     // Create vertex buffer
     {
-        grid_vb = create_buffer<FGridVertex>(cmd, verts, TEXT("UDLOD_GridVB"));
+        auto name = TEXT("UDLOD_GridVB");
+        grid_vb = [&name, &verts, &cmd] {
+            auto desc = FRHIBufferCreateDesc::CreateVertex<FGridVertex>(name, verts.Num());
+            desc.InitialState = ERHIAccess::WriteOnlyMask;
+            auto obuf = cmd.CreateBuffer(desc);
+            void* ptr = cmd.LockBuffer(obuf, 0, verts.GetTypeSize() * verts.Num(), RLM_WriteOnly);
+            FMemory::Memcpy(ptr, verts.GetData(), verts.GetTypeSize() * verts.Num());
+            cmd.UnlockBuffer(obuf);
+            return obuf;
+        }();
     }
 
     // Create index buffer
     {
-        grid_ib = create_buffer<uint32>(cmd, indices, TEXT("UDLOD_GridIB"));
+        auto name = TEXT("UDLOD_GridIB");
+        grid_ib = [&name, &indices, &cmd] {
+            auto desc = FRHIBufferCreateDesc::CreateIndex<uint32>(name, indices.Num());
+            desc.InitialState = ERHIAccess::WriteOnlyMask;
+            auto obuf = cmd.CreateBuffer(desc);
+            void* ptr = cmd.LockBuffer(obuf, 0, indices.GetTypeSize() * indices.Num(), RLM_WriteOnly);
+            FMemory::Memcpy(ptr, indices.GetData(), indices.GetTypeSize() * indices.Num());
+            cmd.UnlockBuffer(obuf);
+            return obuf;
+        }();
+        create_buffer<uint32>(cmd, indices, TEXT("UDLOD_GridIB"));
     }
 
     FVertexDeclarationElementList elements{};

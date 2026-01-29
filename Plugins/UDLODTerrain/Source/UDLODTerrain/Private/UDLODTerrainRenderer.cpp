@@ -137,13 +137,13 @@ void FUDLODTerrainRenderer::add_udlod_refine_passes(
 
     for (uint32 pass = 0; pass < s.max_lod; ++pass) {
         // clear out_count (1 uint)
-        AddClearUAVPass(graph_builder, graph_builder.CreateUAV(out_count, PF_R32_UINT), 0);
+        AddClearUAVPass(graph_builder, graph_builder.CreateUAV(out_count), 0);
 
         // build indirect dispatch args from in_count
         constexpr uint32 group_size = 64;
         const FRDGBufferRef indirect_args = FComputeShaderUtils::AddIndirectArgsSetupCsPass1D(graph_builder,
             GMaxRHIFeatureLevel, in_count, TEXT("IndirectArgsBuffer"), group_size);
-        const FRDGBufferUAVRef indirect_args_uav = graph_builder.CreateUAV(indirect_args, PF_R32_UINT);
+        const FRDGBufferUAVRef indirect_args_uav = graph_builder.CreateUAV(indirect_args);
 
         // setup args: [ceil(in_count/group_size), 1, 1]
         TShaderMapRef<FUDLOD_MakeDispatchArgsCS> args_cs(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -154,7 +154,7 @@ void FUDLODTerrainRenderer::add_udlod_refine_passes(
 
         auto* uniform_buffer_args_p = graph_builder.CreateUniformBuffer<UDLOD_DispatchCB>(uniform_args_p);
 
-        args_p->dispatch_in_count = graph_builder.CreateSRV(in_count, PF_R32_UINT);
+        args_p->dispatch_in_count = graph_builder.CreateSRV(in_count);
         args_p->dispatch_out_args = indirect_args_uav;
         args_p->DispatchCB = uniform_buffer_args_p;
         FComputeShaderUtils::AddPass(
@@ -184,11 +184,11 @@ void FUDLODTerrainRenderer::add_udlod_refine_passes(
         uniform_p->pre_view_translation = pre_view_translation;
 
         p->in_tiles = graph_builder.CreateSRV(FRDGBufferSRVDesc(in_tiles));
-        p->in_count = graph_builder.CreateSRV(in_count, PF_R32_UINT);
+        p->in_count = graph_builder.CreateSRV(in_count);
         p->out_tiles = graph_builder.CreateUAV(out_tiles);
-        p->out_count = graph_builder.CreateUAV(out_count, PF_R32_UINT);
+        p->out_count = graph_builder.CreateUAV(out_count);
         p->final_tiles = graph_builder.CreateUAV(final_tiles);
-        p->final_count = graph_builder.CreateUAV(final_count, PF_R32_UINT);
+        p->final_count = graph_builder.CreateUAV(final_count);
 
         p->height_texture = height_texture_rhi;
         p->height_sampler = height_sampler_rhi;
@@ -230,7 +230,7 @@ void FUDLODTerrainRenderer::add_udlod_draw_args_pass(
 
     auto* uniform_buffer_p = graph_builder.CreateUniformBuffer<UDLOD_DrawArgsCB>(uniform_p);
 
-    p->draw_in_final_count = graph_builder.CreateSRV(final_count, PF_R32_UINT);
+    p->draw_in_final_count = graph_builder.CreateSRV(final_count);
     p->draw_out_args = draw_args_uav;
     p->DrawArgsCB = uniform_buffer_p;
 
@@ -289,7 +289,7 @@ void FUDLODTerrainRenderer::add_udlod_draw_pass(
         RDG_EVENT_NAME("UDLOD.Draw"),
         pass_params,
         ERDGPassFlags::Raster,
-        [pass_params, &view, &r, &ps, &vs](FRHICommandList& cmd) {
+        [&view, &r, ps, vs, pass_params](FRHICommandList& cmd) {
             check(r.vertex_decl.IsValid());
             check(r.grid_vb.IsValid());
             check(r.grid_ib.IsValid());

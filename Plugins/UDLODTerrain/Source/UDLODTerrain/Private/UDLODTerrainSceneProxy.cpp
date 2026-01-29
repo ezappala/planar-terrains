@@ -79,7 +79,7 @@ void FUDLODTerrainSceneProxy::GetDynamicMeshElements(
 ) const {}
 
 #if WITH_EDITOR
-//static FRHIGPUBufferReadback GFinalCountReadback{TEXT("UDLOD_FinalCountReadback")};
+// static FRHIGPUBufferReadback GFinalCountReadback{TEXT("UDLOD_FinalCountReadback")};
 #endif
 
 void FUDLODTerrainSceneProxy::render_udlod(
@@ -112,8 +112,8 @@ void FUDLODTerrainSceneProxy::render_udlod(
         TEXT("UDLOD_DrawArgs"), ERDGBufferFlags::None);
 
     const FRDGBufferUAVRef working_tiles_a_uav = graph_builder.CreateUAV(working_tiles_a);
-    const FRDGBufferUAVRef working_count_a_uav = graph_builder.CreateUAV(working_count_a, PF_R32_UINT);
-    const FRDGBufferUAVRef final_count_uav = graph_builder.CreateUAV(final_count, PF_R32_UINT);
+    const FRDGBufferUAVRef working_count_a_uav = graph_builder.CreateUAV(working_count_a);
+    const FRDGBufferUAVRef final_count_uav = graph_builder.CreateUAV(final_count);
 
     // Root Pass
     FUDLODTerrainRenderer::add_root_tile_pass(
@@ -135,15 +135,13 @@ void FUDLODTerrainSceneProxy::render_udlod(
     // graph_builder.AddPass(
     //     RDG_EVENT_NAME("UDLOD.ReadbackFinalCount"),
     //     ERDGPassFlags::Readback,
-    //     [&](FRHICommandListImmediate&) {
-            // if (final_count) {
-            //     GFinalCountReadback.EnqueueCopy(cmd, final_count->GetRHI(), fc_readback_num_bytes);
-            // }
-    // });
+    //     [&](FRHICommandListImmediate& cmd) {
+    //         if (final_count) { GFinalCountReadback.EnqueueCopy(cmd, final_count->GetRHI(), fc_readback_num_bytes); }
+    //     });
 #endif
 
     // Build draw args
-    const FRDGBufferUAVRef draw_args_uav = graph_builder.CreateUAV(draw_args, PF_R32_UINT);
+    const FRDGBufferUAVRef draw_args_uav = graph_builder.CreateUAV(draw_args);
     FUDLODTerrainRenderer::add_udlod_draw_args_pass(
         graph_builder, resources_rt.index_count, final_count, draw_args_uav);
 
