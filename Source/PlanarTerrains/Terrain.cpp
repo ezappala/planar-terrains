@@ -6,6 +6,6 @@ ATerrain::ATerrain() {
     root = CreateDefaultSubobject<USceneComponent>(TEXT("RootComp"));
     SetRootComponent(root);
 
-    terrain = CreateDefaultSubobject<UUDLODTerrainComponent>(TEXT("TerrainComp"));
+    terrain = CreateDefaultSubobject<UTerrainComponent>(TEXT("TerrainComp"));
     terrain->SetupAttachment(root);
 }

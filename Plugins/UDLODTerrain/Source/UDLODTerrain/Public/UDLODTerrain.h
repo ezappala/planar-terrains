@@ -3,6 +3,12 @@
 #pragma once
 
 #include "Modules/ModuleManager.h"
+// ReSharper disable once CppWrongIncludesOrder, reason: needed for defines
+#include "config.h"
+// ReSharper disable once CppWrongIncludesOrder, reason: required for DECLARE_LOG_CATEGORY_EXTERN to funcion
+#include "CoreMinimal.h"
+
+DECLARE_LOG_CATEGORY_EXTERN(LogUDLODTerrain, Log, All);
 
 class FUDLODTerrainModule final : public IModuleInterface {
 public:

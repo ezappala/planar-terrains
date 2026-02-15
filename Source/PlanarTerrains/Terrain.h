@@ -1,7 +1,8 @@
 ﻿#pragma once
+#include "terrain_component.h"
+#include "GameFramework/Actor.h"
 
-#include "CoreMinimal.h"
-#include "UDLODTerrainComponent.h"
+// #include "UDLODTerrainComponent.h"
 #include "Terrain.generated.h"
 
 UCLASS()
@@ -15,5 +16,5 @@ public:
     USceneComponent* root;
 
     UPROPERTY(BlueprintReadWrite, EditAnywhere)
-    UUDLODTerrainComponent* terrain;
+    UTerrainComponent* terrain;
 };

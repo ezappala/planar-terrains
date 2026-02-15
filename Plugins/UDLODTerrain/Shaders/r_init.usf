@@ -1,0 +1,28 @@
+﻿// ReSharper disable once CppUnusedIncludeDirective, reason: must be included for Unreal shader files
+#include "/Engine/Public/Platform.ush"
+#include "r_common.ush"
+
+RWStructuredBuffer<FTile> tile_list;
+RWStructuredBuffer<FCount> count_current;
+RWStructuredBuffer<FCount> count_next;
+RWStructuredBuffer<FCount> count_final;
+
+float2 root_origin;
+float root_size;
+// uint dummy;
+
+[numthreads(1, 1, 1)]
+void MainCS(uint dispatch_thread_id : SV_DispatchThreadID) {
+    // reset counters
+    count_current[0].value = 1;
+    count_next[0].value = 1;
+    count_final[0].value = 1;
+
+    FTile t;
+    t.origin = root_origin;
+    t.size = root_size;
+    t.depth = 0;
+    tile_list[0] = t;
+}
+
+

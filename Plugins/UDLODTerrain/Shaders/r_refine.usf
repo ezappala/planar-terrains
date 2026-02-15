@@ -1,0 +1,73 @@
+﻿// ReSharper disable once CppUnusedIncludeDirective, reason: must be included for Unreal shader files
+#include "/Engine/Public/Platform.ush"
+#include "r_common.ush"
+
+StructuredBuffer<FTile> tile_list_in;
+RWStructuredBuffer<FTile> tile_list_out_next;
+RWStructuredBuffer<FTile> tile_list_out_final;
+
+RWStructuredBuffer<FCount> count_current;
+RWStructuredBuffer<FCount> count_next;
+RWStructuredBuffer<FCount> count_final;
+
+float3 view_world_pos;
+float lod_distance_scale;
+uint max_depth;
+uint max_tiles;
+float view_radius;
+uint pad;
+float4 frustum_planes[6];
+
+bool frustum_cull_2d(float2 center, float radius) {
+    // TODO:
+    // Simple conservative 2D cull using planes in XY (extend to 3D via AABB)
+    // For terrain it’s “good enough” to cull by distance/radius first.
+    return false;
+}
+
+[numthreads(128,1,1)]
+void MainCS(uint3 dispatch_thread_id : SV_DispatchThreadID) {
+    uint idx = dispatch_thread_id.x;
+    uint n = count_current[0].value;
+    if (idx >= n) {
+        return;
+    }
+
+    FTile t = tile_list_in[idx];
+    float2 center = t.origin + 0.5 * t.size.xx;
+    float2 d2 = center - view_world_pos.xz;
+    float dist = length(d2);
+    if (dist > view_radius + t.size * 0.8) {
+        return;
+    }
+
+    // Decide desired depth from distance (simple, stable).
+    // Near -> higher targetDepth (more splitting).
+
+    float lodf = log2(max(dist / lod_distance_scale, 1e-3));
+    uint desired_coarseness = (uint)clamp(floor(lodf), 0.0, (float)max_depth);
+    uint target_depth = max_depth - desired_coarseness;
+    bool can_split = (t.depth < max_depth);
+    bool should_split = can_split && (t.depth < target_depth);
+
+    if (should_split) {
+        float h = 0.5 * t.size;
+        uint base;
+        InterlockedAdd(count_next[0].value, 4, base);
+        if (base + 3 < max_tiles) {
+            // children: (0,0) (h,0) (0,h) (h,h)
+            FTile c0 = make_tile(t.origin + float2(0, 0), h, t.depth + 1);
+            FTile c1 = make_tile(t.origin + float2(h, 0), h, t.depth + 1);
+            FTile c2 = make_tile(t.origin + float2(0, h), h, t.depth + 1);
+            FTile c3 = make_tile(t.origin + float2(h, h), h, t.depth + 1);
+            tile_list_out_next[base + 0] = c0;
+            tile_list_out_next[base + 1] = c1;
+            tile_list_out_next[base + 2] = c2;
+            tile_list_out_next[base + 3] = c3;
+        }
+    } else {
+        uint res = 0;
+        InterlockedAdd(count_final[0].value, 1, res);
+        if (res < max_tiles) { tile_list_out_final[res] = t; }
+    }
+}

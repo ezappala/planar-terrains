@@ -1,0 +1,58 @@
+﻿// ReSharper disable once CppUnusedIncludeDirective, reason: must be included for Unreal shader files
+#include "/Engine/Public/Platform.ush"
+#include "pp_common.ush"
+
+Texture2D<float> heightmap : register(t0);
+StructuredBuffer<TileInfo> tile_infos: register(t1);
+StructuredBuffer<TileNeighbors> neighbors : register(t2);
+RWStructuredBuffer<ParentInfo> parent_infos : register(u0);
+RWTexture2DArray<float> tile_buf : register(u1);
+RWTexture2DArray<int2> seed_buf : register(u2);
+
+[numthreads(8,8,1)]
+void main(uint3 dispatch_thread_id : SV_DispatchThreadID) {
+    // // Set up global params
+    use_nan_no_data = 1;
+    pack_mask_into_lsb = 1;
+
+    uint2 pixel;
+    uint tile_idx;
+    if (!check_and_unpack_dispatch_id(dispatch_thread_id, pixel, tile_idx)) {
+        return;
+    }
+
+    // split @ LOD_MAX
+    TileInfo tile = tile_infos[tile_idx];
+    tile_buf[dispatch_thread_id] = split(pixel, tile, heightmap);
+
+    // stitch @ LOD_MAX
+    tile_buf[dispatch_thread_id] = stitch(pixel, tile_idx, neighbors[tile_idx], tile_buf);
+
+    // make seeds for jump flooding @ LOD_MAX
+    seed_buf[dispatch_thread_id] = set_seed(tile_idx, pixel, tile_buf);
+
+    // jump flooding @ LOD_MAX
+    // NOTE: must happen after all seeds are set because the jump flood algo needs to look at the other seeds
+    seed_buf[dispatch_thread_id] = jump_flood(tile_idx, pixel, seed_buf);
+
+    // pack mask into heightmap LSB @ LOD_MAX
+    tile_buf[dispatch_thread_id] = pack_mask_lsb_float(tile_idx, pixel, tile_buf, seed_buf);
+
+    // create initial parent data
+    parent_infos[tile_idx] = compute_parent_info(tile, seed_buf);
+
+    // for each LOD from i = LOD_MAX - 1 down to 0
+    for (int lod = LOD_MAX - 1; lod >= 0; --lod) {
+        // downsample
+        tile_buf[dispatch_thread_id] = downsample(pixel, parent_infos[tile_idx], tile_buf);
+
+        // stitch tiles
+        tile_buf[dispatch_thread_id] = stitch(pixel, tile_idx, neighbors[tile_idx], tile_buf);
+
+        // recompute parent mask, flood fill, repack
+        seed_buf[dispatch_thread_id] = set_seed(tile_idx, pixel, tile_buf);
+        seed_buf[dispatch_thread_id] = jump_flood(tile_idx, pixel, seed_buf);
+        tile_buf[dispatch_thread_id] = pack_mask_lsb_float(tile_idx, pixel, tile_buf, seed_buf);
+    }
+}
+

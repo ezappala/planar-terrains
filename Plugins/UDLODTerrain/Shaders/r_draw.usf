@@ -1,0 +1,60 @@
+﻿// ReSharper disable once CppUnusedIncludeDirective, reason: must be included for Unreal shader files
+#include "/Engine/Public/Platform.ush"
+#include "r_common.ush"
+
+#include "/Engine/Private/DoubleFloat.ush"
+#include "/Engine/Private/LargeWorldCoordinates.ush"
+// #include "/Engine/Generated/GeneratedInstancedStereo.ush"
+#include "/Engine/Private/InstancedStereo.ush"
+StructuredBuffer<FTile> final_tiles;
+uint subdivisions;
+float height_scale;
+float2 terrain_origin_ws;
+float2 terrain_scale_ws;
+
+Texture2D height_tex;
+SamplerState height_samp;
+
+struct VSOut {
+    float4 pos_cs : SV_Position;
+    float3 pos_ws : TEXCOORD0;
+};
+
+uint2 decode_strip_vertex(uint vertex_id, uint n) {
+    // NOTE: A degenerate triangle is a triangle with an area of 0 as all its vertices are coincident
+    // segment length fixed if we always add 2 degens per column
+    uint segLen = 2 * (n + 1) + 2; // 2 rows + 2 degens
+    uint seg = vertex_id / segLen;
+    uint within = vertex_id - seg * segLen;
+    if (within < 2 * (n + 1)) {
+        uint y = within >> 1;
+        uint x = seg + (within & 1);
+        return uint2(x, y);
+    } else {
+        // degenerates: repeat last then jump to start
+        // within==2*(N+1): (seg+1, N)
+        // within==2*(N+1)+1: (seg+1, 0)
+        uint x = seg + 1;
+        uint y = (within == 2 * (n + 1)) ? n : 0;
+        return uint2(x, y);
+    }
+}
+
+VSOut MainVS(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID) {
+    VSOut o;
+    FTile t = final_tiles[instance_id];
+    uint n = subdivisions;
+    uint2 g = decode_strip_vertex(vertex_id, n);
+    float2 uv = float2(g) / float(n);
+    float2 xy = t.origin + uv * t.size;
+    float h = height_tex.SampleLevel(height_samp, xy, 0).r * height_scale;
+    float3 pos_ws = float3(xy.x, h, xy.y);
+    o.pos_ws = pos_ws;
+    o.pos_cs = mul(float4(pos_ws, 1), DFDemote((FDFInverseMatrix)ResolvedView.WorldToClip));
+    return o;
+}
+
+float4 MainPS(VSOut i) : SV_Target0 {
+    // TODO: placeholder shading
+    return float4(0.2, 0.6, 0.25, 1);
+}

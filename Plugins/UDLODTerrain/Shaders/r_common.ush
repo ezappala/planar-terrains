@@ -1,0 +1,30 @@
+﻿#ifndef R_COMMON_USH
+#define R_COMMON_USH
+
+struct FTile {
+    float2 origin;
+    float size;
+    float depth;
+};
+
+FTile make_tile() {
+    FTile t;
+    t.origin = float2(0, 0);
+    t.size = 1;
+    t.depth = 0;
+    return t;
+}
+
+FTile make_tile(float2 origin, float size, float depth) {
+    FTile t;
+    t.origin = origin;
+    t.size = size;
+    t.depth = depth;
+    return t;
+}
+
+
+struct FCount {
+    uint value;
+};
+#endif // R_COMMON_USH

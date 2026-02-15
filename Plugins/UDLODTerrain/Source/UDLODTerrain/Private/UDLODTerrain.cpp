@@ -7,6 +7,7 @@
 #include "Misc/Paths.h"
 
 #define LOCTEXT_NAMESPACE "FUDLODTerrainModule"
+DEFINE_LOG_CATEGORY(LogUDLODTerrain);
 
 void FUDLODTerrainModule::StartupModule() {
     // This code will execute after your module is loaded into memory;
