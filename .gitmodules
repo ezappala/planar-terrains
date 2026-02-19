@@ -1,3 +1,6 @@
 [submodule "Doc"]
 	path = Doc
 	url = ../planarterrains.dev
+[submodule "Plugins/SubsystemBrowserPlugin"]
+	path = Plugins/SubsystemBrowserPlugin
+	url = https://github.com/aquanox/SubsystemBrowserPlugin
