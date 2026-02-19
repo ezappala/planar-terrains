@@ -1,0 +1,13 @@
+﻿// ReSharper disable once CppUnusedIncludeDirective
+#include "/Engine/Private/Common.ush"
+
+//Assumes we're using this vertex shader:
+//  #include "/Engine/Private/ScreenPass.usf"
+
+Texture2D<float2> InputTex;
+SamplerState InputSampler;
+
+void Main(
+    in noperspective float4 uvAndScreenPos : TEXCOORD0,
+    out float2 newState : SV_Target0
+) { newState = InputTex.SampleLevel(InputSampler, uvAndScreenPos.xy, 0); }
