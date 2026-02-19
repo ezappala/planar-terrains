@@ -1,5 +1,6 @@
 ﻿#pragma once
-#include "terrain_component.h"
+// #include "terrain_component.h"
+#include "component.h"
 #include "GameFramework/Actor.h"
 
 // #include "UDLODTerrainComponent.h"
@@ -11,10 +12,14 @@ class PLANARTERRAINS_API ATerrain : public AActor {
 
 public:
     ATerrain();
+    virtual void BeginPlay() override;
 
     UPROPERTY(BlueprintReadOnly, EditDefaultsOnly)
     USceneComponent* root;
 
-    UPROPERTY(BlueprintReadWrite, EditAnywhere)
-    UTerrainComponent* terrain;
+    UPROPERTY(BlueprintReadOnly, EditDefaultsOnly)
+    UStaticMeshComponent* terrain_visualizer;
+
+    UPROPERTY(BlueprintReadOnly, EditDefaultsOnly)
+    UTerrainComponent* terrain_component;
 };

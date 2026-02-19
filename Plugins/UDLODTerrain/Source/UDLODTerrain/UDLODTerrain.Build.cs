@@ -25,12 +25,19 @@ public class UDLODTerrain : ModuleRules {
         PublicDependencyModuleNames.AddRange(
             new[] {
                 "Core",
+                "Engine",
                 "RenderCore",
                 "Renderer",
                 "RHI",
                 "RHICore",
+                "DynamicMesh",
+                "MeshUtilities",
+                "CustomMeshComponent",
+                "MaterialUtilities",
+                "Landscape",
                 "ShaderCompilerCommon",
                 "ShaderPreprocessor",
+                "ExtendedGraphicsProgramming",
                 // ... add other public dependencies that you statically link with here ...
             }
         );
@@ -39,7 +46,6 @@ public class UDLODTerrain : ModuleRules {
         PrivateDependencyModuleNames.AddRange(
             new string[] {
                 "CoreUObject",
-                "Engine",
                 "Projects",
                 "RiderLink",
                 "RiderSourceCodeAccess",

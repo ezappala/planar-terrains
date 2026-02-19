@@ -1,6 +1,0 @@
-﻿// ReSharper disable once CppUnusedIncludeDirective
-#include "/Engine/Public/Platform.ush"
-
-float4 MainPS() : SV_Target0 {
-    return float4(1, 0, 1, 1);
-}

@@ -2,11 +2,19 @@
 
 #pragma once
 
-#include "Modules/ModuleManager.h"
-// ReSharper disable once CppWrongIncludesOrder, reason: needed for defines
-#include "config.h"
+#include <Modules/ModuleManager.h>
 // ReSharper disable once CppWrongIncludesOrder, reason: required for DECLARE_LOG_CATEGORY_EXTERN to funcion
-#include "CoreMinimal.h"
+#include <CoreMinimal.h>
+
+#define RDG_EVENT_SCOPE_CONDITIONAL_NAME(GraphBuilder, Condition, EventName ) \
+    RDG_EVENT_SCOPE_IMPL(\
+        GraphBuilder, \
+        Condition, \
+        ERDGScopeFlags::None, \
+        RHI_GPU_STAT_ARGS_NONE, \
+        TEXT("RDGEvent"), \
+        RDG_SCOPE_ARGS("%s", EventName)\
+    )
 
 DECLARE_LOG_CATEGORY_EXTERN(LogUDLODTerrain, Log, All);
 

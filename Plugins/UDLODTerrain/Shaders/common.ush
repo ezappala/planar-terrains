@@ -1,0 +1,155 @@
+﻿// ReSharper disable once CppUnusedIncludeDirective, reason: required for unreal engine shader compilation
+#include "/Engine/Public/Platform.ush"
+#ifndef COMMON_USH
+#define COMMON_USH
+
+float3 rgb_to_xyz(float3 InColour) {
+    float r = InColour.r;
+    float G = InColour.g;
+    float b = InColour.b;
+
+    if (r > 0.04045) { r = pow(((r + 0.055) / 1.055), 2.4); } else { r = r / 12.92; }
+    if (G > 0.04045) { G = pow(((G + 0.055) / 1.055), 2.4); } else { G = G / 12.92; }
+    if (b > 0.04045) { b = pow(((b + 0.055) / 1.055), 2.4); } else { b = b / 12.92; }
+
+    r = r * 100;
+    G = G * 100;
+    b = b * 100;
+
+    const float x = r * 0.4124 + G * 0.3576 + b * 0.1805;
+    const float y = r * 0.2126 + G * 0.7152 + b * 0.0722;
+    const float z = r * 0.0193 + G * 0.1192 + b * 0.9505;
+
+    return float3(x, y, z);
+}
+
+float3 xyz_to_cie_lab(float3 InXYZ) {
+    // Found here https://www.easyrgb.com/en/math.php
+
+    const float xn = 95.047;
+    const float yn = 100.000;
+    const float zn = 108.883;
+
+    const float x = InXYZ.x / xn;
+    const float y = InXYZ.y / yn;
+    const float z = InXYZ.z / zn;
+
+    const float epsilon = 0.008856;
+    const float kappa = 903.3;
+    const float third = 1.0 / 3.0;
+
+    const float fx = (x > epsilon) ? pow(x, third) : (kappa * x + 16.0) / 116.0;
+    const float fy = (y > epsilon) ? pow(y, third) : (kappa * y + 16.0) / 116.0;
+    const float fz = (z > epsilon) ? pow(z, third) : (kappa * z + 16.0) / 116.0;
+
+    const float l = (116.0 * fy) - 16.0;
+    const float a = 500.0 * (fx - fy);
+    const float b = 200.0 * (fy - fz);
+
+    return float3(l, a, b);
+}
+
+float3 rgb_to_lab(float3 InColour) { return xyz_to_cie_lab(rgb_to_xyz(InColour)); }
+
+float cie_lab_to_hue(const float a, const float b) {
+    float bias = 0;
+
+    [branch] if (a >= 0 && b == 0) { return 0; }
+    [branch] if (a < 0 && b == 0) { return 180; }
+    [branch] if (a == 0 && b > 0) { return 90; }
+    [branch] if (a == 0 && b < 0) { return 270; }
+
+    [flatten] if (a > 0 && b > 0) { bias = 0; }
+    [flatten] if (a < 0) { bias = 180; }
+    [flatten] if (a > 0 && b < 0) { bias = 360; }
+
+    return degrees(atan(b / a)) + bias;
+}
+
+float delta_e2000(float3 cie_a, float3 cie_b, float l_weight, float c_weight, float h_weight) {
+    //Color #1 CIE-L*ab values
+    const float cie_l1 = cie_a.x;
+    const float cie_a1 = cie_a.y;
+    const float cie_b1 = cie_a.z;
+
+    //Color #2 CIE-L*ab values
+    const float cie_l2 = cie_b.x;
+    const float cie_a2 = cie_b.y;
+    const float cie_b2 = cie_b.z;
+
+    float x_c1 = sqrt(cie_a1 * cie_a1 + cie_b1 * cie_b1);
+    float x_c2 = sqrt(cie_a2 * cie_a2 + cie_b2 * cie_b2);
+    const float x_cx = (x_c1 + x_c2) / 2;
+    const float x_gx = 0.5 * (1 - sqrt(pow(x_cx, 7) / (pow(x_cx, 7) + pow(25, 7))));
+
+    float x_nn = (1 + x_gx) * cie_a1;
+    x_c1 = sqrt(x_nn * x_nn + cie_b1 * cie_b1);
+
+    float x_h1 = cie_lab_to_hue(x_nn, cie_b1);
+    x_nn = (1 + x_gx) * cie_a2;
+    x_c2 = sqrt(x_nn * x_nn + cie_b2 * cie_b2);
+
+    float x_h2 = cie_lab_to_hue(x_nn, cie_b2);
+    float x_dl = cie_l2 - cie_l1;
+    float x_dc = x_c2 - x_c1;
+
+    float x_dh = 0;
+
+    if ((x_c1 * x_c2) == 0) {
+        x_dh = 0;
+    } else {
+        x_nn = round(x_h2 - x_h1);
+        if (abs(x_nn) <= 180) {
+            x_dh = x_h2 - x_h1;
+        } else {
+            if (x_nn > 180) {
+                x_dh = x_h2 - x_h1 - 360;
+            } else {
+                x_dh = x_h2 - x_h1 + 360;
+            }
+        }
+    }
+
+    x_dh = 2 * sqrt(x_c1 * x_c2) * sin(radians(x_dh / 2));
+    float x_lx = (cie_l1 + cie_l2) / 2;
+    float x_cy = (x_c1 + x_c2) / 2;
+
+    float x_hx = 0;
+
+    if ((x_c1 * x_c2) == 0) { x_hx = x_h1 + x_h2; } else {
+        x_nn = abs(round(x_h1 - x_h2));
+
+        if (x_nn > 180) {
+            if ((x_h2 + x_h1) < 360) {
+                x_hx = x_h1 + x_h2 + 360;
+            } else {
+                x_hx = x_h1 + x_h2 - 360;
+            }
+        } else {
+            x_hx = x_h1 + x_h2;
+        }
+
+        x_hx /= 2;
+    }
+
+    const float x_tx = 1 - 0.17 * cos(radians(x_hx - 30)) + 0.24
+        * cos(radians(2 * x_hx)) + 0.32
+        * cos(radians(3 * x_hx + 6)) - 0.20
+        * cos(radians(4 * x_hx - 63));
+
+    const float x_ph = 30 * exp(-((x_hx - 275) / 25) * ((x_hx - 275) / 25));
+    const float x_rc = 2 * sqrt(pow(x_cy, 7) / (pow(x_cy, 7) + pow(25, 7)));
+    const float x_sl = 1 + ((0.015 * ((x_lx - 50) * (x_lx - 50)))
+        / sqrt(20 + ((x_lx - 50) * (x_lx - 50))));
+
+    const float x_sc = 1 + 0.045 * x_cy;
+    const float x_sh = 1 + 0.015 * x_cy * x_tx;
+    const float x_rt = -sin(radians(2 * x_ph)) * x_rc;
+
+    x_dl = x_dl / (l_weight * x_sl);
+    x_dc = x_dc / (c_weight * x_sc);
+    x_dh = x_dh / (h_weight * x_sh);
+
+    return sqrt(pow(x_dl, 2) + pow(x_dc, 2) + pow(x_dh, 2) + x_rt * x_dc * x_dh);
+}
+#endif

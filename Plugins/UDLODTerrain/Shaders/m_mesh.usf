@@ -1,0 +1,97 @@
+﻿#include "/Engine/Private/Common.ush"
+
+//Include the Material code THEN the Vertex Factory code.
+//For Intellisense, as a stand-in, use the Material template and a specific built-in vertex factory.
+#if defined(__RESHARPER__) || defined(__INTELLISENSE__)
+#define VERTEXSHADER 1
+#define PIXELSHADER 1
+#include "/Engine/Private/LocalVertexFactory.ush"
+#include "/Engine/Private/MaterialTemplate.ush"
+#else
+#include "/Engine/Generated/Material.ush"
+#include "/Engine/Generated/VertexFactory.ush"
+#endif
+
+//Define the outputs from the VS into the PS.
+struct FPassVSToPS {
+    FVertexFactoryInterpolantsVSToPS VFInterpolants;
+    float4 Position : SV_POSITION;
+};
+
+#if VERTEXSHADER
+
+//The vertex shader is a pretty simple pass-through,
+//    invoking the Vertex Factory for world-space data
+//    and the Material for vertex animations.
+void MainVS(FVertexFactoryInput inputs, out FPassVSToPS outputs) {
+    //Set up viewport data (I think this mainly chooses which viewport to use in a stereo VR setup?)
+    ResolvedView = ResolveView();
+
+    //Invoke the vertex-factory to get world-space data.
+    FVertexFactoryIntermediates vfIntermediates = GetVertexFactoryIntermediates(inputs);
+    float4 worldPos4 = VertexFactoryGetWorldPosition(inputs, vfIntermediates);
+    float3x3 tangentToLocal = VertexFactoryGetTangentToLocal(inputs, vfIntermediates);
+
+    //Invoke the Material and apply its world-position-offset pin.
+    FMaterialVertexParameters mParameters = GetMaterialVertexParameters(inputs, vfIntermediates,
+        worldPos4.xyz, tangentToLocal);
+    worldPos4.xyz += GetMaterialWorldPositionOffset(mParameters);
+
+    //Calculate PS inputs.
+    outputs.VFInterpolants = VertexFactoryGetInterpolantsVSToPS(inputs, vfIntermediates, mParameters);
+    outputs.Position = INVARIANT(mul(VertexFactoryGetRasterizedWorldPosition(inputs, vfIntermediates, worldPos4),
+        ResolvedView.TranslatedWorldToClip));
+}
+
+#endif
+
+#if PIXELSHADER
+
+Texture2D<float2> PreviousStateTex;
+SamplerState PreviousStateSampler;
+
+//The pixel shader invokes our custom Material output pins.
+void MainPS(
+    in FPassVSToPS inputs //No comma; the below macro may be empty
+    OPTIONAL_IsFrontFace,
+    //Output includes an Alpha channel for blending,
+    //   even though the actual texture is two-channel
+    out float4 outState : SV_Target0
+) {
+    //Process uniforms.
+#if INSTANCED_STEREO
+    ResolvedView = ResolveView(input.FactoryInterpolants.EyeIndex);
+#else
+    ResolvedView = ResolveView();
+#endif
+
+    //Process Material and Vertex Factory inputs.
+    FMaterialPixelParameters mParameters = GetMaterialPixelParameters(inputs.VFInterpolants, inputs.Position);
+    FPixelMaterialInputs mInputs;
+    CalcMaterialParameters(mParameters, mInputs, inputs.Position, bIsFrontFace);
+
+    //Read and write our custom outputs.
+    outState.x =
+#if HAVE_Terrain_Outputs_Mesh_0
+        Terrain_Outputs_Mesh_0(mParameters)
+#else
+        0
+#endif
+        ;
+    outState.y =
+#if HAVE_Terrain_Outputs_Mesh_1
+        Terrain_Outputs_Mesh_1(mParameters)
+#else
+        outState.x
+#endif
+        ;
+    outState.a =
+#if HAVE_Terrain_Outputs_Mesh_2
+        Terrain_Outputs_Mesh_2(mParameters)
+#else
+        1.0
+#endif
+        ;
+}
+
+#endif

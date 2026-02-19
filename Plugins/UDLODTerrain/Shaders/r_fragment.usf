@@ -1,0 +1,37 @@
+﻿// ReSharper disable once CppUnusedIncludeDirective, reason: required for unreal engine shader compilation
+#include "/Engine/Public/Platform.ush"
+#include "common.ush"
+
+float3 target_color;
+
+Texture2D scene_color_texture;
+
+float4 MainPS(float4 sv_pos : SV_POSITION) : SV_Target0 {
+    const int mipmap_level = 0;
+    const float4 scene_color = scene_color_texture.Load(int3(sv_pos.xy, mipmap_level));
+
+#if USE_UNLIT_SCENE_COLOR
+    FScreenSpaceData screen_space_data = GetScreenSpaceDataUint(sv_pos.xy, false);
+    const float4 scene_color_unlit = float4(screen_space_data.GBuffer.BaseColor, 0);
+    const float3 scene_color_lab = RGBToLab(scene_color_unlit.rgb);
+#else
+    const float3 scene_color_lab = rgb_to_lab(scene_color.rgb);
+#endif
+
+    const float delta_e = delta_e2000(target_color, scene_color_lab, 1, 1, 1);
+
+    // If the scene is within the threshold, return scene color
+    // Delta E Perception
+    // <= 1.0   Not perceptible by human eyes.
+    // 1 - 2    Perceptible through close observation.
+    // 2 - 10   Perceptible at a glance.
+    // 11 - 49  Colors are more similar than opposite
+    // 100      Colors are exact opposite
+    [flatten]
+    if (delta_e < 45) {
+        return scene_color;
+    }
+
+    // Otherwise return greyscale version of scene color
+    return 0.21 * scene_color.r + 0.72 * scene_color.g + 0.07 * scene_color.b;
+}

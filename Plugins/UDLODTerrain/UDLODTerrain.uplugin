@@ -29,6 +29,10 @@
       {
         "Name": "RiderSourceCodeAccess",
         "Enabled": true
+      },
+      {
+        "Name": "ExtendedGraphicsProgramming",
+        "Enabled": true
       }
     ]
 }
