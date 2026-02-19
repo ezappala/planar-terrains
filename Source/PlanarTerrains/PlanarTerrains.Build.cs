@@ -12,7 +12,7 @@ public class PlanarTerrains : ModuleRules {
             { "Core", "CoreUObject", "Engine", "InputCore", "UDLODTerrain" });
 
         PrivateDependencyModuleNames.AddRange(new[]
-            { "RiderLink", "RiderSourceCodeAccess", });
+            { "RiderLink", "RiderSourceCodeAccess", "GPURuntimeTessellation", });
 
         // Uncomment if you are using Slate UI
         // PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
