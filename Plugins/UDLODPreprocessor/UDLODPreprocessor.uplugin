@@ -1,0 +1,41 @@
+﻿{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "UDLODPreprocessor",
+  "Description": "",
+  "Category": "Other",
+  "CreatedBy": "Eloise Zappala",
+  "CreatedByURL": "https://github.com/ezappala/PlanarTerrains",
+  "DocsURL": "",
+  "MarketplaceURL": "",
+  "CanContainContent": true,
+  "IsBetaVersion": false,
+  "IsExperimentalVersion": false,
+  "Installed": false,
+  "Modules": [
+    {
+      "Name": "UDLODPreprocessor",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "UDLODExt",
+      "Enabled": true
+    },
+    {
+      "Name": "UnrealGDAL",
+      "Enabled": true
+    },
+    {
+      "Name": "RiderLink",
+      "Enabled": true
+    },
+    {
+      "Name": "RiderSourceCodeAccess",
+      "Enabled": true
+    }
+  ]
+}

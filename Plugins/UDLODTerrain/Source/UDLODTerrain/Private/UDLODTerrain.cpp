@@ -6,16 +6,23 @@
 #include <Interfaces/IPluginManager.h>
 #include <Misc/Paths.h>
 
+#include "UnrealGDAL.h"
+
 #define LOCTEXT_NAMESPACE "FUDLODTerrainModule"
 DEFINE_LOG_CATEGORY(LogUDLODTerrain);
 
 void FUDLODTerrainModule::StartupModule() {
-    // This code will execute after your module is loaded into memory;
-    // the exact timing is specified in the .uplugin file per-module
-    const TSharedPtr<IPlugin> plugin = IPluginManager::Get().FindPlugin("UDLODTerrain");
+    const auto gdal_plugin = IPluginManager::Get().FindPlugin("UnrealGDAL");
+    check(gdal_plugin.IsValid());
+
+    auto* UnrealGDAL = FModuleManager::Get().LoadModulePtr<FUnrealGDALModule>("UnrealGDAL");
+    UnrealGDAL->InitGDAL();
+
+    const auto plugin = IPluginManager::Get().FindPlugin("UDLODTerrain");
     check(plugin.IsValid());
 
-    const FString shader_dir = FPaths::Combine(plugin->GetBaseDir(), TEXT("Shaders"));
+    auto plugin_dir = plugin->GetBaseDir();
+    const FString shader_dir = FPaths::Combine(plugin_dir, TEXT("Shaders"));
     AddShaderSourceDirectoryMapping(TEXT("/Plugins/UDLODTerrain"), shader_dir);
 }
 

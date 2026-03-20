@@ -1,0 +1,181 @@
+﻿// ReSharper disable once CppUnusedIncludeDirective
+#include "/Engine/Private/Common.ush"
+
+// Must come first after Common
+#include "bindings.ush"
+
+#include "common.ush"
+#include "functions.ush"
+
+RWStructuredBuffer<PrepassState> state;
+RWStructuredBuffer<IndirectBuffer> indirect_buffer;
+RWStructuredBuffer<TileCoordinate> temporary_tiles;
+RWStructuredBuffer<GeometryTile> final_tiles;
+
+int child_index() {
+    int result = 0;
+    InterlockedAdd(
+        state[0].child_index,
+        state[0].counter,
+        result
+    );
+    return result;
+}
+
+int parent_index(uint id) {
+    return asint(terrain_view[0].geometry_tile_count - 1u) * clamp(state[0].counter, 0, 1) -
+        asint(id) * state[0].counter;
+}
+
+int final_index() {
+    int result = 0;
+    InterlockedAdd(
+        state[0].final_index,
+        1,
+        result
+    );
+    return result;
+}
+
+bool should_be_divided(Coordinate coordinate, WorldCoordinate world_coordinate) {
+    return exp2(asfloat(coordinate.lod + 1)) <
+        terrain_view[0].subdivision_distance / world_coordinate.view_distance;
+}
+
+void subdivide(TileCoordinate tile) {
+    [unroll]
+    for (uint i = 0u; i < 4u; i = i + 1u) {
+        uint2 child_xy = uint2((tile.xy.x << 1u) + (i & 1u), (tile.xy.y << 1u) + (i >> 1u & 1u));
+        uint child_lod = tile.lod + 1u;
+
+        temporary_tiles[child_index()] = tile_coordinate(tile.face, child_lod, child_xy);
+    }
+}
+
+bool frustum_cull_aabb(Coordinate coordinate) {
+    if (coordinate.lod == 0) {
+        return false;
+    }
+
+    float3 aabb_min = float3(3.40282e+38f, 3.40282e+38f, 3.40282e+38f);
+    float3 aabb_max = float3(-3.40282e+38f, -3.40282e+38f, -3.40282e+38f);
+
+    [unroll]
+    for (uint i = 0u; i < 4u; i = i + 1u) {
+        float2 corner_uv = float2(asfloat(i & 1u), asfloat(i >> 1u & 1u));
+        Coordinate corner_coordinate = make_coordinate(coordinate.face, coordinate.lod, coordinate.xy, corner_uv);
+        WorldCoordinate corner_world_coordinate = compute_world_coordinate(corner_coordinate);
+        float3 corner_low = apply_height(corner_world_coordinate, Terrain.min_height);
+        float3 corner_high = apply_height(corner_world_coordinate, Terrain.max_height);
+
+        aabb_min = min(aabb_min, min(corner_low, corner_high));
+        aabb_max = max(aabb_max, max(corner_low, corner_high));
+    }
+
+    [unroll]
+    for (uint i = 0u; i < 6u; i = i + 1u) {
+        float4 half_space = terrain_view[0].half_spaces[i];
+        float4 closest_corner = float4(
+            select(half_space.xyz > float3(0.0f, 0.0f, 0.0f), aabb_min, aabb_max),
+            1.0f
+        );
+
+        if (dot(half_space, closest_corner) < 0.0f) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool horizon_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
+    if (coordinate.lod < 3) {
+        return false;
+    }
+
+    float3 ellipsoid_to_sphere = 1.0f / Terrain.scale;
+    float radius = 1.0f + Terrain.min_height / Terrain.scale.y;
+
+    float3 view_position = ellipsoid_to_sphere * terrain_view[0].world_position;
+    float3 tile_position = ellipsoid_to_sphere * apply_height(world_coordinate, Terrain.max_height);
+    float3 origin_position = ellipsoid_to_sphere *
+        mul(affine3_to_square(Terrain.world_from_unit), float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;
+    float3 view_tile = tile_position - view_position;
+    float3 view_origin = origin_position - view_position;
+
+    float vh_vh = dot(view_origin, view_origin) - radius * radius;
+    float vo_vt = dot(view_origin, view_tile);
+    float vt_vt = dot(view_tile, view_tile);
+
+    return (vo_vt > vh_vh) && (vo_vt * vo_vt > vh_vh * vt_vt);
+}
+
+bool no_data_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
+    Blend blend = compute_blend(world_coordinate.view_distance);
+    blend.lod = min(coordinate.lod, blend.lod);
+    AtlasTile tile = lookup_tile(coordinate, blend);
+
+    return tile.index == 4294967295u;
+}
+
+bool cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
+    if (frustum_cull_aabb(coordinate)) {
+        return true;
+    }
+
+    if (horizon_cull(coordinate, world_coordinate)) {
+        return true;
+    }
+
+    if (no_data_cull(coordinate, world_coordinate)) {
+        return true;
+    }
+
+    return false;
+}
+
+GeometryTile prepare_tile(TileCoordinate tile) {
+    float4 distances;
+    float4 ratios;
+
+    [unroll]
+    for (uint i = 0u; i < 4u; i = i + 1u) {
+        float2 corner_uv = float2(asfloat(i & 1u), asfloat(i >> 1u & 1u));
+        Coordinate corner_coordinate = make_coordinate(tile.face, tile.lod, tile.xy, corner_uv);
+        WorldCoordinate corner_world_coordinate = compute_world_coordinate(corner_coordinate);
+
+        distances[i] = corner_world_coordinate.view_distance;
+        ratios[i] = compute_morph(corner_coordinate.lod, corner_world_coordinate.view_distance);
+    }
+
+    float4 view_distances = float4(distances[0], distances[1], distances[2], distances[3]);
+    float4 morph_ratios = float4(ratios[0], ratios[1], ratios[2], ratios[3]);
+
+    GeometryTile result;
+    result.face = tile.face;
+    result.lod = tile.lod;
+    result.xy = tile.xy;
+    result.view_distances = view_distances;
+    result.morph_ratios = morph_ratios;
+    return result;
+}
+
+[numthreads(64, 1, 1)]
+void refine_tiles(uint3 id : SV_DispatchThreadID) {
+    if (id.x >= state[0].tile_count) {
+        return;
+    }
+
+    TileCoordinate tile = temporary_tiles[parent_index(id.x)];
+    Coordinate coordinate = compute_subdivision_coordinate(tile);
+    WorldCoordinate world_coordinate = compute_world_coordinate(coordinate);
+    if (cull(coordinate, world_coordinate)) {
+        return;
+    }
+
+    if (should_be_divided(coordinate, world_coordinate) && !frustum_cull_aabb(coordinate)) {
+        subdivide(tile);
+    } else {
+        final_tiles[final_index()] = prepare_tile(tile);
+    }
+}

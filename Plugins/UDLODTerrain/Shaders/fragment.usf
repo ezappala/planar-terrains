@@ -1,0 +1,227 @@
+﻿#include "/Engine/Private/Common.ush"
+
+// Must come first after Common
+#include "bindings.ush"
+
+#include "attachments.ush"
+#include "common.ush"
+#include "functions.ush"
+#include "math.ush"
+
+struct FragmentInput {
+    float4 clip_position : SV_Position;
+    float2 tile_uv : TEXCOORD0;
+    uint tile_index : TEXCOORD1;
+    float view_distance : TEXCOORD2;
+    float height : TEXCOORD3;
+};
+
+struct FragmentOutput {
+    float4 color : SV_Target0;
+};
+
+struct FragmentInfo {
+    float4 clip_position;
+    uint tile_index;
+    float height;
+    Coordinate coordinate;
+    WorldCoordinate world_coordinate;
+    TangentSpace tangent_space;
+    Blend blend;
+};
+
+FragmentInfo fragment_info(FragmentInput input) {
+    FragmentInfo info;
+#if FRAGMENT
+    info.clip_position = input.clip_position;
+    info.tile_index = input.tile_index;
+    info.height = input.height;
+    info.coordinate = compute_coordinate(input.tile_index, input.tile_uv);
+    info.world_coordinate = compute_world_coordinate(
+        info.coordinate,
+        input.height,
+        input.view_distance);
+    info.tangent_space = compute_tangent_space(info.world_coordinate);
+    info.blend = compute_blend(info.world_coordinate.view_distance);
+#else
+    info.clip_position = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    info.tile_index = 0;
+    info.height = 0.0f;
+    info.coordinate = make_coordinate();
+    info.world_coordinate = world_coordinate();
+    info.tangent_space = tangent_space();
+    info.blend = blend();
+#endif
+    return info;
+}
+
+void fragment_output(
+#if LIGHTING && PBR_LIGHTING
+    inout FragmentInfo info,
+#endif
+    inout FragmentOutput output,
+    float4 color,
+    float3 surface_gradient
+) {
+#if LIGHTING && PBR_LIGHTING
+    float4 world_position = float4(apply_height(info.world_coordinate, info.height), 1.0f);
+    float3 view_direction = normalize(-world_position.xyz);
+    float3 world_normal = normalize(info.world_coordinate.normal - surface_gradient);
+    float3 light_direction = normalize(float3(0.5f, 1.0f, 0.5f));
+    float3 half_vector = normalize(view_direction + light_direction);
+    float NdotL = saturate(dot(world_normal, light_direction));
+    float NdotV = saturate(dot(world_normal, view_direction));
+    float NdotH = saturate(dot(world_normal, half_vector));
+    float VdotH = saturate(dot(view_direction, half_vector));
+    float roughness = 0.5f;
+    float metallic = 0.0f;
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), color.rgb, metallic);
+    float3 F = F0 + (1.0f - F0) * pow(1.0f - VdotH, 5.0f);
+    float alpha = roughness * roughness;
+    float D = alpha * alpha / (PI * pow(NdotH * NdotH * (alpha * alpha - 1.0f) + 1.0f, 2.0f));
+    float G = min(1.0f, min(2.0f * NdotH * NdotV / VdotH, 2.0f * NdotH * NdotL / VdotH));
+    float3 specular = F * D * G / (4.0f * NdotL * NdotV + 0.001f);
+    float3 diffuse = color.rgb * NdotL;
+    output.color = float4(diffuse + specular, color.a);
+#else
+    output.color = color;
+#endif
+}
+
+struct GradientInfo {
+    uint mode;
+};
+
+Texture2D<float> gradient : register(t2);
+SamplerState gradient_sampler : register(s1);
+// GradientInfo gradient_info;
+
+float4 sample_albedo(AtlasTile tile) {
+    SampleUV uv = compute_sample_uv(tile, attachment_configs[1]);
+
+#if SAMPLE_GRAD && FRAGMENT
+    float3 coord = float3(uv.uv, tile.index);
+    return albedo_attachment.SampleGrad(terrain_sampler, coord, uv.dx, uv.dy);
+#else
+    float3 coord = float3(uv.uv, tile.index);
+    return albedo_attachment.SampleLevel(terrain_sampler, coord, tile.blend_ratio);
+#endif
+}
+
+float4 color_earth(AtlasTile tile) {
+    float height = sample_height(tile);
+    if (height < 0.0f) {
+        float2 coord = float2(lerp(0.0f, 0.075f, pow(height / Terrain.min_height, 0.25f)), 0.5f);
+        return gradient.SampleLevel(gradient_sampler, coord, 0.0f);
+    }
+
+    return sample_albedo(tile);
+}
+
+float4 color_dataset(AtlasTile tile) {
+    float height = sample_height(tile);
+    return gradient.SampleLevel(
+        gradient_sampler,
+        float2(inverse_lerp(Terrain.min_height, Terrain.max_height, height), 0.5f),
+        0.0f);
+}
+
+float4 sample_color(AtlasTile tile) {
+    float4 color;
+    // switch (gradient_info.mode) {
+    // case 0: {
+    //     color = color_dataset(tile);
+    //     break;
+    // }
+    // case 1: {
+    //     color = color_earth(tile);
+    //     break;
+    // }
+    // case 2: {
+    //     color = sample_albedo(tile);
+    //     break;
+    // }
+    // case 3: {
+    //     color = sample_albedo(tile);
+    //     if (color.a == 0.0f) { color = float4(0.5f, 0.5f, 0.5f, 0.5f); }
+    //     break;
+    // }
+    // default: {}
+    // }
+
+    color = color_earth(tile);
+    return color;
+}
+
+float4 slope_gradient(float3 world_normal, float3 surface_gradient) {
+    float slope = compute_slope(world_normal, surface_gradient);
+    return gradient.SampleLevel(gradient_sampler, float2(5.0f * slope + 0.1f, 0.5f), 0.0f);
+}
+
+void fragment_debug(
+#if SHOW_NORMALS
+    inout FragmentInfo info,
+#endif
+    inout FragmentOutput output,
+    AtlasTile tile,
+    float3 surface_gradient
+) {
+#if SHOW_DATA_LOD
+    output.color = show_data_lod(info.blend, tile);
+#endif
+#if SHOW_GEOMETRY_LOD
+    output.color = show_geometry_lod(info.coordinate, tile.tile_index);
+#endif
+#if SHOW_TILE_TREE
+    output.color = show_tile_tree(info.coordinate, info.world_coordinatella);
+#endif
+#if SHOW_PIXELS
+    output.color = lerp(output.color, show_pixels(tile), 0.5);
+#endif
+#if SHOW_UV
+    output.color = float4(tile.coordinate.uv, 0.0, 1.0);
+#endif
+#if SHOW_NORMALS
+    float3 normal = normalize(info.world_coordinate.normal - surface_gradient);
+    output.color = float4(normal, 1.0);
+#endif
+}
+
+FragmentOutput fragment(FragmentInput input) {
+    FragmentInfo info = fragment_info(input);
+    AtlasTile tile = lookup_tile(info.coordinate, info.blend);
+    bool mask = sample_height_mask(tile);
+    float4 color = sample_color(tile);
+#if FRAGMENT
+    float3 surface_gradient = sample_surface_gradient(tile, info.tangent_space);
+#else
+    float3 surface_gradient = float3(0.0f, 0.0f, 0.0f);
+#endif
+    if (mask) { discard; }
+
+    FragmentOutput output;
+#if LIGHTING
+    output.color = color * relief_shading(info.world_coordinate, surface_gradient);
+#else
+    output.color = color;
+#endif
+
+    // todo: test macro ?
+
+    fragment_output(
+#if LIGHTING && PBR_LIGHTING
+        info,
+#endif
+        output,
+        color,
+        surface_gradient);
+    fragment_debug(
+#if SHOW_NORMALS
+        info,
+#endif
+        output,
+        tile,
+        surface_gradient);
+
+    return output;
+}

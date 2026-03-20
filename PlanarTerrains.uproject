@@ -7,7 +7,7 @@
 		{
 			"Name": "PlanarTerrains",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "PostEngineInit"
 		}
 	],
 	"Plugins": [
@@ -35,6 +35,22 @@
 			"Name": "SubsystemBrowserPlugin",
 			"Enabled": true,
 			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/product/f1ba87b348774d338e75d25ddbc46b98"
-		}
+		},
+		{
+			"Name": "UnrealGDAL",
+			"Enabled": true
+		},
+		{
+			"Name": "UDLODPreprocessor",
+			"Enabled": true
+		},
+		{
+			"Name": "UDLODExt",
+			"Enabled": true
+		},
+        {
+          "Name": "GeometryProcessing",
+          "Enabled": true
+        }
 	]
 }

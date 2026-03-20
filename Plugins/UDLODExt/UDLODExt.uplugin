@@ -1,0 +1,37 @@
+﻿{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "UDLODExt",
+  "Description": "",
+  "Category": "Other",
+  "CreatedBy": "Eloise Zappala",
+  "CreatedByURL": "https://www.github.com/ezappala/PlanarTerrains",
+  "DocsURL": "",
+  "MarketplaceURL": "",
+  "CanContainContent": true,
+  "IsBetaVersion": false,
+  "IsExperimentalVersion": false,
+  "Installed": false,
+  "Modules": [
+    {
+      "Name": "UDLODExt",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "UnrealGDAL",
+      "Enabled": true
+    },
+    {
+      "Name": "RiderLink",
+      "Enabled": true
+    },
+    {
+      "Name": "RiderSourceCodeAccess",
+      "Enabled": true
+    }
+  ]
+}

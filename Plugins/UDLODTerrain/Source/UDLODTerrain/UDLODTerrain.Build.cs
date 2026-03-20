@@ -5,8 +5,9 @@ using UnrealBuildTool;
 public class UDLODTerrain : ModuleRules {
     public UDLODTerrain(ReadOnlyTargetRules Target) : base(Target) {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-        CppStandard = CppStandardVersion.Latest;
+        CppStandard = CppStandardVersion.Cpp23;
         IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
+        IWYUSupport = IWYUSupport.Full;
 
         PublicIncludePaths.AddRange(
             new string[] {
@@ -25,6 +26,7 @@ public class UDLODTerrain : ModuleRules {
         PublicDependencyModuleNames.AddRange(
             new[] {
                 "Core",
+                "CoreUObject",
                 "Engine",
                 "RenderCore",
                 "Renderer",
@@ -38,18 +40,23 @@ public class UDLODTerrain : ModuleRules {
                 "ShaderCompilerCommon",
                 "ShaderPreprocessor",
                 "ExtendedGraphicsProgramming",
+                "GDAL",
+                "UnrealGDAL",
+                "Imath",
+                "Json",
+                "UDLODPreprocessor",
+                "UDLODExt",
                 // ... add other public dependencies that you statically link with here ...
             }
         );
 
 
         PrivateDependencyModuleNames.AddRange(
-            new string[] {
-                "CoreUObject",
-                "Projects",
-                "RiderLink",
-                "RiderSourceCodeAccess",
-                "RiderShaderInfo",
+            new[] {
+                "Projects", "RiderLink", "RiderSourceCodeAccess",
+                "RiderShaderInfo", "RiderBlueprint", "RiderDebuggerSupport",
+                "RiderGameControl", "RiderLogging", "RiderLC",
+                "GPURuntimeTessellation"
             }
         );
 
@@ -59,5 +66,13 @@ public class UDLODTerrain : ModuleRules {
                 // ... add any modules that your module loads dynamically here ...
             }
         );
+
+        // if (Target.Platform == UnrealTargetPlatform.Win64) {
+        //     PublicAdditionalLibraries.Add(
+        //         "$(PluginDir)/Binaries/ThirdParty/BevyTerrain/Win64/btpp.lib");
+        //     PublicDelayLoadDLLs.Add("btpp.dll");
+        //     RuntimeDependencies.Add(
+        //         "$(PluginDir)/Binaries/ThirdParty/BevyTerrain/Win64/btpp.dll");
+        // }
     }
 }

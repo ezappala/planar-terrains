@@ -1,0 +1,28 @@
+﻿#pragma once
+
+// ReSharper disable once CppUnusedIncludeDirective
+#include "/Engine/Public/Platform.ush"
+
+#include "common.ush"
+
+// Terrain terrain;
+// cbuffer attachments : register(b0) {
+//     AttachmentConfig height_config;
+//     AttachmentConfig albedo_config;
+// };
+
+/*
+ * attachment_configs[0] = height_config;
+ * attachment_configs[1] = albedo_config;
+ */
+StructuredBuffer<AttachmentConfig> attachment_configs;
+SamplerState terrain_sampler : register(s0);
+Texture2DArray<float> height_attachment : register(t0);
+Texture2DArray<float> albedo_attachment : register(t1);
+
+StructuredBuffer<TerrainView> terrain_view;
+// ApproximateHeight approximate_height;
+RWBuffer<float> approximate_height;
+
+StructuredBuffer<TileTreeEntry> tile_tree;
+StructuredBuffer<GeometryTile> geometry_tiles;

@@ -1,0 +1,11 @@
+﻿#ifndef UDLOD_VERTEX_FACTORY_USH
+#define UDLOD_VERTEX_FACTORY_USH
+
+#include "/Engine/Private/VertexFactoryCommon.ush"
+
+StructuredBuffer<float3> PositionBuffer;
+
+#define FPositionOnlyVertexFactoryInput FVertexFactoryInput;
+#define FPositionAndNormalOnlyVertexFactoryInput FVertexFactoryInput;
+
+#endif // UDLOD_VERTEX_FACTORY_USH

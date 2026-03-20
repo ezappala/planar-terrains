@@ -5,6 +5,9 @@
 !.vscode/unreal-clangd/addMacroCompletions.h
 !.vscode/unreal-clangd/.code-workspace.backup
 
+*.tif
+*.tiff
+
 # Clang
 compile_commands.json
 .cache

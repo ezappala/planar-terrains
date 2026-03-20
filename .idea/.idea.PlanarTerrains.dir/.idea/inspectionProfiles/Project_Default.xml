@@ -1,6 +1,9 @@
 <component name="InspectionProjectProfileManager">
   <profile version="1.0">
     <option name="myName" value="Project Default" />
+    <inspection_tool class="Annotator" enabled="true" level="ERROR" enabled_by_default="true">
+      <scope name="UnrealEngine" level="ERROR" enabled="false" />
+    </inspection_tool>
     <inspection_tool class="ClangTidy" enabled="true" level="WARNING" enabled_by_default="true">
       <option name="clangTidyChecks" value="*,-abseil-*,-altera-*,-android-*,-boost-*,-concurrency-*,-darwin-*,-fuchsia-*,-llvmlibc-*,-objc-*,-cert-*,cert-err52-cpp,cert-err60-cpp,cert-err34-c,cert-str34-c,cert-msc50-cpp,cert-msc51-cpp,cert-dcl58-cpp,cert-flp30-c,-hicpp-*,hicpp-multiway-paths-covered,hicpp-exception-baseclass,-google-readability-braces-around-statements,-readability-braces-around-statements" />
     </inspection_tool>
@@ -18,11 +21,37 @@
     <inspection_tool class="CppRemoveRedundantBraces" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="CppTabsAreDisallowed" enabled="true" level="WARNING" enabled_by_default="true" />
     <inspection_tool class="CppUnnecessaryWhitespace" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="EmptyDirectory" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="InconsistentLineSeparators" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="IncorrectFormatting" enabled="true" level="WEAK WARNING" enabled_by_default="true" />
-    <inspection_tool class="LongLine" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="ProblematicWhitespace" enabled="true" level="WARNING" enabled_by_default="true" />
-    <inspection_tool class="TodoComment" enabled="true" level="TEXT ATTRIBUTES" enabled_by_default="true" editorAttributes="WARNING_ATTRIBUTES" />
+    <inspection_tool class="EmptyDirectory" enabled="true" level="WARNING" enabled_by_default="true">
+      <scope name="UnrealEngine" level="WARNING" enabled="false" />
+    </inspection_tool>
+    <inspection_tool class="InconsistentLineSeparators" enabled="true" level="WARNING" enabled_by_default="true">
+      <scope name="UnrealEngine" level="WARNING" enabled="false" />
+    </inspection_tool>
+    <inspection_tool class="IncorrectFormatting" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <scope name="UnrealEngine" level="WEAK WARNING" enabled="false" />
+    </inspection_tool>
+    <inspection_tool class="InjectedReferences" enabled="true" level="ERROR" enabled_by_default="true">
+      <scope name="UnrealEngine" level="ERROR" enabled="false" />
+    </inspection_tool>
+    <inspection_tool class="LongLine" enabled="true" level="WARNING" enabled_by_default="false">
+      <scope name="UnrealEngine" level="WARNING" enabled="false" />
+    </inspection_tool>
+    <inspection_tool class="ProblematicWhitespace" enabled="true" level="WARNING" enabled_by_default="true">
+      <scope name="UnrealEngine" level="WARNING" enabled="false" />
+    </inspection_tool>
+    <inspection_tool class="ReassignedToPlainText" enabled="true" level="WARNING" enabled_by_default="true">
+      <scope name="UnrealEngine" level="WARNING" enabled="false" />
+    </inspection_tool>
+    <inspection_tool class="RedundantSuppression" enabled="true" level="WARNING" enabled_by_default="true">
+      <scope name="UnrealEngine" level="WARNING" enabled="false" />
+    </inspection_tool>
+    <inspection_tool class="SpellCheckingInspection" enabled="false" level="TYPO" enabled_by_default="false">
+      <option name="processCode" value="true" />
+      <option name="processLiterals" value="true" />
+      <option name="processComments" value="true" />
+    </inspection_tool>
+    <inspection_tool class="TodoComment" enabled="true" level="TEXT ATTRIBUTES" enabled_by_default="true" editorAttributes="WARNING_ATTRIBUTES">
+      <scope name="UnrealEngine" level="TEXT ATTRIBUTES" enabled="false" />
+    </inspection_tool>
   </profile>
 </component>

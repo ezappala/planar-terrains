@@ -6,9 +6,13 @@ public class PlanarTerrainsEditorTarget : TargetRules {
     public PlanarTerrainsEditorTarget(TargetInfo Target) : base(Target) {
         Type = TargetType.Editor;
         DefaultBuildSettings = BuildSettingsVersion.V6;
-        CppStandard = CppStandardVersion.Latest;
+        CppStandard = CppStandardVersion.Cpp23;
         IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
+        bEnforceIWYU = true;
 
-        ExtraModuleNames.AddRange(new[] { "PlanarTerrains" });
+        ExtraModuleNames.AddRange(new[]
+        {
+            "PlanarTerrains", "UDLODExt", "UDLODPreprocessor", "UDLODTerrain"
+        });
     }
 }

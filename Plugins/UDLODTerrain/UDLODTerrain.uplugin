@@ -5,8 +5,8 @@
 	"FriendlyName": "UDLODTerrain",
 	"Description": "",
 	"Category": "Other",
-	"CreatedBy": "",
-	"CreatedByURL": "",
+	"CreatedBy": "Eloise Zappala",
+	"CreatedByURL": "https://www.github.com/ezappala/PlanarTerrains",
 	"DocsURL": "",
 	"MarketplaceURL": "",
 	"SupportURL": "",
@@ -23,6 +23,18 @@
 	],
     "Plugins": [
       {
+        "Name": "UDLODPreprocessor",
+        "Enabled": true
+      },
+        {
+            "Name": "UDLODExt",
+            "Enabled": true
+        },
+      {
+        "Name": "UnrealGDAL",
+        "Enabled": true
+      },
+      {
         "Name": "RiderLink",
         "Enabled": true
       },
@@ -32,6 +44,18 @@
       },
       {
         "Name": "ExtendedGraphicsProgramming",
+        "Enabled": true
+      },
+      {
+        "Name": "GeometryProcessing",
+        "Enabled": true
+      },
+      {
+        "Name": "CustomMeshComponent",
+        "Enabled": true
+      },
+      {
+        "Name": "GPURuntimeTessellation",
         "Enabled": true
       }
     ]
