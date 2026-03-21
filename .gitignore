@@ -8,6 +8,13 @@
 *.tif
 *.tiff
 
+# no ai agents in git
+[Aa][Gg][Ee][Nn][Tt][Ss].md
+.agents
+.agent
+.codex
+.opencode
+
 # Clang
 compile_commands.json
 .cache
