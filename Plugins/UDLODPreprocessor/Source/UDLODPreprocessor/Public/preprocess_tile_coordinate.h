@@ -1,8 +1,11 @@
 ﻿#pragma once
+#include <compare>
+
 #include "ext_iter.h"
 #include "Math/IntPoint.h"
 #include "Math/Vector.h"
 #include "Math/Vector2D.h"
+#include "Misc/Paths.h"
 #include "UObject/ObjectMacros.h"
 
 #include "preprocess_tile_coordinate.generated.h"
@@ -106,7 +109,9 @@ const FIntPoint NEIGHBOR_OFFSETS[8] = {
 USTRUCT(BlueprintType)
 struct FTileCoordinate {
     GENERATED_BODY()
-    FTileCoordinate() = default;
+    FTileCoordinate() : face(0),
+        lod(0),
+        xy(FIntPoint::ZeroValue) {}
 
     FTileCoordinate(
         const uint32 in_face,
@@ -127,14 +132,11 @@ struct FTileCoordinate {
 
     FString path(FString in_path) const {
         const auto tile_block = xy / BLOCK_SIZE;
-        in_path += FString::Printf(
-            TEXT("%d/%d_%d/%s.tif"),
-            lod,
-            tile_block.X,
-            tile_block.Y,
-            *to_string());
-
-        return in_path;
+        return FPaths::Combine(
+            in_path,
+            FString::FromInt(lod),
+            FString::Printf(TEXT("%d_%d"), tile_block.X, tile_block.Y),
+            FString::Printf(TEXT("%s.tif"), *to_string()));
     }
 
     FString to_string() const {

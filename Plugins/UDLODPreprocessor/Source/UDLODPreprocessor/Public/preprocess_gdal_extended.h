@@ -2,12 +2,12 @@
 #include <bit>
 
 #include "ext_buffer.h"
-#include "GDALHelpers.h"
 #include "ext_gdal_data_type.h"
-#include "gdal_priv.h"
 #include "ext_traits.h"
+#include "GDALHelpers.h"
+#include "gdal_priv.h"
 #include "Logging/StructuredLog.h"
-#include "Misc/Paths.h"
+#include "Microsoft/AllowMicrosoftPlatformTypes.h"
 
 namespace preprocess {
 using ext::traits::GdalType, ext::traits::Copy, ext::traits::PartialEq, ext::traits::NumCast;
@@ -27,30 +27,48 @@ ext::BufferResult<T> read_as(
 ) {
     const auto pixels = shape.Get<0>() * shape.Get<1>();
     auto data = TArray<T>{};
-    data.Reserve(pixels);
+    data.SetNumUninitialized(pixels);
 
-    const auto resample_alg = e_resample_alg.Get(GRIORA_NearestNeighbour);
-    auto options = GDALRasterIOExtraArg{.eResampleAlg = resample_alg};
+    const CPLErr rv = [&] {
+        if (!e_resample_alg.IsSet()) {
+            return rasterband->RasterIO(
+                GF_Read,
+                window.Get<0>(),
+                window.Get<1>(),
+                window_size.Get<0>(),
+                window_size.Get<1>(),
+                data.GetData(),
+                shape.Get<0>(),
+                shape.Get<1>(),
+                static_cast<GDALDataType>(
+                    ext::GDALDataType::GDALDataType<T>::gdal_original()),
+                0,
+                0
+            );
+        }
 
-    GDALRasterIOExtraArg* options_ptr = &options;
-    CPLErr rv = rasterband->RasterIO(
-        GF_Read,
-        window.Get<0>(),
-        window.Get<1>(),
-        window_size.Get<0>(),
-        window_size.Get<1>(),
-        data.GetData(),
-        shape.Get<0>(),
-        shape.Get<1>(),
-        static_cast<GDALDataType>
-        (ext::GDALDataType::GDALDataType<T>::gdal_original()),
-        0,
-        0,
-        options_ptr
-    );
+        GDALRasterIOExtraArg options;
+        INIT_RASTERIO_EXTRA_ARG(options);
+        options.eResampleAlg = e_resample_alg.Get(GRIORA_NearestNeighbour);
+
+        return rasterband->RasterIO(
+            GF_Read,
+            window.Get<0>(),
+            window.Get<1>(),
+            window_size.Get<0>(),
+            window_size.Get<1>(),
+            data.GetData(),
+            shape.Get<0>(),
+            shape.Get<1>(),
+            static_cast<GDALDataType>(
+                ext::GDALDataType::GDALDataType<T>::gdal_original()),
+            0,
+            0,
+            &options
+        );
+    }();
     if (rv != CE_None) { return std::unexpected{rv}; }
 
-    data.SetNum(pixels);
     return ext::Buffer<T>(data, shape);
 }
 
@@ -93,11 +111,11 @@ std::expected<void, CPLErrorNum> write(
         window.Get<1>(),
         window_size.Get<0>(),
         window_size.Get<1>(),
-        &buffer.data(),
+        buffer.data().GetData(),
         shape.Get<0>(),
         shape.Get<1>(),
-        static_cast<GDALDataType>
-        (ext::GDALDataType::GDALDataType<T>::gdal_original()),
+        static_cast<GDALDataType>(
+            ext::GDALDataType::GDALDataType<T>::gdal_original()),
         0,
         0
     );
@@ -183,22 +201,14 @@ std::expected<GDALDatasetRef, CPLErrorNum> create_with_band_type_with_options(
     const ext::types::usize bands,
     const CSLConstList options
 ) {
+    if (driver == nullptr) { return std::unexpected{CPLE_OpenFailed}; }
+
     const GDALDataType data_type = static_cast<GDALDataType>(
         ext::GDALDataType::GDALDataType<T>::gdal_original()
     );
 
-    UE_LOGFMT(
-        LogTemp,
-        Log,
-        "Creating dataset with filename: {n}, size: ({x}, {y}), bands: {bands}, data type: {data_type}",
-        filename,
-        size_x,
-        size_y,
-        bands,
-        data_type);
-
     auto* dataset = driver->Create(
-        TCHAR_TO_UTF8(*FPaths::GetCleanFilename(filename)),
+        TCHAR_TO_UTF8(*filename),
         static_cast<int>(size_x),
         static_cast<int>(size_y),
         static_cast<int>(bands),
@@ -216,6 +226,9 @@ T apply_bitmask(const T& value, const uint8 mask) {
     if constexpr (std::is_same_v<T, float>) {
         return std::bit_cast<float>(
             std::bit_cast<uint32>(value) & ~1 | (mask != 0 ? 1 : 0));
+    } else if constexpr (std::is_same_v<T, double>) {
+        return std::bit_cast<double>(
+            std::bit_cast<uint64>(value) & ~uint64{1} | (mask != 0 ? uint64{1} : uint64{0}));
     } else { return value & ~1 | (mask != 0 ? 1 : 0); }
 }
 } // namespace preprocess

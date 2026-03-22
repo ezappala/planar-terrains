@@ -4,11 +4,9 @@
 
 #include "Modules/ModuleManager.h"
 
-class FUDLODPreprocessorModule : public IModuleInterface
-{
+class FUDLODPreprocessorModule final : public IModuleInterface {
 public:
-
-	/** IModuleInterface implementation */
-	virtual void StartupModule() override;
-	virtual void ShutdownModule() override;
+    /** IModuleInterface implementation */
+    virtual void StartupModule() override;
+    virtual void ShutdownModule() override;
 };

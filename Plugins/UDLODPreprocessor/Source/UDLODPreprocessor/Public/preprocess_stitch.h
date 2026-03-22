@@ -4,13 +4,14 @@
 #include "preprocess_gdal_extended.h"
 #include "preprocess_neighbors.h"
 #include "preprocess_result.h"
+#include "preprocess_shared_dataset.h"
 #include "Algo/Accumulate.h"
 #include "Containers/StaticArray.h"
 
 namespace preprocess {
 template <typename T>
 PreprocessResult<void> stitch_corners(
-    GDALDatasetRef tile_dataset,
+    const GDALDatasetRef& tile_dataset,
     const TStaticArray<isize_c, NUM_NEIGHBORS>& dst_offsets,
     const uint32 i,
     const FPreprocessContext& context
@@ -34,26 +35,22 @@ PreprocessResult<void> stitch_corners(
 
     const auto corner = i - 4;
 
-    const FIntPoint corner_offsets[4][3] = {
+    static const FIntPoint corner_offsets[4][3] = {
         {{0, 0}, {-1, 0}, {0, -1}},
         {{0, 0}, {1, 0}, {0, -1}},
         {{0, 0}, {1, 0}, {0, 1}},
         {{0, 0}, {-1, 0}, {0, 1}}
     };
 
-    for (const auto& raster_result : rasterbands(tile_dataset)) {
-        auto* raster = raster_result.has_value()
-            ? raster_result.value()
-            : nullptr;
+    const auto rasters_result = try_collect_rasterbands(tile_dataset);
+    if (!rasters_result.has_value()) {
+        return std::unexpected{FPreprocessError::Gdal(rasters_result.error())};
+    }
 
-        if (raster == nullptr) {
-            return std::unexpected{
-                FPreprocessError::Gdal(raster_result.error())
-            };
-        }
+    for (GDALRasterBand* raster : rasters_result.value()) {
 
         TArray<PreprocessResult<T>> corner_values{};
-        for (uint8 j = 0; j < corner_offsets[corner]->Num(); ++j) {
+        for (uint8 j = 0; j < 3; ++j) {
             const auto offset = corner_offsets[corner][j];
             ext::BufferResult<T> buffer_result =
                 read_as<T>(
@@ -64,6 +61,11 @@ PreprocessResult<void> stitch_corners(
                     },
                     {1, 1},
                     {1, 1});
+            if (!buffer_result.has_value()) {
+                return std::unexpected{
+                    FPreprocessError::Gdal(buffer_result.error())
+                };
+            }
             ext::Buffer<T> buffer = buffer_result.value();
             TArray<T>& data = buffer.data();
             corner_values.Emplace(PreprocessResult<T>{data[0]});
@@ -76,8 +78,8 @@ PreprocessResult<void> stitch_corners(
             return sum / as_f64.Num();
         }();
 
-        auto buffer = ext::Buffer<double>{{avg}, {1, 1}};
-        const auto write_result = write<double>(
+        auto buffer = ext::Buffer<T>{{static_cast<T>(avg)}, {1, 1}};
+        const auto write_result = write<T>(
             raster,
             dst_offset,
             {1, 1},
@@ -139,28 +141,39 @@ PreprocessResult<void> stitch(
         usize_c{border_size, border_size}
     };
 
-    par_iter_try_for_each<FTileCoordinate, void, FPreprocessError>(
+    TSet<FTileCoordinate> existing_tiles{};
+    existing_tiles.Reserve(tiles.Num());
+    TMap<FTileCoordinate, SharedDatasetRO> read_only_tiles{};
+    read_only_tiles.Reserve(tiles.Num());
+    for (const FTileCoordinate& tile : tiles) {
+        existing_tiles.Add(tile);
+        read_only_tiles.Emplace(tile, SharedDatasetRO{tile.path(context.tile_dir)});
+    }
+
+    if (const auto iter_result = par_iter_try_for_each<FTileCoordinate, void, FPreprocessError>(
         tiles,
-        [&context, &src_offsets, &dst_offsets, &sizes](
+        [&context, &src_offsets, &dst_offsets, &sizes, &existing_tiles, &read_only_tiles](
         const FTileCoordinate tile_coordinate) -> std::expected<void, FPreprocessError> {
             PreprocessResult<GDALDatasetRef> tile_dataset_result =
                 update_tile_dataset(tile_coordinate, context);
             if (!tile_dataset_result.has_value()) {
                 return std::unexpected{tile_dataset_result.error()};
             }
+            const GDALDatasetRef tile_dataset = MoveTemp(tile_dataset_result.value());
 
             const auto neighbors = tile_coordinate.neighbors();
             for (usize i = 0; i < neighbors.Num(); ++i) {
                 const auto [neighbor_coordinate, rotation] = neighbors[i];
-                auto neighbor_dataset_result =
-                    load_tile_dataset_if_exists(neighbor_coordinate, context);
-                if (!neighbor_dataset_result.has_value()) {
-                    return std::unexpected{neighbor_dataset_result.error()};
-                }
-                if (neighbor_dataset_result.value().IsSet()) {
+                if (existing_tiles.Contains(neighbor_coordinate)) {
+                    const SharedDatasetRO* neighbor_dataset = read_only_tiles.Find(neighbor_coordinate);
+                    if (neighbor_dataset == nullptr) {
+                        return std::unexpected{
+                            FPreprocessError::Parse(TEXT("Missing cached stitch neighbor dataset"))};
+                    }
+
                     auto nd_result = neighbor_data<T>(
-                        MoveTemp(tile_dataset_result.value()),
-                        MoveTemp(neighbor_dataset_result.value().GetValue()),
+                        tile_dataset,
+                        neighbor_dataset->get(),
                         rotation,
                         i,
                         src_offsets,
@@ -170,17 +183,17 @@ PreprocessResult<void> stitch(
                     if (!nd_result.has_value()) { return std::unexpected{nd_result.error()}; }
                 } else if (i >= 4) {
                     auto sc_result = stitch_corners<T>(
-                        MoveTemp(tile_dataset_result.value()),
+                        tile_dataset,
                         dst_offsets,
                         i,
                         context
                     );
-                    if (sc_result.has_value()) { return std::unexpected{sc_result.error()}; }
+                    if (!sc_result.has_value()) { return std::unexpected{sc_result.error()}; }
                 }
             }
 
             return {};
-        });
+        }); !iter_result.has_value()) { return std::unexpected{iter_result.error()}; }
     return {};
 }
 }

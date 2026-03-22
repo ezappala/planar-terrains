@@ -1,7 +1,8 @@
 ﻿#pragma once
+
 #include "preprocess_dataset.h"
-#include "terrain_config.h"
 #include "preprocess_tile_coordinate.h"
+#include "terrain_config.h"
 #include "HAL/FileManager.h"
 
 namespace preprocess::util {
@@ -43,7 +44,7 @@ inline TOptional<double> get_no_data_value(const GDALDatasetRef& dataset) {
     const auto band = dataset->GetRasterBand(1);
     int has_no_data_value = 0;
     const auto no_data_value = band->GetNoDataValue(&has_no_data_value);
-    if (has_no_data_value) { return NullOpt; }
+    if (!has_no_data_value) { return NullOpt; }
 
     return no_data_value;
 }

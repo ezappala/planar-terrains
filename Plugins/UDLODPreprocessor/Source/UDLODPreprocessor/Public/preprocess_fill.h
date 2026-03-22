@@ -41,7 +41,7 @@ PreprocessResult<void> create_mask_and_fill_no_data_gen(
     const FPreprocessContext& context
 ) {
     using ext::types::usize;
-    par_iter_try_for_each<FTileCoordinate, void, FPreprocessError>(
+    const auto iter_result = par_iter_try_for_each<FTileCoordinate, void, FPreprocessError>(
         tiles,
         [&context](FTileCoordinate tile) -> PreprocessResult<void> {
             auto src_dataset_result = update_tile_dataset(tile, context);
@@ -118,21 +118,20 @@ PreprocessResult<void> create_mask_and_fill_no_data_gen(
 
             for (auto& [mask_buffer, band]
                  : ext::iter::zip(masks, bands)) {
-                ext::BufferResult<float> band_data_result =
-                    read_band_as<float>(band);
+                ext::BufferResult<T> band_data_result = read_band_as<T>(band);
                 if (!band_data_result.has_value()) {
                     return std::unexpected{
                         FPreprocessError::Gdal(band_data_result.error())
                     };
                 }
-                ext::Buffer<float>& band_data = band_data_result.value();
+                ext::Buffer<T>& band_data = band_data_result.value();
 
                 for (auto& [mask, value] : ext::iter::zip(
                          mask_buffer.data(),
-                         band_data.data())) { value = apply_bitmask<float>(value, mask); }
+                         band_data.data())) { value = apply_bitmask<T>(value, mask); }
 
                 std::expected<void, CPLErrorNum> write_result =
-                    write<float>(
+                    write<T>(
                         band,
                         {0, 0},
                         {
@@ -150,6 +149,7 @@ PreprocessResult<void> create_mask_and_fill_no_data_gen(
             }
             return {};
         });
+    if (!iter_result.has_value()) { return std::unexpected{iter_result.error()}; }
     return {};
 }
 
@@ -157,7 +157,7 @@ inline PreprocessResult<void> only_fill_no_data_gen(
     const TArray<FTileCoordinate>& tiles,
     const FPreprocessContext& context
 ) {
-    par_iter_try_for_each<FTileCoordinate, void, FPreprocessError>(
+    const auto iter_result = par_iter_try_for_each<FTileCoordinate, void, FPreprocessError>(
         tiles,
         [&context](const FTileCoordinate tile) -> std::expected<void, FPreprocessError> {
             auto src_dataset_result = update_tile_dataset(tile, context);
@@ -172,6 +172,7 @@ inline PreprocessResult<void> only_fill_no_data_gen(
 
             return {};
         });
+    if (!iter_result.has_value()) { return std::unexpected{iter_result.error()}; }
 
     return {};
 }

@@ -53,7 +53,7 @@ inline TArray<TArray<FTileCoordinate>> compute_tiles_to_downsample(
 template <typename T>
     requires GdalType<T> && Copy<T> && PartialEq<T> && NumCast<T>
 PreprocessResult<void> downsample(
-    const TArray<FTileCoordinate> input_tiles,
+    const TArray<FTileCoordinate>& input_tiles,
     const FPreprocessContext& context) {
     using ext::iter::zip, ext::types::isize, ext::types::usize;
 
@@ -70,7 +70,7 @@ PreprocessResult<void> downsample(
         static_cast<usize>(child_center_size),
         static_cast<usize>(child_center_size)};
 
-    par_iter_try_for_each<FTileCoordinate, void, FPreprocessError>(
+    if (const auto iter_result = par_iter_try_for_each<FTileCoordinate, void, FPreprocessError>(
         input_tiles,
         [&context, &border_offset, &child_size, &tile_size, &child_center_size](
         FTileCoordinate tile_coordinate) -> PreprocessResult<void> {
@@ -182,7 +182,9 @@ PreprocessResult<void> downsample(
             }
 
             return {};
-        });
+        }); !iter_result.has_value()) {
+        return std::unexpected{iter_result.error()};
+    }
 
     return {};
 }

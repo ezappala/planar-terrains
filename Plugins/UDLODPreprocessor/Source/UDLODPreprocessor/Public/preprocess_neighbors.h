@@ -1,9 +1,9 @@
 ﻿#pragma once
 
-#include "Containers/StaticArray.h"
 #include "preprocess_gdal_extended.h"
 #include "preprocess_result.h"
 #include "preprocess_tile_coordinate.h"
+#include "Containers/StaticArray.h"
 
 namespace preprocess {
 inline constexpr uint32 NUM_NEIGHBORS = 8;
@@ -11,8 +11,8 @@ inline constexpr uint32 NUM_NEIGHBORS = 8;
 template <typename T>
     requires GdalType<T> && Copy<T>
 PreprocessResult<void> neighbor_data(
-    const GDALDatasetRef tile_dataset,
-    const GDALDatasetRef neighbor_dataset,
+    const GDALDatasetRef& tile_dataset,
+    const GDALDatasetRef& neighbor_dataset,
     const FaceRotation rotation,
     const uint32 i,
     const TStaticArray<isize_c, NUM_NEIGHBORS>& src_offsets,
@@ -22,6 +22,15 @@ PreprocessResult<void> neighbor_data(
     const auto size = sizes[i];
     const auto dst_offset = dst_offsets[i];
     const auto dst_size = size;
+    const auto tile_rasters_result = try_collect_rasterbands(tile_dataset);
+    if (!tile_rasters_result.has_value()) {
+        return std::unexpected{FPreprocessError::Gdal(tile_rasters_result.error())};
+    }
+
+    const auto neighbor_rasters_result = try_collect_rasterbands(neighbor_dataset);
+    if (!neighbor_rasters_result.has_value()) {
+        return std::unexpected{FPreprocessError::Gdal(neighbor_rasters_result.error())};
+    }
 
     TTuple<isize_c, usize_c> rr = [&]() -> TTuple<isize_c, usize_c> {
         switch (rotation) {
@@ -60,26 +69,10 @@ PreprocessResult<void> neighbor_data(
 
     const auto& [src_offset, src_size] = rr;
 
-    for (const auto& [tile_raster_result, neighbor_raster_result] :
-         ext::iter::zip<std::expected<GDALRasterBand*, CPLErrorNum>>(
-             rasterbands(tile_dataset),
-             rasterbands(neighbor_dataset))) {
-        auto* tile_raster = tile_raster_result.has_value()
-            ? tile_raster_result.value()
-            : nullptr;
-        auto* neighbor_raster = neighbor_raster_result.has_value()
-            ? neighbor_raster_result.value()
-            : nullptr;
-
-        if (tile_raster == nullptr || neighbor_raster == nullptr) {
-            return std::unexpected{
-                FPreprocessError::Gdal(
-                    tile_raster_result.has_value()
-                    ? neighbor_raster_result.error()
-                    : tile_raster_result.error())
-            };
-        }
-
+    for (const auto& [tile_raster, neighbor_raster] :
+         ext::iter::zip<GDALRasterBand*>(
+             tile_rasters_result.value(),
+             neighbor_rasters_result.value())) {
         ext::BufferResult<T> buffer_result =
             read_as<T>(neighbor_raster, src_offset, src_size, src_size);
 
@@ -140,8 +133,6 @@ PreprocessResult<void> neighbor_data(
         if (!write_result.has_value()) {
             return std::unexpected{FPreprocessError::Gdal(write_result.error())};
         }
-
-        return {};
     }
 
     return {};

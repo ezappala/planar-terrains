@@ -2,6 +2,7 @@
 #include <expected>
 
 #include "gdal.h"
+#include "preprocess_attachment_config.h"
 #include "preprocess_gdal_extended.h"
 #include "preprocess_result.h"
 #include "SmartPointers.h"
@@ -38,6 +39,8 @@ USTRUCT(BlueprintType)
 struct FRasterbandConfig {
     GENERATED_BODY()
 
+    FRasterbandConfig() : color_interp(EGDALColorInterp::GCI_Undefined) {}
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     EGDALColorInterp color_interp;
 };
@@ -45,6 +48,15 @@ struct FRasterbandConfig {
 USTRUCT(BlueprintType)
 struct FPreprocessContext {
     GENERATED_BODY()
+
+    FPreprocessContext() : data_type(static_cast<EGDALDataType>(GDT_Unknown)),
+        no_data_value(NullOpt),
+        fill_radius(0.0f),
+        overwrite(false),
+        min_height(0.0f),
+        max_height(0.0f),
+        create_mask(false),
+        lod_count(NullOpt) {}
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     EGDALDataType data_type;
@@ -106,9 +118,10 @@ PreprocessResult<GDALDatasetRef> create_empty_dataset(
         "TILED=YES",
         "BLOCKXSIZE=512",
         "BLOCKYSIZE=512",
-        "INTERLEAVE=PIXEL",
-        fmt
+        "INTERLEAVE=PIXEL"
     };
+    if (fmt[0] != '\0') { options.Add(fmt); }
+    options.Add(nullptr);
 
     std::expected<GDALDatasetRef, CPLErrorNum> dst_result = create_with_band_type_with_options<T>(
         driver,
@@ -133,8 +146,11 @@ PreprocessResult<GDALDatasetRef> create_empty_dataset(
     for (uint32 i = 0; i < static_cast<uint32>(context.rasterbands.Num()); ++i) {
         auto [color_interp] = context.rasterbands[i];
         const auto dst_band = dst->GetRasterBand(i + 1);
-        const auto err = dst_band->SetNoDataValue(*context.no_data_value);
-        if (err != CE_None) { return handle_gdal_err<GDALDatasetRef>(); }
+        if (dst_band == nullptr) { return handle_gdal_err<GDALDatasetRef>(); }
+        if (context.no_data_value.IsSet()) {
+            const auto err = dst_band->SetNoDataValue(*context.no_data_value);
+            if (err != CE_None) { return handle_gdal_err<GDALDatasetRef>(); }
+        }
 
         const auto err2 = dst_band->SetColorInterpretation(
             static_cast<GDALColorInterp>(color_interp));
@@ -165,8 +181,8 @@ PreprocessResult<GDALDatasetRef> create_tile_dataset(
 }
 
 inline GeoTransformRef geo_transform(const GDALDatasetRef& dataset) {
-    double transformation[6];
-    const auto rv = dataset->GetGeoTransform(transformation);
+    auto transformation = GeoTransformRef{new double[6]};
+    const auto rv = dataset->GetGeoTransform(transformation.Get());
 
     checkf(
         rv == CE_None,
@@ -174,7 +190,7 @@ inline GeoTransformRef geo_transform(const GDALDatasetRef& dataset) {
         CPLGetLastErrorNo(),
         CPLGetLastErrorMsg());
 
-    return GeoTransformRef{MoveTemp(transformation)};
+    return transformation;
 }
 
 inline PreprocessResult<GDALDatasetRef> update_tile_dataset(
@@ -182,8 +198,9 @@ inline PreprocessResult<GDALDatasetRef> update_tile_dataset(
     const FPreprocessContext& context
 ) {
     const auto p = tile_coordinate.path(context.tile_dir);
-    const auto tile_path = TCHAR_TO_UTF8(*p);
-    GDALDataset* dataset = GDALDataset::Open(tile_path, GDAL_OF_UPDATE);
+    GDALDataset* dataset = GDALDataset::Open(
+        TCHAR_TO_UTF8(*p),
+        GDAL_OF_UPDATE | GDAL_OF_RASTER);
 
     if (!dataset) { return handle_gdal_err<GDALDatasetRef>(); }
 
@@ -197,7 +214,9 @@ inline PreprocessResult<TOptional<GDALDatasetRef>> load_tile_dataset_if_exists(
     const auto tile_path = tile_coordinate.path(context.tile_dir);
     if (!FPaths::FileExists(tile_path)) { return NullOpt; }
 
-    GDALDataset* dataset = GDALDataset::Open(TCHAR_TO_UTF8(*tile_path));
+    GDALDataset* dataset = GDALDataset::Open(
+        TCHAR_TO_UTF8(*tile_path),
+        GDAL_OF_RASTER | GDAL_OF_SHARED);
 
     if (!dataset) { return handle_gdal_err<TOptional<GDALDatasetRef>>(); }
 

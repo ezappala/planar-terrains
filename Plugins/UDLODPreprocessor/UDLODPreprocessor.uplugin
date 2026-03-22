@@ -18,6 +18,19 @@
       "Name": "UDLODPreprocessor",
       "Type": "Runtime",
       "LoadingPhase": "Default"
+    },
+    {
+      "Name": "Tests",
+      "Type": "Editor",
+      "LoadingPhase": "Default",
+      "WhitelistPlatforms": [
+        "Win64",
+        "Mac",
+        "Linux"
+      ],
+      "WhitelistTargets": [
+        "Editor"
+      ]
     }
   ],
   "Plugins": [

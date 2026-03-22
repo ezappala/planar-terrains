@@ -30,15 +30,20 @@ PreprocessResult<TMap<uint32, FaceInfo>> reproject_planar(
     const auto dst_dataset = MoveTemp(dst_dataset_result.value());
 
     const auto band_count = src_dataset->GetRasterCount();
-    const auto total_rows = height * band_count;
-    auto rows_processed = 0;
+    constexpr uint64 TargetChunkBytes = 64ull * 1024ull * 1024ull;
+    constexpr uint64 MaxChunkRows = 1024ull;
+    const uint64 bytes_per_row = FMath::Max<uint64>(
+        1ull,
+        width * sizeof(T));
+    const uint64 chunk_size = FMath::Clamp<uint64>(
+        TargetChunkBytes / bytes_per_row,
+        1ull,
+        FMath::Min<uint64>(height, MaxChunkRows));
 
-    // TODO: can this be done in parallel if the rows are independant
     for (ext::types::usize band = 0; band < band_count; ++band) {
         auto* src_band = src_dataset->GetRasterBand(band + 1);
         auto* dst_band = dst_dataset->GetRasterBand(band + 1);
 
-        const auto chunk_size = FMath::Min(height, 128ull);
         for (const auto& chunk_start :
              ext::iter::step_by(0ull, height, chunk_size)) {
             const auto chunk_height = FMath::Min(
@@ -70,16 +75,6 @@ PreprocessResult<TMap<uint32, FaceInfo>> reproject_planar(
                     FPreprocessError::From(dst_band_result.error())
                 };
             }
-
-            rows_processed += chunk_height;
-
-            UE_LOG(
-                LogTemp,
-                Log,
-                TEXT("Processed %u/%llu rows (%.2f%%)"),
-                rows_processed,
-                total_rows,
-                100.0 * rows_processed / total_rows);
         }
     }
 

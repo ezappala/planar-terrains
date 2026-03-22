@@ -1,4 +1,6 @@
 ﻿#pragma once
+#include <utility>
+
 #include "PixelFormat.h"
 #include "preprocess_tile_coordinate.h"
 #include "Containers/StaticArray.h"
@@ -43,6 +45,12 @@ inline EPixelFormat attachment_format_as_pixel_format(const EAttachmentFormat f)
 USTRUCT(BlueprintType)
 struct FAttachmentConfig {
     GENERATED_BODY()
+
+    FAttachmentConfig() : texture_size(0),
+        border_size(0),
+        mip_level_count(1),
+        mask(false),
+        format(EAttachmentFormat::Rgba8U) {}
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 texture_size;

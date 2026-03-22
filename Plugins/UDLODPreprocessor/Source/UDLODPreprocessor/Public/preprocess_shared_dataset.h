@@ -1,45 +1,49 @@
 ﻿#pragma once
+
 #include "SmartPointers.h"
 #include "HAL/ThreadSingleton.h"
 
 struct SharedDatasetTLS final : TThreadSingleton<SharedDatasetTLS> {
-    TMap<FString, GDALDatasetRef> Datasets;
+    TMap<FString, GDALDatasetRef> datasets;
 };
 
 struct SharedDatasetRO {
     SharedDatasetRO() = default;
 
-    explicit SharedDatasetRO(FString InPath) : Path(MoveTemp(InPath)) {}
+    explicit SharedDatasetRO(FString in_path) : path(MoveTemp(in_path)) {}
 
-    friend bool operator==(const SharedDatasetRO& A, const SharedDatasetRO& B) {
-        return A.Path == B.Path;
+    friend bool operator==(const SharedDatasetRO& a, const SharedDatasetRO& b) {
+        return a.path == b.path;
     }
 
-    GDALDatasetRef get() const {
-        SharedDatasetTLS& Tls = SharedDatasetTLS::Get();
+    const GDALDatasetRef& get() const {
+        SharedDatasetTLS& tls = SharedDatasetTLS::Get();
 
-        if (GDALDatasetRef* Existing = Tls.Datasets.Find(Path)) { return MoveTemp(*Existing); }
+        if (GDALDatasetRef* existing = tls.datasets.Find(path)) { return *existing; }
 
-        GDALDataset* Raw = GDALDataset::Open(TCHAR_TO_UTF8(*Path));
-        if (Raw == nullptr) {
+        GDALDataset* raw = GDALDataset::Open(
+            TCHAR_TO_UTF8(*path),
+            GDAL_OF_READONLY | GDAL_OF_RASTER | GDAL_OF_SHARED);
+        if (raw == nullptr) {
             checkf(
                 false,
                 TEXT("Failed to open dataset at path %s with error (%d): %hs"),
-                *Path,
+                *path,
                 CPLGetLastErrorNo(),
                 CPLGetLastErrorMsg());
-            return nullptr;
+            static GDALDatasetRef null_dataset{};
+            return null_dataset;
         }
 
-        return MoveTemp(Tls.Datasets.Add(Path, GDALDatasetRef{Raw}));
+        return tls.datasets.Add(path, GDALDatasetRef{raw});
     }
 
-    const FString& get_path() const { return Path; }
+    const FString& get_path() const { return path; }
 
 private:
-    FString Path;
+    FString path;
 };
 
-FORCEINLINE uint32 GetTypeHash(const SharedDatasetRO& Dataset) {
-    return GetTypeHash(Dataset.get_path());
+FORCEINLINE uint32 GetTypeHash(const SharedDatasetRO& dataset) {
+    return GetTypeHash(dataset.get_path());
 }

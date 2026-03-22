@@ -1,7 +1,6 @@
 ﻿#include "terrain_component.h"
 
-#include "preprocess_dataset.h"
-#include "preprocess_exec.h"
+#include "terrain_preprocess_runner.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -17,8 +16,10 @@ UTerrainComponent::UTerrainComponent(
 #if WITH_EDITOR
     bTickInEditor = true;
 #endif
-    Bounds = FBoxSphereBounds(FBox(FVector(-500, -500, -100),
-        FVector(500, 500, 100)));
+    Bounds = FBoxSphereBounds(
+        FBox(
+            FVector(-500, -500, -100),
+            FVector(500, 500, 100)));
 
     bCastDynamicShadow = true;
     bCastStaticShadow = false;
@@ -86,7 +87,8 @@ FBoxSphereBounds UTerrainComponent::CalcBounds(
 }
 
 void UTerrainComponent::GetUsedMaterials(
-    TArray<UMaterialInterface*>& OutMaterials, bool bGetDebugMaterials
+    TArray<UMaterialInterface*>& OutMaterials,
+    bool bGetDebugMaterials
 ) const {
     // if (material) { OutMaterials.AddUnique(material); }
 }
@@ -103,7 +105,8 @@ int32 UTerrainComponent::GetNumMaterials() const {
 // }
 
 void UTerrainComponent::TickComponent(
-    float DeltaTime, ELevelTick TickType,
+    float DeltaTime,
+    ELevelTick TickType,
     FActorComponentTickFunction* ThisTickFunction
 ) {
     // Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -135,24 +138,26 @@ void UTerrainComponent::preprocess_terrain(
     bool& out_success,
     FString& out_message
 ) {
-    const FDateTime start_preprocessing = FDateTime::UtcNow();
-    auto init = preprocess::initialize(terrain_preprocess_settings);
-    auto& [heightmap_dataset, heightmap_context] = init.Get<0>();
-    auto& [albedo_dataset, albedo_context] = init.Get<1>();
-    preprocess::preprocess(MoveTemp(heightmap_dataset), heightmap_context);
-    preprocess::preprocess(MoveTemp(albedo_dataset), albedo_context);
-    const auto preprocess_duration = FDateTime::UtcNow() - start_preprocessing;
-    out_success = true;
-    out_message = FString::Printf(
-        TEXT("Preprocessing completed in %.2f seconds."),
-        preprocess_duration.GetTotalSeconds());
+    const auto result = run_preprocess(
+        terrain_preprocess_settings,
+        preprocess::FPreprocessRunOptions{
+            preprocess::EPreprocessProgressMode::EditorDialog,
+            0.25f
+        });
+    out_success = result.has_value();
+    out_message = out_success
+        ? FString::Printf(
+            TEXT("Preprocessing completed in %.2f seconds."),
+            result.value().duration.GetTotalSeconds())
+        : result.error().ToString();
 }
 #endif
 
 void UTerrainComponent::update_terrain_mesh() { mark_render_state_dirty(); }
 
 void UTerrainComponent::set_material(
-    const int32 element_idx, UMaterialInterface* in_material
+    const int32 element_idx,
+    UMaterialInterface* in_material
 ) {
     // if (element_idx == 0) {
     //     material = in_material;
