@@ -1,13 +1,13 @@
 ﻿#pragma once
 #include <expected>
 
+#include "ext_traits.h"
 #include "gdal.h"
 #include "preprocess_attachment_config.h"
 #include "preprocess_gdal_extended.h"
 #include "preprocess_result.h"
-#include "SmartPointers.h"
 #include "preprocess_tile_coordinate.h"
-#include "ext_traits.h"
+#include "SmartPointers.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 
@@ -216,7 +216,7 @@ inline PreprocessResult<TOptional<GDALDatasetRef>> load_tile_dataset_if_exists(
 
     GDALDataset* dataset = GDALDataset::Open(
         TCHAR_TO_UTF8(*tile_path),
-        GDAL_OF_RASTER | GDAL_OF_SHARED);
+        GDAL_OF_RASTER);
 
     if (!dataset) { return handle_gdal_err<TOptional<GDALDatasetRef>>(); }
 

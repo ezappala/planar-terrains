@@ -3,6 +3,8 @@
 #include "tests_shared.h"
 
 #include "preprocess_exec.h"
+#include "preprocess_fill.h"
+#include "preprocess_reproject.h"
 #include "preprocess_split.h"
 #include "terrain_settings.h"
 
@@ -178,6 +180,76 @@ bool FPreprocessExecInitializeTest::RunTest(const FString& Parameters) {
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FPreprocessExecInitializeUsesSourceDataTypesAndAttachmentTempDirsTest,
+    "UDLODPreprocessor.Preprocess.Exec.InitializeUsesSourceDataTypesAndAttachmentTempDirs",
+    TestFlags)
+
+bool FPreprocessExecInitializeUsesSourceDataTypesAndAttachmentTempDirsTest::RunTest(
+    const FString& Parameters) {
+    GDALAllRegister();
+
+    const FString root = make_unique_test_root(TEXT("ExecInitializeSourceDataTypes"));
+    ON_SCOPE_EXIT { delete_tree(root); };
+
+    const FString heightmap_path = FPaths::Combine(root, TEXT("height_u16.tif"));
+    const FString albedo_path = FPaths::Combine(root, TEXT("albedo_u8.tif"));
+
+    {
+        GDALDatasetRef heightmap = create_tiff_dataset<uint16>(heightmap_path, 4, 4, 1);
+        TestEqual(
+            TEXT("Heightmap band color interpretation set"),
+            heightmap->GetRasterBand(1)->SetColorInterpretation(GCI_GrayIndex),
+            CE_None);
+        heightmap->FlushCache();
+    }
+
+    {
+        GDALDatasetRef albedo = create_tiff_dataset<uint8>(albedo_path, 4, 4, 3);
+        TestEqual(TEXT("Albedo band 1 interp"), albedo->GetRasterBand(1)->SetColorInterpretation(GCI_RedBand), CE_None);
+        TestEqual(TEXT("Albedo band 2 interp"), albedo->GetRasterBand(2)->SetColorInterpretation(GCI_GreenBand), CE_None);
+        TestEqual(TEXT("Albedo band 3 interp"), albedo->GetRasterBand(3)->SetColorInterpretation(GCI_BlueBand), CE_None);
+        albedo->FlushCache();
+    }
+
+    FTerrainPreprocessSettings settings{};
+    settings.heightmap_src_path = heightmap_path;
+    settings.albedo_src_path = albedo_path;
+    settings.terrain_path = FPaths::Combine(root, TEXT("terrain"));
+    settings.temp_path = FPaths::Combine(root, TEXT("tmp"));
+    settings.heightmap_data_type = FPreprocessDataType::Source();
+    settings.albedo_data_type = FPreprocessDataType::Source();
+    settings.heightmap_attachment_label = TEXT("height");
+    settings.albedo_attachment_label = TEXT("albedo");
+
+    const auto initialize_result = initialize(settings);
+    TestTrue(TEXT("Initialization succeeds"), initialize_result.has_value());
+    if (!initialize_result.has_value()) { return false; }
+
+    auto& initialize_value = initialize_result.value();
+    auto& heightmap_context = initialize_value.Get<0>().Get<1>();
+    auto& albedo_context = initialize_value.Get<1>().Get<1>();
+
+    TestEqual(
+        TEXT("Heightmap source datatype is preserved"),
+        static_cast<int32>(heightmap_context.data_type),
+        static_cast<int32>(GDT_UInt16));
+    TestEqual(
+        TEXT("Albedo source datatype is preserved"),
+        static_cast<int32>(albedo_context.data_type),
+        static_cast<int32>(GDT_Byte));
+    TestEqual(
+        TEXT("Heightmap temp dir is attachment-specific"),
+        heightmap_context.temp_dir,
+        FPaths::Combine(settings.temp_path, settings.heightmap_attachment_label));
+    TestEqual(
+        TEXT("Albedo temp dir is attachment-specific"),
+        albedo_context.temp_dir,
+        FPaths::Combine(settings.temp_path, settings.albedo_attachment_label));
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FPreprocessExecInitializeRejectsMissingSourcesTest,
     "UDLODPreprocessor.Preprocess.Exec.InitializeRejectsMissingSources",
     TestFlags)
@@ -275,6 +347,206 @@ bool FPreprocessSplitClipsPartialEdgeTileWindowsTest::RunTest(const FString& Par
     TestTrue(TEXT("Only the overlapping rows are readable from the copied window"), read_result.has_value());
 
     return read_result.has_value();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FPreprocessSplitCopiesRgbaTileDataTest,
+    "UDLODPreprocessor.Preprocess.Split.CopiesRgbaTileData",
+    TestFlags)
+
+bool FPreprocessSplitCopiesRgbaTileDataTest::RunTest(const FString& Parameters) {
+    GDALAllRegister();
+
+    const FString root = make_unique_test_root(TEXT("SplitCopiesRgbaTileData"));
+    ON_SCOPE_EXIT { delete_tree(root); };
+
+    FPreprocessContext context = make_context(
+        root,
+        EAttachmentFormat::Rgba8U,
+        8,
+        1,
+        static_cast<EGDALDataType>(GDT_Byte));
+    context.no_data_value = 0.0;
+    context.rasterbands = {
+        make_band(EGDALColorInterp::GCI_RedBand),
+        make_band(EGDALColorInterp::GCI_GreenBand),
+        make_band(EGDALColorInterp::GCI_BlueBand),
+        make_band(EGDALColorInterp::GCI_AlphaBand)
+    };
+    context.attachment_label = TEXT("albedo");
+
+    const FString source_path = FPaths::Combine(root, TEXT("source_rgba.tif"));
+    {
+        GDALDatasetRef source = create_tiff_dataset<uint8>(source_path, 6, 6, 4);
+        const TArray<int32> band_values{11, 22, 33, 44};
+        for (int32 band_index = 0; band_index < band_values.Num(); ++band_index) {
+            TArray<uint8> values;
+            values.Init(static_cast<uint8>(band_values[band_index]), 36);
+            ext::Buffer<uint8> buffer{MoveTemp(values), usize_c{6, 6}};
+            auto* band = source->GetRasterBand(band_index + 1);
+            TestTrue(
+                *FString::Printf(TEXT("Band %d write succeeds"), band_index + 1),
+                write<uint8>(band, {0, 0}, {6, 6}, buffer).has_value());
+        }
+        TestEqual(TEXT("Band 1 interp"), source->GetRasterBand(1)->SetColorInterpretation(GCI_RedBand), CE_None);
+        TestEqual(TEXT("Band 2 interp"), source->GetRasterBand(2)->SetColorInterpretation(GCI_GreenBand), CE_None);
+        TestEqual(TEXT("Band 3 interp"), source->GetRasterBand(3)->SetColorInterpretation(GCI_BlueBand), CE_None);
+        TestEqual(TEXT("Band 4 interp"), source->GetRasterBand(4)->SetColorInterpretation(GCI_AlphaBand), CE_None);
+        source->FlushCache();
+    }
+
+    TMap<uint32, FaceInfo> faces;
+    faces.Add(
+        0u,
+        FaceInfo{
+            .lod = 0u,
+            .pixel_start = {0, 0},
+            .pixel_end = {6, 6},
+            .path = source_path
+        });
+
+    TMap<uint32, SharedDatasetRO> datasets;
+    datasets.Add(0u, SharedDatasetRO{source_path});
+
+    const FTileCoordinate tile{0u, 0u, FIntPoint{0, 0}};
+    const auto split_result = split<uint8>({tile}, faces, datasets, context);
+    TestTrue(TEXT("RGBA split succeeds"), split_result.has_value());
+    if (!split_result.has_value()) { return false; }
+
+    auto tile_result = load_tile_dataset_if_exists(tile, context);
+    TestTrue(TEXT("RGBA tile exists"), tile_result.has_value());
+    if (!tile_result.has_value() || !tile_result.value().IsSet()) { return false; }
+
+    const GDALDatasetRef& tile_dataset = tile_result.value().GetValue();
+    const TArray<int32> expected_band_values{11, 22, 33, 44};
+    for (int32 band_index = 0; band_index < expected_band_values.Num(); ++band_index) {
+        auto read_result = read_as<uint8>(
+            tile_dataset->GetRasterBand(band_index + 1),
+            {1, 1},
+            {6, 6},
+            {6, 6});
+        TestTrue(
+            *FString::Printf(TEXT("Band %d center read succeeds"), band_index + 1),
+            read_result.has_value());
+        if (!read_result.has_value()) { return false; }
+
+        for (uint8 value : read_result.value().data()) {
+            TestEqual(
+                *FString::Printf(TEXT("Band %d copied value"), band_index + 1),
+                static_cast<int32>(value),
+                expected_band_values[band_index]);
+        }
+    }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FPreprocessFillNoDataPreservesRgbaCenterTest,
+    "UDLODPreprocessor.Preprocess.Fill.NoDataPreservesRgbaCenter",
+    TestFlags)
+
+bool FPreprocessFillNoDataPreservesRgbaCenterTest::RunTest(const FString& Parameters) {
+    GDALAllRegister();
+
+    const FString root = make_unique_test_root(TEXT("FillNoDataPreservesRgbaCenter"));
+    ON_SCOPE_EXIT { delete_tree(root); };
+
+    FPreprocessContext context = make_context(
+        root,
+        EAttachmentFormat::Rgba8U,
+        8,
+        1,
+        static_cast<EGDALDataType>(GDT_Byte));
+    context.no_data_value = 0.0;
+    context.rasterbands = {
+        make_band(EGDALColorInterp::GCI_RedBand),
+        make_band(EGDALColorInterp::GCI_GreenBand),
+        make_band(EGDALColorInterp::GCI_BlueBand),
+        make_band(EGDALColorInterp::GCI_AlphaBand)
+    };
+    context.attachment_label = TEXT("albedo");
+    context.fill_radius = 4.0f;
+
+    const FTileCoordinate tile{0u, 0u, FIntPoint{0, 0}};
+    auto create_result = create_tile_dataset<uint8>(tile, context);
+    TestTrue(TEXT("RGBA tile is created"), create_result.has_value());
+    if (!create_result.has_value()) { return false; }
+
+    GDALDatasetRef dataset = MoveTemp(create_result.value());
+    const TArray<int32> band_values{11, 22, 33, 44};
+    for (int32 band_index = 0; band_index < band_values.Num(); ++band_index) {
+        TArray<uint8> values;
+        values.Init(static_cast<uint8>(band_values[band_index]), 36);
+        ext::Buffer<uint8> buffer{MoveTemp(values), usize_c{6, 6}};
+        TestTrue(
+            *FString::Printf(TEXT("Band %d center write succeeds"), band_index + 1),
+            write<uint8>(dataset->GetRasterBand(band_index + 1), {1, 1}, {6, 6}, buffer).has_value());
+    }
+    dataset->FlushCache();
+
+    const auto fill_result = create_mask_and_fill_no_data({tile}, context);
+    TestTrue(TEXT("RGBA fill succeeds"), fill_result.has_value());
+    if (!fill_result.has_value()) { return false; }
+
+    auto tile_result = load_tile_dataset_if_exists(tile, context);
+    TestTrue(TEXT("RGBA tile can be reopened"), tile_result.has_value());
+    if (!tile_result.has_value() || !tile_result.value().IsSet()) { return false; }
+
+    const GDALDatasetRef& filled_dataset = tile_result.value().GetValue();
+    const TArray<int32> expected_band_values{11, 22, 33, 44};
+    for (int32 band_index = 0; band_index < expected_band_values.Num(); ++band_index) {
+        auto read_result = read_as<uint8>(
+            filled_dataset->GetRasterBand(band_index + 1),
+            {1, 1},
+            {6, 6},
+            {6, 6});
+        TestTrue(
+            *FString::Printf(TEXT("Band %d center read succeeds after fill"), band_index + 1),
+            read_result.has_value());
+        if (!read_result.has_value()) { return false; }
+
+        for (uint8 value : read_result.value().data()) {
+            TestEqual(
+                *FString::Printf(TEXT("Band %d center value preserved"), band_index + 1),
+                static_cast<int32>(value),
+                expected_band_values[band_index]);
+        }
+    }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FPreprocessReprojectPlanarUpdatesLodCountTest,
+    "UDLODPreprocessor.Preprocess.Reproject.PlanarUpdatesLodCount",
+    TestFlags)
+
+bool FPreprocessReprojectPlanarUpdatesLodCountTest::RunTest(const FString& Parameters) {
+    GDALAllRegister();
+
+    const FString root = make_unique_test_root(TEXT("ReprojectPlanarUpdatesLodCount"));
+    ON_SCOPE_EXIT { delete_tree(root); };
+
+    FPreprocessContext context = make_context(root, EAttachmentFormat::R32F, 512, 2);
+    context.temp_dir = FPaths::Combine(root, TEXT("temp"));
+    IFileManager::Get().MakeDirectory(*context.temp_dir, true);
+
+    auto source = create_memory_dataset<float>(2048, 1024, 1);
+    double source_geotransform[6]{0.0, 1.0, 0.0, 0.0, 0.0, -1.0};
+    TestEqual(
+        TEXT("Source geotransform is configured"),
+        source->SetGeoTransform(source_geotransform),
+        CE_None);
+    auto result = reproject_planar<float>(MoveTemp(source), context);
+    TestTrue(TEXT("Planar reproject succeeds"), result.has_value());
+    if (!result.has_value()) { return false; }
+
+    TestTrue(TEXT("LOD count is populated"), context.lod_count.IsSet());
+    if (!context.lod_count.IsSet()) { return false; }
+
+    TestEqual(TEXT("LOD count matches planar dataset dimensions"), context.lod_count.GetValue(), 4);
+    return true;
 }
 
 #endif

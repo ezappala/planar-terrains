@@ -97,7 +97,7 @@ PreprocessResult<void> downsample(
                     ext::BufferResult<T> tile_buffer_result = read_as<T>(
                         tile_raster,
                         border_offset,
-                        child_size,
+                        tile_size,
                         tile_size);
 
                     if (!tile_buffer_result.has_value()) {
@@ -116,20 +116,19 @@ PreprocessResult<void> downsample(
                 if (!child_dataset_result.value().IsSet()) { continue; }
                 const auto child_dataset = MoveTemp(child_dataset_result.value().GetValue());
                 const auto child_rasters = rasterbands(child_dataset);
-                for (const auto& [
-                         child_raster_result,
-                         tile_raster,
-                         tile_buffer_result
-                     ] : zip(
-                         child_rasters,
-                         tile_rasters,
-                         tile_buffers)) {
+                for (int32 band_index = 0; band_index < child_rasters.Num(); ++band_index) {
+                    const auto& child_raster_result = child_rasters[band_index];
                     if (!child_raster_result.has_value()) {
                         return std::unexpected{FPreprocessError::Gdal(child_raster_result.error())};
                     }
 
                     GDALRasterBand* child_raster = child_raster_result.value();
-                    const auto no_data_value = T(child_raster->GetNoDataValue());
+                    int has_no_data_value = 0;
+                    const auto raw_no_data_value = child_raster->GetNoDataValue(
+                        &has_no_data_value);
+                    const TOptional<T> no_data_value = has_no_data_value
+                        ? TOptional<T>{T(raw_no_data_value)}
+                        : NullOpt;
                     const ext::BufferResult<T> child_buffer_result = read_as<T>(
                         child_raster,
                         border_offset,
@@ -142,14 +141,15 @@ PreprocessResult<void> downsample(
                     }
 
                     const ext::Buffer<T> child_buffer = child_buffer_result.value();
+                    auto& tile_buffer_result = tile_buffers[band_index];
                     if (!tile_buffer_result.has_value()) {
                         return std::unexpected{tile_buffer_result.error()};
                     }
 
-                    ext::Buffer<T> tile_buffer = tile_buffer_result.value();
+                    ext::Buffer<T>& tile_buffer = tile_buffer_result.value();
                     for (const auto& [
-                             child_y,
                              child_x,
+                             child_y,
                              child_value]
                          : ext::iter::indexed_iter<T>(child_buffer)) {
                         const auto tile_xy = isize_c{
@@ -158,18 +158,22 @@ PreprocessResult<void> downsample(
                             child_coordinate.xy.X % 2,
                             child_coordinate.xy.Y % 2} * static_cast<isize>(child_center_size);
 
-                        if (child_value == no_data_value) { continue; }
+                        if (no_data_value.IsSet() && child_value == no_data_value.GetValue()) {
+                            continue;
+                        }
                         tile_buffer[tile_xy.transpose()] = child_value;
                     }
                 }
             }
 
-            for (const auto& [tile_raster, tile_buffer_result] : zip(tile_rasters, tile_buffers)) {
+            for (int32 band_index = 0; band_index < tile_rasters.Num(); ++band_index) {
+                GDALRasterBand* tile_raster = tile_rasters[band_index];
+                auto& tile_buffer_result = tile_buffers[band_index];
                 if (!tile_buffer_result.has_value()) {
                     return std::unexpected{tile_buffer_result.error()};
                 }
 
-                ext::Buffer<T> tile_buffer = tile_buffer_result.value();
+                ext::Buffer<T>& tile_buffer = tile_buffer_result.value();
                 const auto write_result = write<T>(
                     tile_raster,
                     border_offset,

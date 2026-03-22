@@ -18,13 +18,22 @@ PreprocessResult<TMap<uint32, FaceInfo>> reproject_planar(
     const auto max_dimension = static_cast<double>(FMath::Max(width, height));
     const auto tile_size = static_cast<double>(context.attachment.
         center_size());
-    const auto max_lod = FMath::CeilLogTwo(max_dimension / tile_size);
+    const double lod_ratio = max_dimension / tile_size;
+    const uint32 max_lod = lod_ratio <= 1.0
+        ? 0u
+        : static_cast<uint32>(FMath::CeilToInt(FMath::Log2(lod_ratio)));
+    context.lod_count = max_lod + 1;
 
     const FString stub = FString::Printf(TEXT("face%u.tif"), face);
-    const ANSICHAR* dst_path = TCHAR_TO_UTF8(*(context.temp_dir / stub));
+    const FString dst_path = context.temp_dir / stub;
+    const FTCHARToUTF8 utf8_dst_path(*dst_path);
 
     PreprocessResult<GDALDatasetRef> dst_dataset_result =
-        create_empty_dataset<T>(dst_path, {width, height}, geo_transform(src_dataset), context);
+        create_empty_dataset<T>(
+            utf8_dst_path.Get(),
+            {width, height},
+            geo_transform(src_dataset),
+            context);
 
     if (!dst_dataset_result.has_value()) { return std::unexpected{dst_dataset_result.error()}; }
     const auto dst_dataset = MoveTemp(dst_dataset_result.value());

@@ -1,29 +1,38 @@
 ﻿#pragma once
 
 #include "SmartPointers.h"
-#include "HAL/ThreadSingleton.h"
+#include "HAL/CriticalSection.h"
+#include "HAL/PlatformTLS.h"
+#include "Misc/ScopeLock.h"
+#include "Templates/SharedPointer.h"
+#include "Templates/UniquePtr.h"
 
-struct SharedDatasetTLS final : TThreadSingleton<SharedDatasetTLS> {
-    TMap<FString, GDALDatasetRef> datasets;
+struct FSharedDatasetCache {
+    FCriticalSection mutex;
+    TMap<uint32, TUniquePtr<GDALDatasetRef>> datasets;
 };
 
 struct SharedDatasetRO {
-    SharedDatasetRO() = default;
+    SharedDatasetRO() : cache(MakeShared<FSharedDatasetCache>()) {}
 
-    explicit SharedDatasetRO(FString in_path) : path(MoveTemp(in_path)) {}
+    explicit SharedDatasetRO(FString in_path) : path(MoveTemp(in_path)),
+        cache(MakeShared<FSharedDatasetCache>()) {}
 
     friend bool operator==(const SharedDatasetRO& a, const SharedDatasetRO& b) {
         return a.path == b.path;
     }
 
     const GDALDatasetRef& get() const {
-        SharedDatasetTLS& tls = SharedDatasetTLS::Get();
+        const uint32 thread_id = FPlatformTLS::GetCurrentThreadId();
+        FScopeLock _(&cache->mutex);
 
-        if (GDALDatasetRef* existing = tls.datasets.Find(path)) { return *existing; }
+        if (const TUniquePtr<GDALDatasetRef>* existing = cache->datasets.Find(thread_id)) {
+            return *existing->Get();
+        }
 
         GDALDataset* raw = GDALDataset::Open(
             TCHAR_TO_UTF8(*path),
-            GDAL_OF_READONLY | GDAL_OF_RASTER | GDAL_OF_SHARED);
+            GDAL_OF_READONLY | GDAL_OF_RASTER);
         if (raw == nullptr) {
             checkf(
                 false,
@@ -35,13 +44,17 @@ struct SharedDatasetRO {
             return null_dataset;
         }
 
-        return tls.datasets.Add(path, GDALDatasetRef{raw});
+        const TUniquePtr<GDALDatasetRef>& stored = cache->datasets.Add(
+            thread_id,
+            MakeUnique<GDALDatasetRef>(raw));
+        return *stored;
     }
 
     const FString& get_path() const { return path; }
 
 private:
     FString path;
+    TSharedPtr<FSharedDatasetCache> cache;
 };
 
 FORCEINLINE uint32 GetTypeHash(const SharedDatasetRO& dataset) {

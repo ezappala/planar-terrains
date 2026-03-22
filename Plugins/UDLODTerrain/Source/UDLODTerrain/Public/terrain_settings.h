@@ -127,7 +127,7 @@ struct FTerrainPreprocessSettings {
         BlueprintReadWrite,
         Category="Terrain Preprocess",
         DisplayName="Albedo 'NoData' Value")
-    FPreprocessNoData albedo_no_data = FPreprocessNoData::Source();
+    FPreprocessNoData albedo_no_data = FPreprocessNoData::NoData(0.0);
 
     UPROPERTY(
         EditAnywhere,

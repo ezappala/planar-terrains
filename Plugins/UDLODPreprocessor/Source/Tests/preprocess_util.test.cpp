@@ -66,4 +66,34 @@ bool FPreprocessUtilNoDataAndDatatypeHelpersTest::RunTest(const FString& Paramet
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FPreprocessUtilSaveTerrainConfigWritesInsideTerrainPathTest,
+    "UDLODPreprocessor.Preprocess.Util.SaveTerrainConfigWritesInsideTerrainPath",
+    TestFlags)
+
+bool FPreprocessUtilSaveTerrainConfigWritesInsideTerrainPathTest::RunTest(const FString& Parameters) {
+    const FString root = make_unique_test_root(TEXT("UtilSaveTerrainConfig"));
+    ON_SCOPE_EXIT { delete_tree(root); };
+
+    FPreprocessContext context = make_context(root);
+    context.terrain_path = FPaths::Combine(root, TEXT("terrain"));
+    context.attachment_label = TEXT("height");
+    context.lod_count = 9;
+
+    IFileManager::Get().MakeDirectory(*context.terrain_path, true);
+
+    const FString expected_path = FPaths::Combine(context.terrain_path, TEXT("config.json"));
+    const FString unexpected_path = context.terrain_path + TEXT("config.json");
+    const TArray<FTileCoordinate> tiles{FTileCoordinate{0u, 2u, FIntPoint{3, 4}}};
+
+    util::save_terrain_config(tiles, context);
+
+    TestTrue(TEXT("Config is written inside the terrain directory"), FPaths::FileExists(expected_path));
+    TestFalse(
+        TEXT("Config is not written by raw string concatenation"),
+        expected_path != unexpected_path && FPaths::FileExists(unexpected_path));
+
+    return true;
+}
+
 #endif

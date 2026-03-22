@@ -21,8 +21,11 @@ inline void save_terrain_config(
     const TArray<FTileCoordinate>& tiles,
     const FPreprocessContext& context
 ) {
-    const auto file_path = context.terrain_path + "config.json";
-    auto config = FTerrainConfig::from_file(file_path).Get(FTerrainConfig{});
+    const auto file_path = FPaths::Combine(context.terrain_path, TEXT("config.json"));
+    FTerrainConfig config{};
+    if (IFileManager::Get().FileExists(*file_path)) {
+        config = FTerrainConfig::from_file(file_path).Get(FTerrainConfig{});
+    }
     config.side_length = 86400;
     config.path = context.terrain_path;
     config.add_attachment(context.attachment_label, context.attachment);

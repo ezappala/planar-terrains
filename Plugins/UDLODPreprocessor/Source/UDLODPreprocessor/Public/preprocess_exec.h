@@ -10,7 +10,7 @@
 #include "terrain_settings.h"
 
 namespace preprocess {
-inline PreprocessResult<void> check_canceled(IPreprocessProgress* progress) {
+inline PreprocessResult<void> check_canceled(const IPreprocessProgress* progress) {
     if (progress != nullptr && progress->should_cancel()) {
         return std::unexpected{FPreprocessError::Canceled()};
     }
@@ -24,7 +24,7 @@ PreprocessResult<TArray<FTileCoordinate>> split_and_stitch(
     const FPreprocessContext& context,
     IPreprocessProgress* progress = nullptr
 ) {
-    FScopedPreprocessProgress split_and_stitch_progress(
+    FScopedPreprocessProgress _(
         progress,
         2.0f,
         FText::Format(
@@ -91,7 +91,7 @@ PreprocessResult<TArray<FTileCoordinate>> downsample_and_stitch(
     auto output_tiles = input_tiles;
     output_tiles.Append(ext::iter::flatten(tiles_to_downsample));
 
-    FScopedPreprocessProgress downsample_progress(
+    FScopedPreprocessProgress _(
         progress,
         static_cast<float>(FMath::Max(1, tiles_to_downsample.Num() * 2)),
         FText::Format(
@@ -141,7 +141,7 @@ PreprocessResult<void> preprocess_gen(
     FPreprocessContext& context,
     IPreprocessProgress* progress = nullptr
 ) {
-    FScopedPreprocessProgress attachment_progress(
+    FScopedPreprocessProgress _(
         progress,
         5.0f,
         FText::Format(
@@ -260,6 +260,22 @@ inline TOptional<double> resolve_no_data_value(
     std::unreachable();
 }
 
+inline EGDALDataType resolve_data_type(
+    const GDALDatasetRef& dataset,
+    const FPreprocessDataType& data_type
+) {
+    switch (data_type.Type) {
+    case EPreprocessDataType::Source: {
+        GDALRasterBand* band = dataset->GetRasterBand(1);
+        if (band == nullptr) { return static_cast<EGDALDataType>(GDT_Unknown); }
+        return static_cast<EGDALDataType>(band->GetRasterDataType());
+    }
+    case EPreprocessDataType::DataType: return data_type.DataTypeValue;
+    }
+
+    std::unreachable();
+}
+
 inline PreprocessResult<TTuple<
     TTuple<GDALDatasetRef, FPreprocessContext>,
     TTuple<GDALDatasetRef, FPreprocessContext>
@@ -277,9 +293,6 @@ inline PreprocessResult<TTuple<
     albedo_attachment.mip_level_count = settings.mip_level_count;
     albedo_attachment.mask = settings.albedo_create_mask;
     albedo_attachment.format = settings.albedo_attachment_format;
-
-    const auto heightmap_data_type = settings.heightmap_data_type.DataTypeValue;
-    const auto albedo_data_type = settings.albedo_data_type.DataTypeValue;
 
     GDALDatasetRef heightmap_src_dataset{
         GDALDataset::Open(TCHAR_TO_UTF8(*settings.heightmap_src_path), GA_ReadOnly)
@@ -301,6 +314,13 @@ inline PreprocessResult<TTuple<
         >>(
             FString::Printf(TEXT("Could not open albedo source: %s"), *settings.albedo_src_path));
     }
+
+    const auto heightmap_data_type = resolve_data_type(
+        heightmap_src_dataset,
+        settings.heightmap_data_type);
+    const auto albedo_data_type = resolve_data_type(
+        albedo_src_dataset,
+        settings.albedo_data_type);
 
     auto heightmap_rasterbands = ext::iter::map<std::expected<
         GDALRasterBand*, CPLErrorNum>, FRasterbandConfig>(
@@ -337,14 +357,15 @@ inline PreprocessResult<TTuple<
     const auto heightmap_tile_dir = settings.terrain_path / settings.heightmap_attachment_label;
     const auto albedo_tile_dir = settings.terrain_path / settings.albedo_attachment_label;
 
-    const auto temp_dir = settings.temp_path;
+    const auto heightmap_temp_dir = settings.temp_path / settings.heightmap_attachment_label;
+    const auto albedo_temp_dir = settings.temp_path / settings.albedo_attachment_label;
 
     FPreprocessContext heightmap_context{};
     heightmap_context.data_type = heightmap_data_type;
     heightmap_context.no_data_value = heightmap_no_data_value;
     heightmap_context.rasterbands = heightmap_rasterbands;
     heightmap_context.tile_dir = heightmap_tile_dir;
-    heightmap_context.temp_dir = temp_dir;
+    heightmap_context.temp_dir = heightmap_temp_dir;
     heightmap_context.fill_radius = settings.fill_radius;
     heightmap_context.overwrite = settings.overwrite;
     heightmap_context.min_height = TNumericLimits<float>::Max();
@@ -360,7 +381,7 @@ inline PreprocessResult<TTuple<
     albedo_context.no_data_value = albedo_no_data_value;
     albedo_context.rasterbands = albedo_rasterbands;
     albedo_context.tile_dir = albedo_tile_dir;
-    albedo_context.temp_dir = temp_dir;
+    albedo_context.temp_dir = albedo_temp_dir;
     albedo_context.fill_radius = settings.fill_radius;
     albedo_context.overwrite = settings.overwrite;
     albedo_context.min_height = 0.0f;
