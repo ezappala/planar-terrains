@@ -86,7 +86,7 @@ Build/*/**
 Saved/*
 !Saved/Coverage/*.cobertura.xml
 Plugins/**/Saved/*
-!Plugins/**/Saved/*.cobertura.xml
+!Plugins/**/Saved/Coverage/*.cobertura.xml
 
 # Compiled source files for the engine to use
 Intermediate/*
