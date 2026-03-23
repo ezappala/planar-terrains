@@ -78,14 +78,27 @@ struct FAttachmentConfig {
     }
 };
 
+USTRUCT()
 struct FAttachmentTile {
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere)
     FTileCoordinate coordinate;
+
+    UPROPERTY(VisibleAnywhere)
     FString label;
 };
 
+USTRUCT()
 struct FAttachmentTileWithData {
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere)
     uint32 atlas_index;
+
+    UPROPERTY(VisibleAnywhere)
     FString label;
+
     TVariant<
         TArray<TStaticArray<uint8, 4>>,
         TArray<uint16>,
@@ -95,7 +108,12 @@ struct FAttachmentTileWithData {
     > data;
 };
 
+USTRUCT()
 struct FAttachment {
+    GENERATED_BODY()
+
+    FAttachment() = default;
+
     FAttachment(const FAttachmentConfig& config, const FString& in_path) : path{in_path},
         texture_size{static_cast<uint32>(config.texture_size)},
         center_size{config.center_size()},
@@ -104,12 +122,25 @@ struct FAttachment {
         attachment_format{config.format},
         mask{config.mask} {}
 
+    UPROPERTY(VisibleAnywhere)
     FString path;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 texture_size;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 center_size;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 border_size;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 mip_level_count;
+
+    UPROPERTY(VisibleAnywhere)
     EAttachmentFormat attachment_format;
+
+    UPROPERTY(VisibleAnywhere)
     bool mask;
 
     friend bool operator==(const FAttachment& a, const FAttachment& b) {

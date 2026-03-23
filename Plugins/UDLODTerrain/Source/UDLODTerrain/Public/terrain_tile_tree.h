@@ -1,22 +1,33 @@
 ﻿#pragma once
 #include "ext_array4.h"
 #include "ext_math.h"
+#include "preprocess_tile_coordinate.h"
 #include "RHIGPUReadback.h"
 #include "terrain_config.h"
 #include "terrain_shaders.h"
 #include "terrain_view_config.h"
-#include "preprocess_tile_coordinate.h"
 #include "Async/Async.h"
+
+#include "terrain_tile_tree.generated.h"
 
 class UTerrain;
 
+UENUM()
 enum class ERequestState : uint8 {
     Requested,
     Released
 };
 
+USTRUCT()
 struct FTileState {
+    GENERATED_BODY()
+
+    FTileState() = default;
+
+    UPROPERTY(VisibleAnywhere)
     FTileCoordinate coordinate;
+
+    UPROPERTY(VisibleAnywhere)
     ERequestState request_state;
 
     friend bool operator ==(const FTileState& a, const FTileState& b) {
@@ -32,7 +43,12 @@ FORCEINLINE uint32 GetTypeHash(const FTileState& tile_state) {
     );
 }
 
+USTRUCT()
 struct FTileTree {
+    GENERATED_BODY()
+
+    FTileTree() = default;
+
     FTileTree(
         const FTerrainConfig& config,
         const FTerrainViewConfig& view_config
@@ -74,37 +90,82 @@ struct FTileTree {
         // terrain_view_buffer{nullptr},
         approximate_height_buffer{nullptr} {}
 
+    UPROPERTY(VisibleAnywhere)
     uint32 tree_size;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 lod_count;
+
+    UPROPERTY(VisibleAnywhere)
     double side_length;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 geometry_tile_count;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 refinement_count;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 grid_size;
+
+    UPROPERTY(VisibleAnywhere)
     double morph_distance;
+
+    UPROPERTY(VisibleAnywhere)
     double blend_distance;
+
+    UPROPERTY(VisibleAnywhere)
     double load_distance;
+
+    UPROPERTY(VisibleAnywhere)
     double subdivision_distance;
+
+    UPROPERTY(VisibleAnywhere)
     float morph_range;
+
+    UPROPERTY(VisibleAnywhere)
     float blend_range;
+
+    UPROPERTY(VisibleAnywhere)
     double precision_distance;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 view_face;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 view_lod;
+
+    UPROPERTY(VisibleAnywhere)
     FVector3d view_local_position;
+
+    UPROPERTY(VisibleAnywhere)
     FVector3f view_world_position;
 
     TArray4D<TileTreeEntry> data;
+
     TArray4D<FTileState> tiles;
+
+    UPROPERTY(VisibleAnywhere)
     TArray<FTileCoordinate> requested_tiles;
+
+    UPROPERTY(VisibleAnywhere)
     TArray<FTileCoordinate> released_tiles;
 
     TStaticArray<FCoordinate, 6> view_coordinates;
+
     TStaticArray<FVector4f, 6> half_spaces;
+
+    UPROPERTY(VisibleAnywhere)
     float approximate_height;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 order;
 
     FRDGBufferRef tile_tree_buffer;
+
     FRDGBufferRef terrain_view_buffer;
     // FRDGUniformBufferRef terrain_view_buffer;
+
     FRDGBufferRef approximate_height_buffer;
 
     friend bool operator==(const FTileTree& a, const FTileTree& b) {
@@ -133,7 +194,7 @@ struct FTileTree {
 
     static void approximate_height_readback(
         FRDGBuilder& gb,
-        TMap<UTerrain*, FTileTree> tile_trees) {
+        TMap<UTerrain*, FTileTree>& tile_trees) {
         for (auto& [terrain, tile_tree] : tile_trees) {
             const FRDGBufferRef approximate_height_buffer = tile_tree.approximate_height_buffer;
             if (approximate_height_buffer == nullptr) { continue; }
@@ -239,7 +300,7 @@ struct FTileTree {
                 const auto tile_coordinate = FTileCoordinate{
                     0u,
                     static_cast<uint32>(lod),
-                    FIntPoint{origin.X + x + origin.Y + y}
+                    FIntPoint{origin.X + x, origin.Y + y}
                 };
                 const auto tile_dist = compute_tile_distance(tile_coordinate, view_coordinate);
                 const auto load_dist =

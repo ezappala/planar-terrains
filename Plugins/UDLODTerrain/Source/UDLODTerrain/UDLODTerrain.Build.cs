@@ -56,7 +56,7 @@ public class UDLODTerrain : ModuleRules {
                 "Projects", "RiderLink", "RiderSourceCodeAccess",
                 "RiderShaderInfo", "RiderBlueprint", "RiderDebuggerSupport",
                 "RiderGameControl", "RiderLogging", "RiderLC",
-                "GPURuntimeTessellation"
+                "GPURuntimeTessellation",
             }
         );
 

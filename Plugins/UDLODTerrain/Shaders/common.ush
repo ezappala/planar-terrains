@@ -24,16 +24,16 @@ struct ViewCoordinate {
     float2 uv;
 };
 
-// struct Terrain {
-//     uint lod_count;
-//     float3 scale;
-//     float min_height;
-//     float max_height;
-//     float height_scale;
-//     float3x4 world_from_unit;
-//     float2x4 unit_from_world_transpose_a;
-//     float unit_from_world_transpose_b;
-// };
+struct Terrain {
+    uint lod_count;
+    float3 scale;
+    float min_height;
+    float max_height;
+    float height_scale;
+    float3x4 world_from_unit;
+    float2x4 unit_from_world_transpose_a;
+    float unit_from_world_transpose_b;
+};
 
 struct TerrainView {
     uint tree_size;

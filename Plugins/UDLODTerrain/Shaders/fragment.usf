@@ -111,7 +111,7 @@ float4 sample_albedo(AtlasTile tile) {
 float4 color_earth(AtlasTile tile) {
     float height = sample_height(tile);
     if (height < 0.0f) {
-        float2 coord = float2(lerp(0.0f, 0.075f, pow(height / Terrain.min_height, 0.25f)), 0.5f);
+        float2 coord = float2(lerp(0.0f, 0.075f, pow(height / terrain.min_height, 0.25f)), 0.5f);
         return gradient.SampleLevel(gradient_sampler, coord, 0.0f);
     }
 
@@ -122,7 +122,7 @@ float4 color_dataset(AtlasTile tile) {
     float height = sample_height(tile);
     return gradient.SampleLevel(
         gradient_sampler,
-        float2(inverse_lerp(Terrain.min_height, Terrain.max_height, height), 0.5f),
+        float2(inverse_lerp(terrain.min_height, terrain.max_height, height), 0.5f),
         0.0f);
 }
 

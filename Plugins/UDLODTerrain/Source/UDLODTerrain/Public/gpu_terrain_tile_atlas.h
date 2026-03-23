@@ -4,7 +4,14 @@
 #include "terrain.h"
 #include "Logging/StructuredLog.h"
 
+#include "gpu_terrain_tile_atlas.generated.h"
+
+USTRUCT()
 struct FGpuTileAtlas {
+    GENERATED_BODY()
+
+    FGpuTileAtlas() = default;
+
     FGpuTileAtlas(
         FRDGBuilder& gb,
         const FTileAtlas& tile_atlas,
@@ -28,8 +35,13 @@ struct FGpuTileAtlas {
             })
     } {}
 
+    UPROPERTY(VisibleAnywhere)
     TMap<FString, FGpuAttachment> attachments;
+
+    UPROPERTY(VisibleAnywhere)
     TArray<FAttachmentTileWithData> upload_tiles;
+
+    UPROPERTY(VisibleAnywhere)
     TArray<FAttachmentTileWithData> download_tiles;
 
     friend bool operator ==(const FGpuTileAtlas& a, const FGpuTileAtlas& b) {
@@ -42,6 +54,7 @@ struct FGpuTileAtlas {
         TMap<UTerrain*, FTileAtlas>& tile_atlases,
         const FTerrainSettings& settings
     ) {
+        gpu_tile_atlases.Reset();
         for (const auto& [terrain, tile_atlas] : tile_atlases) {
             gpu_tile_atlases.Add(
                 terrain,
@@ -79,7 +92,7 @@ struct FGpuTileAtlas {
         TMap<UTerrain*, FGpuTileAtlas>& gpu_tile_atlases
     ) {
         // TODO: double check rust source
-        for (auto [terrain, gpu_tile_atlas] : gpu_tile_atlases) {
+        for (auto& [terrain, gpu_tile_atlas] : gpu_tile_atlases) {
             // for (const auto& [label, attachment] : gpu_tile_atlas->attachments) {
             // }
             gpu_tile_atlas.exec_upload_tiles(gb);

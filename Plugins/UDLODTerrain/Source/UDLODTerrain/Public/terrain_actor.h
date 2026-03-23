@@ -1,7 +1,6 @@
 ﻿#pragma once
 
 #include "terrain.h"
-#include "terrain_component.h"
 #include "terrain_tile_atlas.h"
 #include "UObject/ObjectMacros.h"
 
@@ -13,9 +12,6 @@ class UDLODTERRAIN_API ATerrainActor : public AActor {
 
 public:
     ATerrainActor();
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UDLOD|Components")
-    UTerrainComponent* terrain_component;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UDLOD|Components")
     UTerrain* terrain;

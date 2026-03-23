@@ -3,7 +3,9 @@
 #include "terrain_settings.h"
 #include "terrain_tile_atlas.h"
 #include "terrain_typedefs.h"
+#include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
+#include "Logging/StructuredLog.h"
 #include "Math/Transform.h"
 
 #include "terrain.generated.h"
@@ -19,21 +21,36 @@ struct FView {
 };
 
 UCLASS(Blueprintable)
-class UTerrain : public USceneComponent {
+class UTerrain : public UPrimitiveComponent {
     GENERATED_BODY()
 
 public:
-    UTerrain() {}
+    UTerrain();
+
+    virtual FPrimitiveSceneProxy* CreateSceneProxy() override;
+    virtual FBoxSphereBounds CalcBounds(const FTransform& LocalToWorld) const override;
+    virtual void GetUsedMaterials(
+        TArray<UMaterialInterface*>& OutMaterials,
+        bool bGetDebugMaterials = false
+    ) const override;
+    virtual int32 GetNumMaterials() const override;
 
     void set_object_data(
-        const FTerrainConfig& config,
-        const FTerrainSettings& settings,
+        const FTerrainConfig& in_config,
+        const FTerrainSettings& in_settings,
         UMaterialInstance* mat
     ) {
-        atlas = MakeUnique<FTileAtlas>(config, settings);
+        UE_LOGFMT(LogTemp, Log, "Setting terrain data: config={c}, settings={s}", *in_config.ToString(), *in_settings.ToString());
+        this->config = in_config;
+        this->settings = in_settings;
+        atlas = MakeUnique<FTileAtlas>(this->config, this->settings);
         material = mat;
+        UpdateBounds();
+        MarkRenderStateDirty();
     }
 
+    FTerrainConfig config;
+    FTerrainSettings settings;
     TUniquePtr<FTileAtlas> atlas;
 
     UPROPERTY()

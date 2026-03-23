@@ -29,14 +29,14 @@ inline float sample_height(AtlasTile tile) {
 #if FRAGMENT
 #if SAMPLE_GRAD
     float3 coord = float3(uv.uv, tile.index);
-    return Terrain.height_scale * height_attachment.SampleGrad(terrain_sampler, coord, uv.dx, uv.dy).x;
+    return terrain.height_scale * height_attachment.SampleGrad(terrain_sampler, coord, uv.dx, uv.dy).x;
 #else
     float3 coord = float3(uv.uv, tile.index);
-    return Terrain.height_scale * height_attachment.Sample(terrain_sampler, coord, tile.blend_ratio).x;
+    return terrain.height_scale * height_attachment.Sample(terrain_sampler, coord, tile.blend_ratio).x;
 #endif
 #else
     float3 coord = float3(uv.uv, tile.index);
-    return Terrain.height_scale * height_attachment.SampleLevel(terrain_sampler, coord, 0.0f).x;
+    return terrain.height_scale * height_attachment.SampleLevel(terrain_sampler, coord, 0.0f).x;
 #endif
 }
 
@@ -71,7 +71,7 @@ float3 sample_surface_gradient(AtlasTile tile, TangentSpace tangent_space) {
     float end = 0.05f;
     float lod = max(0.0f, log2(attachment_configs[0].texture_size * scale));
     float ratio = saturate((lod - start) / (end - start));
-    if (ratio > 0.0f && tile.coordinate.lod == Terrain.lod_count - 1) {
+    if (ratio > 0.0f && tile.coordinate.lod == terrain.lod_count - 1) {
         float2 coord = attachment_configs[0].texture_size * uv.uv - 0.5f;
         float2 coord_floor = floor(coord);
         float2 center_uv = (coord_floor + 0.5f) / attachment_configs[0].texture_size;
@@ -101,7 +101,7 @@ float3 sample_surface_gradient(AtlasTile tile, TangentSpace tangent_space) {
     float height_dx = dot(height_duv, tile.coordinate.uv_dx);
     float height_dy = dot(height_duv, tile.coordinate.uv_dy);
 
-    return Terrain.height_scale * tangent_space.scale * (height_dx * tangent_space.tangent_x + height_dy * tangent_space.tangent_y);
+    return terrain.height_scale * tangent_space.scale * (height_dx * tangent_space.tangent_x + height_dy * tangent_space.tangent_y);
 }
 #endif
 

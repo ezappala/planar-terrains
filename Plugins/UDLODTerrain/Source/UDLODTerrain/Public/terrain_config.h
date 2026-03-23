@@ -6,16 +6,39 @@
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonSerializer.h"
 
+#include "terrain_config.generated.h"
+
+USTRUCT()
 struct FTerrainConfig {
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     FString path = "";
+
+    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     uint32 lod_count = 1;
+
+    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     float min_height = 0.;
+
+    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     float max_height = 1.;
+ UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     TMap<FString, FAttachmentConfig> attachments{};
+
+    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     TArray<FTileCoordinate> tiles{};
+
+    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     double side_length = 1.0;
+
+    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     uint32 face_count = 1;
+
+    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     double scale_scalar = side_length / 2.;
+
+    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     double face_size = 2. * PI / 4. * scale_scalar;
 
     FTerrainConfig& add_attachment(
@@ -24,6 +47,44 @@ struct FTerrainConfig {
     ) {
         attachments.Add(label, config);
         return *this;
+    }
+
+    FString ToString() const {
+        FString attachments_str;
+        for (const auto& [label, config] : attachments) {
+            attachments_str += FString::Printf(
+                TEXT("%s: {texture_size: %d, border_size: %d, mip_level_count: %d, mask: %s, format: %d}, "),
+                *label,
+                config.texture_size,
+                config.border_size,
+                config.mip_level_count,
+                config.mask ? TEXT("true") : TEXT("false"),
+                static_cast<int32>(config.format)
+            );
+        }
+
+        FString tiles_str;
+        for (const auto& tile : tiles) {
+            tiles_str += FString::Printf(
+                TEXT("{face: %d, lod: %d, xy: (%d, %d)}, "),
+                tile.face,
+                tile.lod,
+                tile.xy.X,
+                tile.xy.Y
+            );
+        }
+
+        return FString::Printf(
+            TEXT("FTerrainConfig{path: %s, lod_count: %d, min_height: %f, max_height: %f, attachments: {%s}, tiles: [%s], side_length: %f, face_count: %d}"),
+            *path,
+            lod_count,
+            min_height,
+            max_height,
+            *attachments_str,
+            *tiles_str,
+            side_length,
+            face_count
+        );
     }
 
     static TOptional<TSharedPtr<FJsonObject>> load_file(const FString& file_path) {

@@ -6,18 +6,13 @@
 #include "terrain_scene_view_extension.h"
 #include "Runtime/Renderer/Private/ScenePrivate.h"
 
-FTerrainSceneProxy::FTerrainSceneProxy(UTerrainComponent* component) : FPrimitiveSceneProxy
+FTerrainSceneProxy::FTerrainSceneProxy(const UTerrain* component) : FPrimitiveSceneProxy
     {component},
-    settings{MakeShared<FPrimaryTerrainSettings>(component->terrain_settings)},
-    preproc_settings{
-        MakeShared<FTerrainPreprocessSettings>(component->terrain_preprocess_settings)
-    },
     last_camera_position{FVector::ZeroVector} {
-    FTerrainSceneViewExtension::Init(
-        preproc_settings->heightmap_src_path,
-        preproc_settings->albedo_src_path,
-        settings
-    );
+    if (!FTerrainSceneViewExtension::instance.IsValid()) {
+        FTerrainSceneViewExtension::instance = FSceneViewExtensions::NewExtension<
+            FTerrainSceneViewExtension>();
+    }
 
     FVector camera_position = FVector::ZeroVector;
     if (const UWorld* world = component->GetWorld()) {
@@ -33,11 +28,6 @@ FTerrainSceneProxy::FTerrainSceneProxy(UTerrainComponent* component) : FPrimitiv
         camera_position = component_location + FVector(0, 0, 2000.0f);
     }
 
-    // ENQUEUE_RENDER_COMMAND(RenderTerrain)([
-    //         this,
-    //         heightmap = component->terrain_preprocess_settings.heightmap_src
-    //     ](FRHICommandListImmediate& cmd) {});
-
     bWillEverBeLit = true;
     bCastDynamicShadow = true;
     bCastStaticShadow = false;
@@ -52,21 +42,17 @@ SIZE_T FTerrainSceneProxy::GetTypeHash() const {
     return reinterpret_cast<size_t>(&unique_pointer);
 }
 
-void FTerrainSceneProxy::GetDynamicMeshElements(
-    const TArray<const FSceneView*>& views,
-    const FSceneViewFamily& view_family,
-    uint32 visibility_map,
-    FMeshElementCollector& collector
-) const {
-    FPrimitiveSceneProxy::GetDynamicMeshElements(
-        views,
-        view_family,
-        visibility_map,
-        collector);
-}
-
 FPrimitiveViewRelevance FTerrainSceneProxy::GetViewRelevance(
     const FSceneView* view
-) const { return FPrimitiveSceneProxy::GetViewRelevance(view); }
+) const {
+    FPrimitiveViewRelevance relevance;
+    relevance.bDrawRelevance = IsShown(view);
+    relevance.bShadowRelevance = IsShadowCast(view);
+    relevance.bDynamicRelevance = true;
+    relevance.bRenderInMainPass = ShouldRenderInMainPass();
+    relevance.bUsesLightingChannels = GetLightingChannelMask() != GetDefaultLightingChannelMask();
+    relevance.bOpaque = true;
+    return relevance;
+}
 
 uint32 FTerrainSceneProxy::GetMemoryFootprint() const { return sizeof(*this) + GetAllocatedSize(); }

@@ -69,9 +69,13 @@ inline void tile_tree_adjust_to_tile_atlas(
     TMap<UTerrain*, FTileAtlas>& tile_atlases
 ) {
     for (auto& [terrain, tile_tree] : tile_trees) {
-        auto tile_atlas = tile_atlases[terrain];
+        FTileAtlas* tile_atlas = tile_atlases.Find(terrain);
+        if (tile_atlas == nullptr) {
+            continue;
+        }
+
         for (auto& [tile, entry] : ext::iter::zip(tile_tree.tiles, tile_tree.data)) {
-            entry = tile_atlas.get_best_tile(tile.coordinate);
+            entry = tile_atlas->get_best_tile(tile.coordinate);
         }
     }
 }
@@ -81,23 +85,26 @@ inline void tile_tree_update_terrain_view_buffer(
     TMap<UTerrain*, FTileTree>& tile_trees
 ) {
     for (auto& [terrain, tile_tree] : tile_trees) {
-        const auto terrain_view = terrain_view_from_tile_tree(gb, tile_tree);
-        const auto terrain_view_buffer = tile_tree.terrain_view_buffer;
-        const auto tile_tree_buffer = tile_tree.tile_tree_buffer;
-        gb.QueueBufferUpload(
-            tile_tree_buffer,
-            tile_tree.data.get_storage().GetData(),
-            tile_tree.data.get_storage().Num() * sizeof(TileTreeEntry));
-        AddCopyBufferPass(gb, terrain_view_buffer, terrain_view);
+        const float approximate_height = tile_tree.approximate_height;
+        tile_tree.approximate_height_buffer = CreateStructuredBuffer(
+            gb,
+            TEXT("UDLOD.ApproximateHeightBuffer"),
+            sizeof(float),
+            1,
+            &approximate_height,
+            sizeof(float)
+        );
+        tile_tree.terrain_view_buffer = terrain_view_from_tile_tree(gb, tile_tree);
+        tile_tree.tile_tree_buffer = tile_tree_from_cpu_tree(gb, tile_tree);
     }
 }
 
 inline void tile_atlas_update(
     TMap<UTerrain*, FTileTree>& tile_trees,
-    TSet<FTileAtlas>& tile_atlases
+    TMap<UTerrain*, FTileAtlas>& tile_atlases
 ) {
     for (auto& [terrain, tile_tree] : tile_trees) {
-        FTileAtlas* tile_atlas = tile_atlases.Find(*terrain->atlas);
+        FTileAtlas* tile_atlas = tile_atlases.Find(terrain);
         if (tile_atlas == nullptr) {
             UE_LOG(
                 LogTemp,

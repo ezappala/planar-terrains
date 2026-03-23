@@ -1,8 +1,10 @@
 ﻿#pragma once
-#include "preprocess_attachment_config.h"
 #include "CoreUObject.h"
+#include "preprocess_attachment_config.h"
 #include "RenderGraphResources.h"
 #include "terrain_tile_atlas.h"
+
+#include "gpu_terrain_atlas_buffer_info.generated.h"
 
 constexpr uint32 COPY_BYTES_PER_ROW_ALIGNMENT = 256;
 
@@ -10,8 +12,13 @@ inline uint32 align_byte_size(const uint32 value) {
     return value - 1 - (value - 1) % COPY_BYTES_PER_ROW_ALIGNMENT + COPY_BYTES_PER_ROW_ALIGNMENT;
 }
 
-struct AtlasBufferInfo {
-    AtlasBufferInfo(const FAttachment& attachment, const uint32 lod_count) : mask{attachment.mask},
+USTRUCT()
+struct FAtlasBufferInfo {
+    GENERATED_BODY()
+
+    FAtlasBufferInfo() = default;
+
+    FAtlasBufferInfo(const FAttachment& attachment, const uint32 lod_count) : mask{attachment.mask},
         lod_count{lod_count},
         format{attachment.attachment_format},
         texture_size{attachment.texture_size},
@@ -26,26 +33,49 @@ struct AtlasBufferInfo {
         entries_per_side{aligned_side_size / static_cast<uint32>(sizeof(uint32))},
         entries_per_tile{texture_size * entries_per_side} {}
 
+    UPROPERTY(VisibleAnywhere)
     bool mask;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 lod_count;
 
+    UPROPERTY(VisibleAnywhere)
     EAttachmentFormat format;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 texture_size;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 border_size;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 center_size;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 mip_level_count;
 
+    UPROPERTY(VisibleAnywhere)
     uint32 pixels_per_entry;
 
+    UPROPERTY(VisibleAnywhere)
     uint32 actual_side_size;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 aligned_side_size;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 actual_tile_size;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 aligned_tile_size;
 
+    UPROPERTY(VisibleAnywhere)
     uint32 entries_per_side;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 entries_per_tile;
 
-    friend bool operator ==(const AtlasBufferInfo& a, const AtlasBufferInfo& b) {
+    friend bool operator ==(const FAtlasBufferInfo& a, const FAtlasBufferInfo& b) {
         return a.mask == b.mask
             && a.lod_count == b.lod_count
             && a.format == b.format
@@ -63,7 +93,7 @@ struct AtlasBufferInfo {
     }
 };
 
-FORCEINLINE uint32 GetTypeHash(const AtlasBufferInfo& buffer_info) {
+FORCEINLINE uint32 GetTypeHash(const FAtlasBufferInfo& buffer_info) {
     uint32 hash = 0;
     hash = HashCombine(hash, GetTypeHash(buffer_info.mask));
     hash = HashCombine(hash, GetTypeHash(buffer_info.lod_count));
@@ -82,8 +112,14 @@ FORCEINLINE uint32 GetTypeHash(const AtlasBufferInfo& buffer_info) {
     return hash;
 }
 
+USTRUCT()
 struct FAtlasTileAttachment {
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere)
     uint32 atlas_index;
+
+    UPROPERTY(VisibleAnywhere)
     FString label;
 
     friend bool operator==(const FAtlasTileAttachment& a, const FAtlasTileAttachment& b) {
@@ -98,4 +134,3 @@ FORCEINLINE uint32 GetTypeHash(const FAtlasTileAttachment& attachment) {
     hash = HashCombine(hash, GetTypeHash(attachment.label));
     return hash;
 }
-

@@ -2,7 +2,6 @@
 #include "preprocess_attachment_config.h"
 #include "Math/Vector.h"
 #include "Misc/Paths.h"
-#include "UObject/ObjectMacros.h"
 
 #include "terrain_settings.generated.h"
 
@@ -235,12 +234,25 @@ struct FTerrainPreprocessSettings {
     EAttachmentFormat albedo_attachment_format = EAttachmentFormat::Rgba8U;
 };
 
+USTRUCT()
 struct FTerrainSettings {
-    FTerrainSettings() : attachments{"Height", "Albedo"},
+    GENERATED_BODY()
+
+    FTerrainSettings() : attachments{"height", "albedo"},
         atlas_size{1028} {}
 
+    UPROPERTY(VisibleAnywhere)
     TArray<FString> attachments;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 atlas_size;
+
+    FString ToString() const {
+        return FString::Printf(
+            TEXT("attachments=[%s], atlas_size=%u"),
+            *FString::Join(attachments, TEXT(", ")),
+            atlas_size);
+    }
 };
 
 USTRUCT(BlueprintType)

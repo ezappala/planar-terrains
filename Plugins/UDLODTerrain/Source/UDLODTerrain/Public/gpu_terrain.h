@@ -3,17 +3,24 @@
 #include "gpu_terrain_funcs.h"
 #include "RenderGraphFwd.h"
 #include "RHIStaticStates.h"
+#include "terrain_shaders.h"
 #include "terrain_shader_helpers.h"
 #include "terrain_tile_atlas.h"
 
+#include "gpu_terrain.generated.h"
+
+USTRUCT()
 struct FGpuTerrain {
+    GENERATED_BODY()
+
+    FGpuTerrain() = default;
+
     FGpuTerrain(
         FRDGBuilder& gb,
         const FRDGTextureSRVRef fallback_texture,
         const FTileAtlas& tile_atlas,
         const FGpuTileAtlas& gpu_tile_atlas
-    ) : terrain_buffer{tile_atlas.terrain_buffer},
-        atlas_sampler{
+    ) : atlas_sampler{
             TStaticSamplerState<
                 /*Filter=*/SF_AnisotropicLinear,
                 /*Address Modes*/
@@ -25,18 +32,18 @@ struct FGpuTerrain {
             >().CreateRHI()
         },
         height_attachment_texture{
-            gpu_tile_atlas.attachments.Contains("Height")
-            ? gpu_tile_atlas.attachments["Height"].atlas_texture
+            find_attachment_by_label(gpu_tile_atlas.attachments, TEXT("height")) != nullptr
+            ? find_attachment_by_label(gpu_tile_atlas.attachments, TEXT("height"))->atlas_texture
             : fallback_texture
         },
         albedo_attachment_texture{
-            gpu_tile_atlas.attachments.Contains("Albedo")
-            ? gpu_tile_atlas.attachments["Albedo"].atlas_texture
+            find_attachment_by_label(gpu_tile_atlas.attachments, TEXT("albedo")) != nullptr
+            ? find_attachment_by_label(gpu_tile_atlas.attachments, TEXT("albedo"))->atlas_texture
             : fallback_texture
         },
         attachment_configs{
-            attachment_config_from_gpu_tile_atlas(gpu_tile_atlas, "Height"),
-            attachment_config_from_gpu_tile_atlas(gpu_tile_atlas, "Albedo")
+            attachment_config_from_gpu_tile_atlas(gpu_tile_atlas, TEXT("height")),
+            attachment_config_from_gpu_tile_atlas(gpu_tile_atlas, TEXT("albedo"))
         },
         attachments_buffer{
             gb.CreateSRV(
@@ -55,12 +62,13 @@ struct FGpuTerrain {
     // albedo_attachment_buffer{gb.CreateUniformBuffer(&albedo_attachment_config)} {}
     {}
 
-    FRDGUniformBufferRef terrain_buffer;
+    TUniformBufferRef<Terrain> terrain_buffer;
     FSamplerStateRHIRef atlas_sampler;
     FRDGTextureSRVRef height_attachment_texture;
     FRDGTextureSRVRef albedo_attachment_texture;
     TStaticArray<AttachmentConfig, 2> attachment_configs;
     // Attachments attachments;
+
     FRDGBufferSRVRef attachments_buffer;
     // FRDGUniformBufferRef height_attachment_buffer;
     // FRDGUniformBufferRef albedo_attachment_buffer;
@@ -82,11 +90,16 @@ struct FGpuTerrain {
         TMap<UTerrain*, FGpuTileAtlas>& gpu_tile_atlases,
         TMap<UTerrain*, FTileAtlas>& tile_atlases
     ) {
+        gpu_terrains.Reset();
         for (auto& [terrain, tile_atlas] : tile_atlases) {
-            const auto gpu_tile_atlas = gpu_tile_atlases[terrain];
+            const FGpuTileAtlas* gpu_tile_atlas = gpu_tile_atlases.Find(terrain);
+            if (gpu_tile_atlas == nullptr) {
+                continue;
+            }
+
             gpu_terrains.Add(
                 terrain,
-                FGpuTerrain(gb, fallback_texture, tile_atlas, gpu_tile_atlas));
+                FGpuTerrain(gb, fallback_texture, tile_atlas, *gpu_tile_atlas));
         }
     }
 
@@ -120,7 +133,12 @@ struct FGpuTerrain {
     // }
 };
 
+USTRUCT()
 struct FGpuTerrainView {
+    GENERATED_BODY()
+
+    FGpuTerrainView() = default;
+
     FGpuTerrainView(FRDGBuilder& gb, const FTileTree& tile_tree) : order{tile_tree.order},
         refinement_count{tile_tree.refinement_count},
         terrain_view_buffer{
@@ -159,8 +177,12 @@ struct FGpuTerrainView {
         prepass_parameters{nullptr},
         refine_tiles_parameters{nullptr} {}
 
+    UPROPERTY(VisibleAnywhere)
     uint32 order;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 refinement_count;
+
     FRDGBufferSRVRef terrain_view_buffer;
     FRDGBufferUAVRef indirect_buffer;
     FRDGBufferUAVRef prepass_state_buffer;
@@ -183,9 +205,9 @@ struct FGpuTerrainView {
         TMap<UTerrain*, FGpuTerrainView>& gpu_terrain_views,
         TMap<UTerrain*, FTileTree>& tile_trees
     ) {
-        for (auto& [terrain, gpu_terrain_view] : gpu_terrain_views) {
-            const auto tile_tree = tile_trees[terrain];
-            gpu_terrain_view = FGpuTerrainView(gb, tile_tree);
+        gpu_terrain_views.Reset();
+        for (auto& [terrain, tile_tree] : tile_trees) {
+            gpu_terrain_views.Add(terrain, FGpuTerrainView(gb, tile_tree));
         }
     }
 

@@ -65,8 +65,8 @@ bool frustum_cull_aabb(Coordinate coordinate) {
         float2 corner_uv = float2(asfloat(i & 1u), asfloat(i >> 1u & 1u));
         Coordinate corner_coordinate = make_coordinate(coordinate.face, coordinate.lod, coordinate.xy, corner_uv);
         WorldCoordinate corner_world_coordinate = compute_world_coordinate(corner_coordinate);
-        float3 corner_low = apply_height(corner_world_coordinate, Terrain.min_height);
-        float3 corner_high = apply_height(corner_world_coordinate, Terrain.max_height);
+        float3 corner_low = apply_height(corner_world_coordinate, terrain.min_height);
+        float3 corner_high = apply_height(corner_world_coordinate, terrain.max_height);
 
         aabb_min = min(aabb_min, min(corner_low, corner_high));
         aabb_max = max(aabb_max, max(corner_low, corner_high));
@@ -93,13 +93,13 @@ bool horizon_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
         return false;
     }
 
-    float3 ellipsoid_to_sphere = 1.0f / Terrain.scale;
-    float radius = 1.0f + Terrain.min_height / Terrain.scale.y;
+    float3 ellipsoid_to_sphere = 1.0f / terrain.scale;
+    float radius = 1.0f + terrain.min_height / terrain.scale.y;
 
     float3 view_position = ellipsoid_to_sphere * terrain_view[0].world_position;
-    float3 tile_position = ellipsoid_to_sphere * apply_height(world_coordinate, Terrain.max_height);
+    float3 tile_position = ellipsoid_to_sphere * apply_height(world_coordinate, terrain.max_height);
     float3 origin_position = ellipsoid_to_sphere *
-        mul(affine3_to_square(Terrain.world_from_unit), float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;
+        mul(affine3_to_square(terrain.world_from_unit), float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;
     float3 view_tile = tile_position - view_position;
     float3 view_origin = origin_position - view_position;
 

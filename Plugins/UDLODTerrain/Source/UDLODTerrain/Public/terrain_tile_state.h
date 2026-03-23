@@ -1,7 +1,15 @@
 ﻿#pragma once
 
+#include "terrain_tile_state.generated.h"
+
+USTRUCT()
 struct FLoadingState {
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere)
     bool is_loaded;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 loading;
 
     friend bool operator==(const FLoadingState& a, const FLoadingState& b) {
@@ -20,9 +28,17 @@ FORCEINLINE uint32 GetTypeHash(const FLoadingState& loading_state) {
     return hash;
 }
 
+USTRUCT()
 struct FTileLoadingState {
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere)
     FLoadingState state;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 atlas_index;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 requests;
 
     friend bool operator==(const FTileLoadingState& a, const FTileLoadingState& b) {

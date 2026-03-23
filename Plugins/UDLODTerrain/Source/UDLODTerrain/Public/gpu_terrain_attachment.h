@@ -5,7 +5,14 @@
 #include "terrain_settings.h"
 #include "terrain_tile_atlas.h"
 
+#include "gpu_terrain_attachment.generated.h"
+
+USTRUCT()
 struct FGpuAttachment {
+    GENERATED_BODY()
+
+    FGpuAttachment() = default;
+
     FGpuAttachment(
         FRDGBuilder& gb,
         const FString& label,
@@ -38,8 +45,11 @@ struct FGpuAttachment {
         },
         atlas_view{atlas_texture->GetHandle()} {}
 
+    UPROPERTY(VisibleAnywhere)
     uint32 index;
-    AtlasBufferInfo buffer_info;
+
+    UPROPERTY(VisibleAnywhere)
+    FAtlasBufferInfo buffer_info;
 
     FRDGTextureSRVRef atlas_texture;
     FRDGViewHandle atlas_view;

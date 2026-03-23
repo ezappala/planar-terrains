@@ -5,7 +5,7 @@
 
 #include "common.ush"
 
-// Terrain terrain;
+// StructuredBuffer<Terrain> terrain;
 // cbuffer attachments : register(b0) {
 //     AttachmentConfig height_config;
 //     AttachmentConfig albedo_config;
@@ -21,8 +21,11 @@ Texture2DArray<float> height_attachment : register(t0);
 Texture2DArray<float> albedo_attachment : register(t1);
 
 StructuredBuffer<TerrainView> terrain_view;
-// ApproximateHeight approximate_height;
-RWBuffer<float> approximate_height;
+#if PREPASS
+RWStructuredBuffer<float> approximate_height;
+#else
+StructuredBuffer<float> approximate_height;
+#endif
 
 StructuredBuffer<TileTreeEntry> tile_tree;
 StructuredBuffer<GeometryTile> geometry_tiles;

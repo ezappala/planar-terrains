@@ -3,12 +3,19 @@
 #include "ext_math.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphEvent.h"
-#include "terrain_shader_helpers.h"
 #include "terrain_config.h"
 #include "terrain_settings.h"
+#include "terrain_shader_helpers.h"
 #include "terrain_tile_state.h"
 
+#include "terrain_tile_atlas.generated.h"
+
+USTRUCT()
 struct FTileAtlas {
+    GENERATED_BODY()
+
+    FTileAtlas() = default;
+
     FTileAtlas(
         const FTerrainConfig& config,
         const FTerrainSettings& settings
@@ -41,17 +48,39 @@ struct FTileAtlas {
         side_length{config.side_length},
         terrain_buffer{nullptr} {}
 
+    UPROPERTY(VisibleAnywhere)
     TMap<FString, FAttachment> attachments;
+
+    UPROPERTY(VisibleAnywhere)
     TMap<FTileCoordinate, FTileLoadingState> tile_states;
+
     TDeque<uint32> unused_indices;
+
+    UPROPERTY(VisibleAnywhere)
     TSet<FTileCoordinate> existing_tiles;
+
+    UPROPERTY(VisibleAnywhere)
     TArray<FAttachmentTileWithData> uploading_tiles;
+
+    UPROPERTY(VisibleAnywhere)
     TArray<FAttachmentTileWithData> downloading_tiles;
+
+    UPROPERTY(VisibleAnywhere)
     TArray<FAttachmentTile> to_load;
+
+    UPROPERTY(VisibleAnywhere)
     uint32 lod_count;
+
+    UPROPERTY(VisibleAnywhere)
     float max_height;
+
+    UPROPERTY(VisibleAnywhere)
     float min_height;
+
+    UPROPERTY(VisibleAnywhere)
     float height_scale;
+
+    UPROPERTY(VisibleAnywhere)
     double side_length;
 
     // TODO: where is this buffer instantiated?
@@ -107,15 +136,19 @@ struct FTileAtlas {
             tt.atlas_lod = MAX_uint32;
             return tt;
         }();
-        if (existing_tiles.Contains(tile_coordinate)) { return default_tt; }
 
         while (true) {
             if (best_tile_coordinate == FTileCoordinate::INVALID()) { return default_tt; }
 
-            if (const auto tile = tile_states[best_tile_coordinate]; tile.state.
-                is_loaded) {
+            if (!existing_tiles.Contains(best_tile_coordinate)) {
+                best_tile_coordinate = best_tile_coordinate.parent().Get(FTileCoordinate::INVALID());
+                continue;
+            }
+
+            const FTileLoadingState* tile = tile_states.Find(best_tile_coordinate);
+            if (tile != nullptr && tile->state.is_loaded) {
                 TileTreeEntry tt;
-                tt.atlas_index = tile.atlas_index;
+                tt.atlas_index = tile->atlas_index;
                 tt.atlas_lod = best_tile_coordinate.lod;
                 return tt;
             }
@@ -176,7 +209,7 @@ struct FTileAtlas {
     }
 
     void request_tile(const FTileCoordinate& tile_coordinate) {
-        if (existing_tiles.Contains(tile_coordinate)) { return; }
+        if (!existing_tiles.Contains(tile_coordinate)) { return; }
 
         if (tile_states.Contains(tile_coordinate)) {
             auto* tile = &tile_states[tile_coordinate];
@@ -227,7 +260,7 @@ struct FTileAtlas {
     }
 
     void release_tile(const FTileCoordinate& tile_coordinate) {
-        if (existing_tiles.Contains(tile_coordinate)) { return; }
+        if (!existing_tiles.Contains(tile_coordinate)) { return; }
 
         auto* tile = &tile_states[tile_coordinate];
         tile->requests -= 1;

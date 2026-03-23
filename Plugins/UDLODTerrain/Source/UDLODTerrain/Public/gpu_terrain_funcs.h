@@ -20,10 +20,27 @@ inline AttachmentConfig new_attachment_config(const FGpuAttachment& attachment) 
     return ac;
 }
 
+inline const FGpuAttachment* find_attachment_by_label(
+    const TMap<FString, FGpuAttachment>& attachments,
+    const FString& label
+) {
+    if (const FGpuAttachment* attachment = attachments.Find(label)) {
+        return attachment;
+    }
+
+    for (const auto& [key, attachment] : attachments) {
+        if (key.Equals(label, ESearchCase::IgnoreCase)) {
+            return &attachment;
+        }
+    }
+
+    return nullptr;
+}
+
 inline AttachmentConfig attachment_config_from_gpu_tile_atlas(
     const FGpuTileAtlas& tile_atlas,
     const FString& label
 ) {
-    const auto attachment = tile_atlas.attachments[label];
-    return new_attachment_config(attachment);
+    const FGpuAttachment* attachment = find_attachment_by_label(tile_atlas.attachments, label);
+    return attachment != nullptr ? new_attachment_config(*attachment) : AttachmentConfig{};
 }

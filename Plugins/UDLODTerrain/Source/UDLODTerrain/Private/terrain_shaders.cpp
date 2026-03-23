@@ -1,6 +1,6 @@
 ﻿#include "terrain_shaders.h"
 
-IMPLEMENT_UNIFORM_BUFFER_STRUCT(Terrain, "Terrain")
+IMPLEMENT_UNIFORM_BUFFER_STRUCT(Terrain, "terrain")
 // IMPLEMENT_UNIFORM_BUFFER_STRUCT(Attachments, "Attachments")
 // IMPLEMENT_UNIFORM_BUFFER_STRUCT(TerrainView, "TerrainView")
 // IMPLEMENT_UNIFORM_BUFFER_STRUCT(TileTree, "TileTrees")

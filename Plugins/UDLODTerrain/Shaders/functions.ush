@@ -2,9 +2,9 @@
 
 // ReSharper disable CppUnusedIncludeDirective
 #include "/Engine/Private/Common.ush"
-#include "/Engine/Public/Platform.ush"
 
 #include "bindings.ush"
+
 #include "common.ush"
 #include "math.ush"
 
@@ -14,11 +14,11 @@ inline WorldCoordinate compute_world_coordinate(Coordinate coordinate, float hei
     float3 unit_position = float3(uv.x - 0.5f, 0.0f, uv.y - 0.5f);
     float3 unit_normal = float3(0.0f, 1.0f, 0.0f);
 
-    float4x4 position_world_from_unit = affine3_to_square(Terrain.world_from_unit);
+    float4x4 position_world_from_unit = affine3_to_square(terrain.world_from_unit);
     float3 world_position = mul(position_world_from_unit, float4(unit_position, 1.0f)).xyz;
     float3x3 normal_world_from_unit = mat2x4_f32_to_mat3x3_unpack(
-        Terrain.unit_from_world_transpose_a,
-        Terrain.unit_from_world_transpose_b);
+        terrain.unit_from_world_transpose_a,
+        terrain.unit_from_world_transpose_b);
     float3 world_normal = normalize(mul(normal_world_from_unit, unit_normal));
     float view_distance = distance(
         world_position + height * world_normal,
@@ -138,9 +138,9 @@ inline Blend compute_blend(float view_distance) {
     float ratio = 0.0f;
 #endif
     return blend(
-        min(uint(target_lod), Terrain.lod_count - 1u),
+        min(uint(target_lod), terrain.lod_count - 1u),
         select(
-            target_lod < 1 || uint(target_lod) >= Terrain.lod_count,
+            target_lod < 1 || uint(target_lod) >= terrain.lod_count,
             /*true*/
             0.0f,
             /*false*/
@@ -184,7 +184,7 @@ inline float2 compute_tile_tree_uv(Coordinate coordinate) {
 
 inline TileTreeEntry lookup_tile_tree_entry(Coordinate coordinate) {
     uint2 tree_xy = uint2(coordinate.xy) % terrain_view[0].tree_size;
-    uint tree_index = ((coordinate.face * Terrain.lod_count + coordinate.lod) * terrain_view[0].tree_size + tree_xy.x) * terrain_view[0].tree_size + tree_xy.y;
+    uint tree_index = ((coordinate.face * terrain.lod_count + coordinate.lod) * terrain_view[0].tree_size + tree_xy.x) * terrain_view[0].tree_size + tree_xy.y;
     return tile_tree[tree_index];
 }
 
@@ -196,7 +196,7 @@ inline BestLookup lookup_best(Coordinate lookup_coordinate) {
     float2 new_tile_tree_uv = new_coordinate.uv;
 
     [unroll]
-    while (new_coordinate.lod < Terrain.lod_count &&
+    while (new_coordinate.lod < terrain.lod_count &&
         !any(new_tile_tree_uv < float2(0.0f, 0.0f)) &&
         !any(new_tile_tree_uv >= float2(1.0f, 1.0f))) {
         coordinate = new_coordinate;
