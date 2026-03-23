@@ -2,6 +2,7 @@
 #include "gpu_terrain.h"
 #include "gpu_terrain_atlas_buffer_info.h"
 #include "terrain_config.h"
+#include "terrain_picking.h"
 #include "terrain_settings.h"
 #include "terrain_tile_atlas.h"
 #include "terrain_typedefs.h"
@@ -9,8 +10,6 @@
 #include "GameFramework/Actor.h"
 
 #include "terrain_parent_actor.generated.h"
-
-class ATerrainActor;
 
 USTRUCT()
 struct FTerrains {
@@ -40,6 +39,8 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UDLOD")
     USceneComponent* root;
+
+    TSharedPtr<FPickingData> picking_data = nullptr;
 
     UFUNCTION(Exec, CallInEditor, BlueprintCallable, Category = "UDLOD")
     void PreprocessTerrain();
@@ -80,9 +81,6 @@ public:
 private:
     void rebuild_terrains();
     void clear_spawned_terrains();
-
-    // UPROPERTY(Transient)
-    // TArray<TObjectPtr<ATerrainActor>> spawned_terrain_actors;
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTerrain>> spawned_terrains;

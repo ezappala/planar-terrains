@@ -6,9 +6,9 @@
 #include "RHIStaticStates.h"
 #include "SceneView.h"
 #include "SystemTextures.h"
-#include "terrain_actor.h"
 #include "terrain_funcs.h"
 #include "terrain_parent_actor.h"
+#include "terrain_picking.h"
 #include "terrain_shaders.h"
 #include "terrain_tile_atlas.h"
 #include "terrain_world_subsystem.h"
@@ -160,6 +160,7 @@ void FTerrainSceneViewExtension::draw_terrain(
 
     draw_tile_tree(gb, scene, view);
     FTileTree::approximate_height_readback(gb, *tile_trees);
+    picking_readback(gb, root->picking_data->buffer, root->picking_data);
 }
 
 void FTerrainSceneViewExtension::draw_tile_tree(
@@ -197,11 +198,18 @@ void FTerrainSceneViewExtension::draw_tile_tree(
     FGpuTerrainView::prepare(gb, *gpu_terrain_views);
     // TODO: prepare_terrain_depth_textures
 
+    auto* picking_params = picking(
+        gb,
+        view,
+        root->picking_data->buffer
+    );
+
     const auto* gsm = GetGlobalShaderMap(GMaxRHIFeatureLevel);
     const auto prep_root_cs = gsm->GetShader<FTerrainPrepassPrepareRootComputeShader>();
     const auto prep_next_cs = gsm->GetShader<FTerrainPrepassPrepareNextComputeShader>();
     const auto prep_render_cs = gsm->GetShader<FTerrainPrepassPrepareRenderComputeShader>();
     const auto refine_tiles_cs = gsm->GetShader<FTerrainPrepassRefineTilesComputeShader>();
+    const auto picking_cs = gsm->GetShader<FTerrainPickingComputeShader>();
 
     for (const auto& [terrain, tile_tree] : *tile_trees) {
         if (!terrain->IsValidLowLevel() || !terrain->IsRegistered()) {
@@ -354,6 +362,7 @@ void FTerrainSceneViewExtension::draw_tile_tree(
             gpu_terrain_view->prepass_parameters,
             FIntVector{1, 1, 1}
         );
+
         FComputeShaderUtils::AddPass(
             gb,
             RDG_EVENT_NAME("UDLOD.Prepass.PrepNext"),
@@ -362,6 +371,7 @@ void FTerrainSceneViewExtension::draw_tile_tree(
             gpu_terrain_view->prepass_parameters,
             FIntVector{1, 1, 1}
         );
+
         FComputeShaderUtils::AddPass(
             gb,
             RDG_EVENT_NAME("UDLOD.Prepass.PrepRender"),
@@ -370,6 +380,7 @@ void FTerrainSceneViewExtension::draw_tile_tree(
             gpu_terrain_view->prepass_parameters,
             FIntVector{1, 1, 1}
         );
+
         FComputeShaderUtils::AddPass(
             gb,
             RDG_EVENT_NAME("UDLOD.Prepass.RefineTiles"),
@@ -377,6 +388,15 @@ void FTerrainSceneViewExtension::draw_tile_tree(
             refine_tiles_cs,
             gpu_terrain_view->refine_tiles_parameters,
             FIntVector{64, 1, 1}
+        );
+
+        FComputeShaderUtils::AddPass(
+            gb,
+            RDG_EVENT_NAME("UDLOD.Picking"),
+            ERDGPassFlags::NeverCull | ERDGPassFlags::Compute,
+            picking_cs,
+            picking_params,
+            FIntVector{1, 1, 1}
         );
 
         auto* params = gb.AllocParameters<DrawElementsIndirectParameters>();

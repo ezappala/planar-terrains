@@ -1,5 +1,30 @@
-﻿#include "/Engine/Private/Common.ush"
+﻿// ReSharper disable once CppUnusedIncludeDirective
+#include "/Engine/Private/Common.ush"
 
-#include "common.ush"
+struct PickingData {
+    float2 cursor_coords;
+    float depth;
+    uint stencil;
+    float4x4 world_from_clip;
+};
 
+RWStructuredBuffer<PickingData> picking_data;
+Texture2DMS<float> depth_texture;
+Texture2DMS<uint> stencil_texture;
 
+[numthreads(1, 1, 1)]
+void pick(uint3 dispatch_thread_id : SV_DispatchThreadID) {
+    uint width, height, num_samples;
+    depth_texture.GetDimensions(width, height, num_samples);
+    int2 _coords = int2(
+        picking_data[0].cursor_coords.x,
+        1.0 - picking_data[0].cursor_coords.y) * int2(width, height);
+    int3 coords = int3(_coords, 0);
+    // Load(location: int3, sample_index: int, [optional] offset: int2) -> float
+    float depth = depth_texture.Load(coords, 0);
+    // Load(location: int3, sample_index: int, [optional] offset: int2) -> uint
+    uint stencil = stencil_texture.Load(coords, 0).x;
+
+    picking_data[0].depth = depth;
+    picking_data[0].stencil = stencil;
+}

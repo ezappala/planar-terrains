@@ -307,6 +307,13 @@ BEGIN_SHADER_PARAMETER_STRUCT(RefineTiles, UDLODTERRAIN_API)
     SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<GeometryTile>, final_tiles)
 END_SHADER_PARAMETER_STRUCT()
 
+BEGIN_SHADER_PARAMETER_STRUCT(PickingData, UDLODTERRAIN_API)
+    SHADER_PARAMETER(FVector2f, cursor_cords)
+    SHADER_PARAMETER(float, depth)
+    SHADER_PARAMETER(uint32, stencil)
+    SHADER_PARAMETER(FMatrix44f, world_from_clip)
+END_SHADER_PARAMETER_STRUCT()
+
 class UDLODTERRAIN_API FTerrainPrepassPrepareRootComputeShader : public FGlobalShader {
     DECLARE_GLOBAL_SHADER(FTerrainPrepassPrepareRootComputeShader);
     SHADER_USE_PARAMETER_STRUCT(FTerrainPrepassPrepareRootComputeShader, FGlobalShader);
@@ -429,6 +436,39 @@ class UDLODTERRAIN_API FTerrainPrepassRefineTilesComputeShader : public FGlobalS
         out_environment.SetDefine(TEXT("BLEND"), 1);
         out_environment.SetDefine(TEXT("MORPH"), 1);
         out_environment.SetDefine(TEXT("LIGHTING"), 1);
+        out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
+        out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
+        out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
+        out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
+        out_environment.SetDefine(TEXT("SHOW_UV"), 0);
+        out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
+    }
+};
+
+class UDLODTERRAIN_API FTerrainPickingComputeShader : public FGlobalShader {
+    DECLARE_GLOBAL_SHADER(FTerrainPickingComputeShader);
+    SHADER_USE_PARAMETER_STRUCT(FTerrainPickingComputeShader, FGlobalShader);
+    using FParameters = PickingData;
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& params) {
+        const bool feature_level = IsFeatureLevelSupported(params.Platform, ERHIFeatureLevel::SM5);
+        return feature_level;
+    }
+
+    static void ModifyCompilationEnvironment(
+        const FGlobalShaderPermutationParameters& params,
+        FShaderCompilerEnvironment& out_environment
+    ) {
+        FGlobalShader::ModifyCompilationEnvironment(params, out_environment);
+        out_environment.SetDefine(TEXT("FRAGMENT"), 0);
+        out_environment.SetDefine(TEXT("VERTEX"), 0);
+        out_environment.SetDefine(TEXT("PREPASS"), 1);
+        out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 0);
+        out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 0);
+        out_environment.SetDefine(TEXT("BLEND"), 0);
+        out_environment.SetDefine(TEXT("MORPH"), 0);
+        out_environment.SetDefine(TEXT("LIGHTING"), 0);
         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
