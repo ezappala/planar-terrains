@@ -90,7 +90,7 @@ void ATerrainParentActor::rebuild_terrains() {
         return;
     }
 
-    UWorld* world = GetWorld();
+    const UWorld* world = GetWorld();
     if (world == nullptr) {
         UE_LOGFMT(LogTemp, Warning, "Failed to get world for terrain parent actor: {n}", GetName());
         return;
@@ -112,60 +112,71 @@ void ATerrainParentActor::rebuild_terrains() {
     }
 
     UE_LOGFMT(LogTemp, Log, "Spawning terrain actors for terrain parent actor: {n}", GetName());
-    for (const auto& [terrain_config, terrain_view_config, material_instance, view] : terrains_to_spawn) {
+    TArray<ext::iter::Enumeration<FTerrains>> iter = ext::iter::enumerate(terrains_to_spawn);
+    for (const auto& [i, out_terrains] : iter) {
+        const auto& [terrain_config, terrain_view_config, material_instance, view] = out_terrains;
         const FTerrainConfig& config = terrain_config;
         const FTerrainViewConfig& view_config = terrain_view_config;
         UMaterialInstance* material = material_instance;
+        FString terrain_comp_name = FString::Printf(TEXT("TerrainComp_%llu"), i);
+        auto* terrain = NewObject<UTerrain>(this, *terrain_comp_name, RF_Transient);
+        terrain->RegisterComponent();
+        terrain->AttachToComponent(root, FAttachmentTransformRules::KeepRelativeTransform);
 
-        FActorSpawnParameters params;
-        params.Owner = this;
-        params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-        ATerrainActor* terrain_actor = world->SpawnActor<ATerrainActor>(
-            ATerrainActor::StaticClass(),
-            view.tile_world_transform,
-            params
-        );
-        if (!IsValid(terrain_actor) || !IsValid(terrain_actor->terrain)) {
-            UE_LOGFMT(LogTemp, Warning, "Failed to spawn terrain actor for terrain parent actor: {n}", GetName());
+        if (!IsValid(terrain)) {
+            UE_LOGFMT(
+                LogTemp,
+                Warning,
+                "Failed to create terrain component for terrain parent actor: {n}, skipping terrain index: {i}",
+                GetName(),
+                i);
             continue;
         }
-        UE_LOGFMT(LogTemp, Log, "Spawned terrain actor: {n} for terrain parent actor: {parent_n}", terrain_actor->GetName(), GetName());
 
-        terrain_actor->AttachToComponent(root, FAttachmentTransformRules::KeepWorldTransform);
-        terrain_actor->terrain->set_object_data(config, settings, material);
-        terrain_actor->terrain->UpdateBounds();
-        terrain_actor->terrain->MarkRenderStateDirty();
+        UE_LOGFMT(
+            LogTemp,
+            Log,
+            "Created terrain component: {n} for terrain parent actor: {parent_n}, terrain index: {i}",
+            terrain->GetName(),
+            GetName(),
+            i);
+        terrain->set_object_data(config, settings, material);
+        terrain->UpdateBounds();
+        terrain->MarkRenderStateDirty();
 
-        spawned_terrain_actors.Add(terrain_actor);
+        spawned_terrains.Add(terrain);
         materials.Add(material);
         configs.Add(config);
-        view_components.Add(terrain_actor->terrain, FTileTree{config, view_config});
-        if (terrain_actor->terrain->atlas.IsValid()) {
-            UE_LOGFMT(LogTemp, Log, "Added tile atlas for terrain actor: {n} in terrain parent actor: {parent_n}", terrain_actor->GetName(), GetName());
-            tile_atlases.Add(terrain_actor->terrain, *terrain_actor->terrain->atlas);
-        } else {
-            UE_LOGFMT(LogTemp, Warning, "Terrain actor atlas is invalid for terrain actor: {n} in terrain parent actor: {parent_n}", terrain_actor->GetName(), GetName());
-        }
+        view_components.Emplace(terrain, FTileTree{config, view_config});
+
+        tile_atlases.Emplace(terrain, terrain->atlas);
+        UE_LOGFMT(
+            LogTemp,
+            Log,
+            "Added tile atlas for terrain component: {n} in terrain parent actor: {parent_n}, terrain index: {i}",
+            terrain->GetName(),
+            GetName(),
+            i);
     }
 }
 
 void ATerrainParentActor::clear_spawned_terrains() {
     UE_LOGFMT(LogTemp, Log, "Clearing spawned terrains for terrain parent actor: {n}", GetName());
-    if (UWorld* world = GetWorld()) {
-        for (TObjectPtr<ATerrainActor>& terrain_actor : spawned_terrain_actors) {
-            if (IsValid(terrain_actor)) {
-                UE_LOGFMT(LogTemp, Log, "Destroying terrain actor: {n}", terrain_actor->GetName());
-                world->DestroyActor(terrain_actor);
-            } else {
-                UE_LOGFMT(LogTemp, Warning, "Invalid terrain actor found while clearing spawned terrains for terrain parent actor: {n}", GetName());
-            }
+    for (TObjectPtr<UTerrain>& terrain : spawned_terrains) {
+        if (IsValid(terrain)) {
+            UE_LOGFMT(LogTemp, Log, "Destroying terrain actor: {n}", terrain->GetName());
+            terrain->DestroyComponent();
+        } else {
+            UE_LOGFMT(
+                LogTemp,
+                Warning,
+                "Invalid terrain actor found while clearing spawned terrains for terrain parent actor: {n}",
+                GetName());
         }
-    } else {
-        UE_LOGFMT(LogTemp, Warning, "Failed to get world while clearing spawned terrains for terrain parent actor: {n}", GetName());
     }
 
-    spawned_terrain_actors.Reset();
+    // spawned_terrain_actors.Reset();
+    spawned_terrains.Reset();
     materials.Reset();
     configs.Reset();
     view_components.Reset();

@@ -4,9 +4,9 @@
 #include <expected>
 #include <format>
 
+#include "CoreGlobals.h"
 #include "ext_array4.h"
 #include "ext_buffer.h"
-#include "CoreGlobals.h"
 #include "Async/ParallelFor.h"
 #include "Async/ParallelTransformReduce.h"
 #include "Containers/Array.h"
@@ -201,6 +201,20 @@ TArray<T> step_by(T a, T b, T step) {
     check(step > 0);
     TArray<T> output;
     if (a < b) { for (T i = a; i < b; i += step) { output.Emplace(i); } }
+    return output;
+}
+
+template <typename T>
+struct Enumeration {
+    types::usize index;
+    T element;
+};
+
+template <typename T>
+TArray<Enumeration<T>> enumerate(const TArray<T>& input) {
+    TArray<Enumeration<T>> output;
+    output.Reserve(input.Num());
+    for (int32 i = 0; i < input.Num(); ++i) { output.Emplace(i, input[i]); }
     return output;
 }
 

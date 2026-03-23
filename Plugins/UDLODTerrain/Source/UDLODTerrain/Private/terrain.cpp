@@ -10,10 +10,6 @@ UTerrain::UTerrain() {
 }
 
 FPrimitiveSceneProxy* UTerrain::CreateSceneProxy() {
-    if (!atlas.IsValid()) {
-        return nullptr;
-    }
-
     return new FTerrainSceneProxy(this);
 }
 

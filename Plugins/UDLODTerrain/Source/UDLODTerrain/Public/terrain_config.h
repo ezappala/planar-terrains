@@ -49,7 +49,7 @@ struct FTerrainConfig {
         return *this;
     }
 
-    FString ToString() const {
+    FString ToString(const bool truncated = true) const {
         FString attachments_str;
         for (const auto& [label, config] : attachments) {
             attachments_str += FString::Printf(
@@ -64,14 +64,35 @@ struct FTerrainConfig {
         }
 
         FString tiles_str;
-        for (const auto& tile : tiles) {
-            tiles_str += FString::Printf(
-                TEXT("{face: %d, lod: %d, xy: (%d, %d)}, "),
-                tile.face,
-                tile.lod,
-                tile.xy.X,
-                tile.xy.Y
+        if (truncated) {
+            int faces = 0;
+            int lods = 0;
+            int x_range = 0;
+            int y_range = 0;
+            for (const auto& tile : tiles) {
+                faces = FMath::Max(faces, tile.face);
+                lods = FMath::Max(lods, tile.lod);
+                x_range = FMath::Max(x_range, tile.xy.X);
+                y_range = FMath::Max(y_range, tile.xy.Y);
+            }
+            tiles_str = FString::Printf(
+                TEXT("face: [0, %d], lod: [0, %d], range: [0, %d]x[0, %d], count: %d"),
+                faces,
+                lods,
+                x_range,
+                y_range,
+                tiles.Num()
             );
+        } else {
+            for (const auto& tile : tiles) {
+                tiles_str += FString::Printf(
+                    TEXT("{face: %d, lod: %d, xy: (%d, %d)}, "),
+                    tile.face,
+                    tile.lod,
+                    tile.xy.X,
+                    tile.xy.Y
+                );
+            }
         }
 
         return FString::Printf(

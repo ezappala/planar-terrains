@@ -81,6 +81,9 @@ private:
     void rebuild_terrains();
     void clear_spawned_terrains();
 
+    // UPROPERTY(Transient)
+    // TArray<TObjectPtr<ATerrainActor>> spawned_terrain_actors;
+
     UPROPERTY(Transient)
-    TArray<TObjectPtr<ATerrainActor>> spawned_terrain_actors;
+    TArray<TObjectPtr<UTerrain>> spawned_terrains;
 };

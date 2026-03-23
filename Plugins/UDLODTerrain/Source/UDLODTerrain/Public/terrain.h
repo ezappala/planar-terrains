@@ -43,15 +43,20 @@ public:
         UE_LOGFMT(LogTemp, Log, "Setting terrain data: config={c}, settings={s}", *in_config.ToString(), *in_settings.ToString());
         this->config = in_config;
         this->settings = in_settings;
-        atlas = MakeUnique<FTileAtlas>(this->config, this->settings);
+        atlas = FTileAtlas(in_config, in_settings);
         material = mat;
         UpdateBounds();
         MarkRenderStateDirty();
     }
 
+    UPROPERTY(VisibleAnywhere)
     FTerrainConfig config;
+
+    UPROPERTY(VisibleAnywhere)
     FTerrainSettings settings;
-    TUniquePtr<FTileAtlas> atlas;
+
+    UPROPERTY(VisibleAnywhere)
+    FTileAtlas atlas;
 
     UPROPERTY()
     TObjectPtr<UMaterialInstance> material;
