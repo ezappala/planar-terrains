@@ -19,7 +19,7 @@ inline FRDGBufferRef terrain_view_from_tile_tree(FRDGBuilder& gb, const FTileTre
     terrain_view->blend_range = tile_tree.blend_range;
     terrain_view->face = tile_tree.view_face;
     terrain_view->lod = tile_tree.view_lod;
-    terrain_view->coordinates = ext::iter::map<FCoordinate, ViewCoordinate, 6>(
+    terrain_view->coordinates = ext::iter::map(
         tile_tree.view_coordinates,
         [&tile_tree](const FCoordinate& view_coordinate) {
             return view_coordinate_from_coordinate(view_coordinate, tile_tree.view_lod);

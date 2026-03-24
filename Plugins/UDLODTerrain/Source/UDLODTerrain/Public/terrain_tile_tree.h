@@ -283,19 +283,20 @@ struct FTileTree {
     }
 
     void update() {
+        using ext::iter::range, ext::math::scale, ext::iter::product;
         const auto view_coordinate = FCoordinate::from_local_position(
             view_local_position,
-            static_cast<FVector3d>(ext::math::scale(side_length))
+            static_cast<FVector3d>(scale(side_length))
         );
 
         view_face = view_coordinate.face;
         // WARN: Assert face count is 0;
         view_coordinates[0] = view_coordinate;
-        for (const auto& lod : ext::iter::range<TArray<int32>, int32>(0, lod_count)) {
+        auto lods = range<TArray<int32>, int32>(0, lod_count);
+        for (const auto& lod : lods) {
             const auto origin = compute_origin(view_coordinate, lod);
-            for (const auto& [x, y] : ext::iter::product(
-                     ext::iter::range<TArray<int32>, int32>(0, tree_size),
-                     ext::iter::range<TArray<int32>, int32>(0, tree_size))
+            auto trees = range<TArray<int32>, int32>(0, tree_size);
+            for (const auto& [x, y] : product<int32, int32>(trees, trees)
             ) {
                 const auto tile_coordinate = FTileCoordinate{
                     0u,
@@ -303,10 +304,10 @@ struct FTileTree {
                     FIntPoint{origin.X + x, origin.Y + y}
                 };
                 const auto tile_dist = compute_tile_distance(tile_coordinate, view_coordinate);
-                const auto load_dist =
-                    this->load_distance / FMath::Exp2(static_cast<double>(tile_coordinate.lod));
-                const auto state = [&lod, &tile_dist, &load_dist] {
-                    if (lod == 0 || tile_dist < load_dist) { return ERequestState::Requested; }
+                const double tile_coord_lod = tile_coordinate.lod;
+                const auto dist = load_distance / FMath::Exp2(tile_coord_lod);
+                const auto state = [&lod, &tile_dist, &dist] {
+                    if (lod == 0 || tile_dist < dist) { return ERequestState::Requested; }
                     return ERequestState::Released;
                 }();
 

@@ -17,21 +17,12 @@ struct FGpuTileAtlas {
         const FTileAtlas& tile_atlas,
         const FTerrainSettings& settings
     ) : attachments{
-        ext::iter::map<FString, FAttachment, FString, FGpuAttachment>(
+        ext::iter::map(
             tile_atlas.attachments,
-            [&gb, &tile_atlas, &settings](
-            const FString& label,
-            const FAttachment& attachment
-        ) {
+            [&gb, &tile_atlas, &settings](const FString& label, const FAttachment& attachment) {
                 return MakeTuple(
                     label,
-                    FGpuAttachment(
-                        gb,
-                        label,
-                        attachment,
-                        tile_atlas,
-                        settings
-                    ));
+                    FGpuAttachment(gb, label, attachment, tile_atlas, settings));
             })
     } {}
 
@@ -56,10 +47,7 @@ struct FGpuTileAtlas {
     ) {
         gpu_tile_atlases.Reset();
         for (const auto& [terrain, tile_atlas] : tile_atlases) {
-            gpu_tile_atlases.Add(
-                terrain,
-                FGpuTileAtlas{gb, tile_atlas, settings}
-            );
+            gpu_tile_atlases.Add(terrain, FGpuTileAtlas{gb, tile_atlas, settings});
         }
     }
 

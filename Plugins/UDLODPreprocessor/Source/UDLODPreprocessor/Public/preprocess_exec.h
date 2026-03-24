@@ -110,7 +110,10 @@ PreprocessResult<TArray<FTileCoordinate>> downsample_and_stitch(
             progress->enter_progress_frame(
                 1.0f,
                 FText::Format(
-                    NSLOCTEXT("UDLODPreprocessor", "DownsampleLodGroup", "Downsampling LOD group {0}"),
+                    NSLOCTEXT(
+                        "UDLODPreprocessor",
+                        "DownsampleLodGroup",
+                        "Downsampling LOD group {0}"),
                     FText::AsNumber(lod_group_index)));
         }
         auto downsample_result = downsample<T>(tiles, context);
@@ -166,9 +169,7 @@ PreprocessResult<void> preprocess_gen(
     }
     PreprocessResult<TMap<uint32, FaceInfo>> faces_result =
         reproject_planar<T>(MoveTemp(src_dataset), context);
-    if (!faces_result.has_value()) {
-        return std::unexpected{faces_result.error()};
-    }
+    if (!faces_result.has_value()) { return std::unexpected{faces_result.error()}; }
     if (const auto canceled = check_canceled(progress); !canceled.has_value()) {
         return std::unexpected{canceled.error()};
     }
@@ -183,9 +184,7 @@ PreprocessResult<void> preprocess_gen(
         faces,
         context,
         progress);
-    if (!split_tiles_result.has_value()) {
-        return std::unexpected{split_tiles_result.error()};
-    }
+    if (!split_tiles_result.has_value()) { return std::unexpected{split_tiles_result.error()}; }
     const TArray<FTileCoordinate> split_tiles = split_tiles_result.value();
 
     if (progress != nullptr) {
@@ -197,9 +196,7 @@ PreprocessResult<void> preprocess_gen(
         split_tiles,
         context,
         progress);
-    if (!tiles_result.has_value()) {
-        return std::unexpected{tiles_result.error()};
-    }
+    if (!tiles_result.has_value()) { return std::unexpected{tiles_result.error()}; }
     const auto tiles = MoveTemp(tiles_result.value());
     if (const auto canceled = check_canceled(progress); !canceled.has_value()) {
         return std::unexpected{canceled.error()};
@@ -211,9 +208,7 @@ PreprocessResult<void> preprocess_gen(
             NSLOCTEXT("UDLODPreprocessor", "FinalizeTiles", "Finalizing terrain tiles"));
     }
     auto create_mask_result = create_mask_and_fill_no_data(tiles, context);
-    if (!create_mask_result.has_value()) {
-        return std::unexpected{create_mask_result.error()};
-    }
+    if (!create_mask_result.has_value()) { return std::unexpected{create_mask_result.error()}; }
 
     util::delete_directory(context.temp_dir);
     util::save_terrain_config(tiles, context);
@@ -305,7 +300,9 @@ inline PreprocessResult<TTuple<
             TTuple<GDALDatasetRef, FPreprocessContext>,
             TTuple<GDALDatasetRef, FPreprocessContext>
         >>(
-            FString::Printf(TEXT("Could not open heightmap source: %s"), *settings.heightmap_src_path));
+            FString::Printf(
+                TEXT("Could not open heightmap source: %s"),
+                *settings.heightmap_src_path));
     }
     if (!albedo_src_dataset) {
         return make_parse_error_result<TTuple<
@@ -322,9 +319,9 @@ inline PreprocessResult<TTuple<
         albedo_src_dataset,
         settings.albedo_data_type);
 
-    auto heightmap_rasterbands = ext::iter::map<std::expected<
-        GDALRasterBand*, CPLErrorNum>, FRasterbandConfig>(
-        rasterbands(heightmap_src_dataset),
+    auto heightmap_rasterbands_arr = rasterbands(heightmap_src_dataset);
+    auto heightmap_rasterbands = ext::iter::map<std::expected<GDALRasterBand*, CPLErrorNum>>(
+        heightmap_rasterbands_arr,
         [](const std::expected<GDALRasterBand*, CPLErrorNum>& rb) -> FRasterbandConfig {
             FRasterbandConfig band;
             band.color_interp = static_cast<EGDALColorInterp>(
@@ -332,11 +329,9 @@ inline PreprocessResult<TTuple<
             return band;
         });
 
-    auto albedo_rasterbands = ext::iter::map<
-        std::expected<GDALRasterBand*, CPLErrorNum>,
-        FRasterbandConfig
-    >(
-        rasterbands(albedo_src_dataset),
+    auto albedo_rasterbands_arr = rasterbands(albedo_src_dataset);
+    auto albedo_rasterbands = ext::iter::map<std::expected<GDALRasterBand*, CPLErrorNum>>(
+        albedo_rasterbands_arr,
         [](const std::expected<GDALRasterBand*, CPLErrorNum>& rb) -> FRasterbandConfig {
             FRasterbandConfig band;
             band.color_interp = static_cast<EGDALColorInterp>(

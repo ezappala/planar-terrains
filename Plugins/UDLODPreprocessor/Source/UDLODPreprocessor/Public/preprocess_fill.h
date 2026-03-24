@@ -12,11 +12,10 @@ inline PreprocessResult<void> fill_no_data(
     const GDALDatasetRef& src,
     const double fill_radius
 ) {
+    using std::unexpected;
     for (const auto& rasterband_result : rasterbands(src)) {
         if (!rasterband_result.has_value()) {
-            return std::unexpected{
-                FPreprocessError::Gdal(rasterband_result.error())
-            };
+            return unexpected{FPreprocessError::Gdal(rasterband_result.error())};
         }
         auto* rasterband = rasterband_result.value();
         const auto rv = GDALFillNodata(
@@ -28,7 +27,7 @@ inline PreprocessResult<void> fill_no_data(
             nullptr,
             GDALDummyProgress,
             nullptr);
-        if (rv != CE_None) { return std::unexpected{FPreprocessError::Gdal(rv)}; }
+        if (rv != CE_None) { return unexpected{FPreprocessError::Gdal(rv)}; }
     }
     return {};
 }
@@ -41,115 +40,99 @@ PreprocessResult<void> create_mask_and_fill_no_data_gen(
     const FPreprocessContext& context
 ) {
     using ext::types::usize;
+    using namespace ext;
+    using namespace ext::iter;
+    using std::unexpected, std::expected;
+
     const auto iter_result = par_iter_try_for_each<FTileCoordinate, void, FPreprocessError>(
         tiles,
         [&context](FTileCoordinate tile) -> PreprocessResult<void> {
             auto src_dataset_result = update_tile_dataset(tile, context);
             if (!src_dataset_result.has_value()) {
-                return std::unexpected{src_dataset_result.error()};
+                return unexpected{src_dataset_result.error()};
             }
             const auto src_dataset = MoveTemp(src_dataset_result.value());
 
-            PreprocessResult<TArray<ext::Buffer<uint8>>> masks_result =
-                ext::iter::map_try_collect<
-                    GDALRasterBand*,
-                    CPLErrorNum,
-                    ext::Buffer<uint8>,
-                    FPreprocessError
-                >(
+            using FExpectedBand = expected<GDALRasterBand*, CPLErrorNum>;
+            using FExpectedBuff = expected<Buffer<uint8>, FPreprocessError>;
+            using MasksFunc = FExpectedBuff(*)(FExpectedBand);
+            PreprocessResult<TArray<Buffer<uint8>>> masks_result =
+                map_try_collect<FExpectedBand, MasksFunc>(
                     rasterbands(src_dataset),
-                    [](
-                    std::expected<GDALRasterBand*, CPLErrorNum> src_raster
-                )
-                    -> std::expected<ext::Buffer<uint8>, FPreprocessError> {
+                    [](FExpectedBand src_raster) -> FExpectedBuff {
                         if (!src_raster.has_value()) {
-                            return std::unexpected{
-                                FPreprocessError::Gdal(src_raster.error())
-                            };
+                            return unexpected{FPreprocessError::Gdal(src_raster.error())};
                         }
                         auto* raster = src_raster.value();
                         auto mask_result = open_mask_band(raster);
                         if (!mask_result.has_value()) {
-                            return std::unexpected{
-                                FPreprocessError::Gdal(mask_result.error())
-                            };
+                            return unexpected{FPreprocessError::Gdal(mask_result.error())};
                         }
 
                         const auto mask = MoveTemp(mask_result.value());
 
                         const auto mask_data = read_band_as<uint8>(mask);
                         if (!mask_data.has_value()) {
-                            return std::unexpected{
-                                FPreprocessError::Gdal(mask_data.error())
-                            };
+                            return unexpected{FPreprocessError::Gdal(mask_data.error())};
                         }
-                        ext::Buffer<uint8> mask_buffer = mask_data.value();
+
+                        Buffer<uint8> mask_buffer = mask_data.value();
                         return mask_buffer;
                     });
 
             if (!masks_result.has_value()) { return std::unexpected{masks_result.error()}; }
-            const TArray<ext::Buffer<uint8>> masks = MoveTemp(masks_result.value());
+            const TArray<Buffer<uint8>> masks = MoveTemp(masks_result.value());
             const auto fill_Result = fill_no_data(
                 src_dataset,
                 static_cast<double>(context.fill_radius));
             if (!fill_Result.has_value()) { return std::unexpected{fill_Result.error()}; }
 
+            using FPreprocExpectedBand = PreprocessResult<GDALRasterBand*>;
+            using FBandsFunc = FPreprocExpectedBand(*)(FExpectedBand);
             PreprocessResult<TArray<GDALRasterBand*>> bands_result =
-                ext::iter::map_try_collect<
-                    GDALRasterBand*,
-                    CPLErrorNum,
-                    GDALRasterBand*,
-                    FPreprocessError
-                >(
+                map_try_collect<FExpectedBand, FBandsFunc>(
                     rasterbands(src_dataset),
-                    [](
-                    std::expected<GDALRasterBand*, CPLErrorNum> band_result
-                ) -> PreprocessResult<GDALRasterBand*> {
+                    [](FExpectedBand band_result) -> FPreprocExpectedBand {
                         if (band_result.has_value()) { return band_result.value(); }
 
-                        return std::unexpected{
-                            FPreprocessError::Gdal(band_result.error())
-                        };
+                        return unexpected{FPreprocessError::Gdal(band_result.error())};
                     });
 
-            if (!bands_result.has_value()) { return std::unexpected{bands_result.error()}; }
+            if (!bands_result.has_value()) { return unexpected{bands_result.error()}; }
 
             auto bands = MoveTemp(bands_result.value());
 
-            for (auto& [mask_buffer, band]
-                 : ext::iter::zip(masks, bands)) {
-                ext::BufferResult<T> band_data_result = read_band_as<T>(band);
+            auto zipped_masks_and_bands = zip<Buffer<uint8>, GDALRasterBand*>(
+                masks,
+                bands);
+
+            for (auto& [mask_buffer, band] : zipped_masks_and_bands) {
+                BufferResult<T> band_data_result = read_band_as<T>(band);
                 if (!band_data_result.has_value()) {
-                    return std::unexpected{
-                        FPreprocessError::Gdal(band_data_result.error())
-                    };
+                    return unexpected{FPreprocessError::Gdal(band_data_result.error())};
                 }
-                ext::Buffer<T>& band_data = band_data_result.value();
+                Buffer<T>& band_data = band_data_result.value();
 
-                for (auto& [mask, value] : ext::iter::zip(
-                         mask_buffer.data(),
-                         band_data.data())) { value = apply_bitmask<T>(value, mask); }
+                auto zipped_mask_values = zip<uint8, T>(mask_buffer.data(), band_data.data());
+                for (auto& [mask, value] : zipped_mask_values) {
+                    value = apply_bitmask<T>(value, mask);
+                }
 
-                std::expected<void, CPLErrorNum> write_result =
+                usize texture_size = static_cast<usize>(context.attachment.texture_size);
+                expected<void, CPLErrorNum> write_result =
                     write<T>(
                         band,
                         {0, 0},
-                        {
-                            static_cast<usize>(context.attachment.
-                                texture_size),
-                            static_cast<usize>(context.attachment.
-                                texture_size)
-                        },
+                        {texture_size, texture_size},
                         band_data);
+
                 if (!write_result.has_value()) {
-                    return std::unexpected{
-                        FPreprocessError::Gdal(write_result.error())
-                    };
+                    return unexpected{FPreprocessError::Gdal(write_result.error())};
                 }
             }
             return {};
         });
-    if (!iter_result.has_value()) { return std::unexpected{iter_result.error()}; }
+    if (!iter_result.has_value()) { return unexpected{iter_result.error()}; }
     return {};
 }
 
@@ -157,22 +140,23 @@ inline PreprocessResult<void> only_fill_no_data_gen(
     const TArray<FTileCoordinate>& tiles,
     const FPreprocessContext& context
 ) {
+    using std::unexpected, std::expected;
     const auto iter_result = par_iter_try_for_each<FTileCoordinate, void, FPreprocessError>(
         tiles,
-        [&context](const FTileCoordinate tile) -> std::expected<void, FPreprocessError> {
+        [&context](const FTileCoordinate tile) -> expected<void, FPreprocessError> {
             auto src_dataset_result = update_tile_dataset(tile, context);
             if (!src_dataset_result.has_value()) {
-                return std::unexpected{src_dataset_result.error()};
+                return unexpected{src_dataset_result.error()};
             }
             const auto src_dataset = MoveTemp(src_dataset_result.value());
             const auto fill_Result = fill_no_data(
                 src_dataset,
                 static_cast<double>(context.fill_radius));
-            if (!fill_Result.has_value()) { return std::unexpected{fill_Result.error()}; }
+            if (!fill_Result.has_value()) { return unexpected{fill_Result.error()}; }
 
             return {};
         });
-    if (!iter_result.has_value()) { return std::unexpected{iter_result.error()}; }
+    if (!iter_result.has_value()) { return unexpected{iter_result.error()}; }
 
     return {};
 }

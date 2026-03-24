@@ -20,17 +20,11 @@ struct FTileAtlas {
         const FTerrainConfig& config,
         const FTerrainSettings& settings
     ) : attachments{
-            ext::iter::map<
-                FString,
-                FAttachmentConfig,
-                FString,
-                FAttachment
-            >(
+            ext::iter::map(
                 config.attachments,
                 [&config](
                 FString name,
-                const FAttachmentConfig attachment_config
-            ) -> TTuple<FString, FAttachment> {
+                const FAttachmentConfig attachment_config) -> TTuple<FString, FAttachment> {
                     return TTuple<FString, FAttachment>{
                         name,
                         FAttachment{attachment_config, config.path}
@@ -141,7 +135,8 @@ struct FTileAtlas {
             if (best_tile_coordinate == FTileCoordinate::INVALID()) { return default_tt; }
 
             if (!existing_tiles.Contains(best_tile_coordinate)) {
-                best_tile_coordinate = best_tile_coordinate.parent().Get(FTileCoordinate::INVALID());
+                best_tile_coordinate = best_tile_coordinate.parent().Get(
+                    FTileCoordinate::INVALID());
                 continue;
             }
 

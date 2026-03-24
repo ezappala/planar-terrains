@@ -43,7 +43,10 @@ inline void tile_tree_compute_requests(
 
         const FMatrix44d clip_from_local = clip_from_world * world_from_local;
 
-        const auto hs = ext::iter::map<UE::Geometry::FHalfspace3d, FVector4f, 6>(
+        const auto hs = ext::iter::map<
+            UE::Geometry::FHalfspace3d,
+            6,
+            FVector4f(*)(const UE::Geometry::FHalfspace3d&)>(
             Frustum::from_clip_from_world(clip_from_local).half_spaces,
             [](const UE::Geometry::FHalfspace3d& space) {
                 return FVector4f{

@@ -27,10 +27,13 @@ PreprocessResult<void> neighbor_data(
         return std::unexpected{FPreprocessError::Gdal(tile_rasters_result.error())};
     }
 
+    TArray<GDALRasterBand*> tile_rasters = tile_rasters_result.value();
+
     const auto neighbor_rasters_result = try_collect_rasterbands(neighbor_dataset);
     if (!neighbor_rasters_result.has_value()) {
         return std::unexpected{FPreprocessError::Gdal(neighbor_rasters_result.error())};
     }
+    TArray<GDALRasterBand*> neighbor_rasters = neighbor_rasters_result.value();
 
     TTuple<isize_c, usize_c> rr = [&]() -> TTuple<isize_c, usize_c> {
         switch (rotation) {
@@ -69,10 +72,11 @@ PreprocessResult<void> neighbor_data(
 
     const auto& [src_offset, src_size] = rr;
 
-    for (const auto& [tile_raster, neighbor_raster] :
-         ext::iter::zip<GDALRasterBand*>(
-             tile_rasters_result.value(),
-             neighbor_rasters_result.value())) {
+    auto zipped_rasters = ext::iter::zip<GDALRasterBand*, GDALRasterBand*>(
+        tile_rasters,
+        neighbor_rasters);
+
+    for (const auto& [tile_raster, neighbor_raster] : zipped_rasters) {
         ext::BufferResult<T> buffer_result =
             read_as<T>(neighbor_raster, src_offset, src_size, src_size);
 
@@ -99,9 +103,7 @@ PreprocessResult<void> neighbor_data(
                 }
                 return ext::Buffer<T>{
                     MoveTemp(rotated_data),
-                    usize_c{
-                        shape.Get<1>(),
-                        shape.Get<0>()}
+                    usize_c{shape.Get<1>(), shape.Get<0>()}
                 };
             }
             case FaceRotation::RotateCCW: {
@@ -118,9 +120,7 @@ PreprocessResult<void> neighbor_data(
                 }
                 return ext::Buffer<T>{
                     MoveTemp(rotated_data),
-                    usize_c{
-                        shape.Get<1>(),
-                        shape.Get<0>()}
+                    usize_c{shape.Get<1>(), shape.Get<0>()}
                 };
             }
             case FaceRotation::Backside:

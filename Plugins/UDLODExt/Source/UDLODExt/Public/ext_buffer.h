@@ -39,6 +39,7 @@ struct Buffer {
     TArray<T>::RangedForConstIteratorType begin() const { return _data.begin(); }
     TArray<T>::RangedForConstIteratorType end() const { return _data.end(); }
     TArray<T>& data() { return _data; }
+    const TArray<T>& data() const { return _data; }
     types::usize len() const { return _data.Num(); }
     bool is_empty() const { return _data.IsEmpty(); }
 

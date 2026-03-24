@@ -1,332 +1,599 @@
 ﻿#pragma once
 
-#include <complex.h>
+#include <concepts>
 #include <expected>
-#include <format>
+#include <functional>
+#include <type_traits>
+#include <utility>
 
-#include "CoreGlobals.h"
 #include "ext_array4.h"
 #include "ext_buffer.h"
 #include "Async/ParallelFor.h"
-#include "Async/ParallelTransformReduce.h"
 #include "Containers/Array.h"
 #include "Containers/Deque.h"
 #include "Containers/Map.h"
 #include "Containers/Set.h"
-#include "Misc/ScopeLock.h"
+#include "Misc/AssertionMacros.h"
 #include "Templates/Tuple.h"
 
 namespace ext::iter {
-/**
- * Create an array of multiple arrays in lockstep. The zip function yeilds
- * elements until any subarray is exhausted.
- */
+namespace detail {
 template <typename T>
-TArray<TTuple<T, T>> zip(TArray<T> a, TArray<T> b) {
-    auto shortest = FMath::Min(a.Num(), b.Num());
-    TArray<TTuple<T, T>> output;
-    output.Reserve(shortest);
-    for (int32 i = 0; i < shortest; ++i) { output.Emplace(a[i], b[i]); }
+using decay_invoke_result_t = std::decay_t<T>;
+
+template <typename T>
+struct expected_traits;
+
+template <typename value, typename Error>
+struct expected_traits<std::expected<value, Error>> {
+    using value_type = value;
+    using error_type = Error;
+};
+
+template <typename T>
+inline constexpr bool is_expected_v = false;
+
+template <typename value, typename Error>
+inline constexpr bool is_expected_v<std::expected<value, Error>> = true;
+
+template <typename T>
+struct pair_like_traits;
+
+template <typename K, typename V>
+struct pair_like_traits<TTuple<K, V>> {
+    using first_type = K;
+    using second_type = V;
+
+    static const K& first(const TTuple<K, V>& pair) { return pair.template Get<0>(); }
+    static const V& second(const TTuple<K, V>& pair) { return pair.template Get<1>(); }
+};
+
+template <typename K, typename V>
+struct pair_like_traits<std::pair<K, V>> {
+    using first_type = K;
+    using second_type = V;
+
+    static const K& first(const std::pair<K, V>& pair) { return pair.first; }
+    static const V& second(const std::pair<K, V>& pair) { return pair.second; }
+};
+
+template <typename T>
+concept pair_like = requires(const T& pair) {
+    typename pair_like_traits<std::decay_t<T>>::first_type;
+    typename pair_like_traits<std::decay_t<T>>::second_type;
+    { pair_like_traits<std::decay_t<T>>::first(pair) };
+    { pair_like_traits<std::decay_t<T>>::second(pair) };
+};
+
+template <typename ContainerType, typename T>
+inline constexpr bool is_supported_range_container_v =
+    std::is_same_v<ContainerType, TArray<T>> ||
+    std::is_same_v<ContainerType, TSet<T>> ||
+    std::is_same_v<ContainerType, TDeque<T>>;
+
+template <typename T>
+void append_value(TArray<T>& output, T value) { output.Emplace(MoveTemp(value)); }
+
+template <typename T>
+void append_value(TSet<T>& output, T value) { output.Emplace(MoveTemp(value)); }
+
+template <typename T>
+void append_value(TDeque<T>& output, T value) { output.EmplaceLast(MoveTemp(value)); }
+
+template <typename T>
+int32 min_num(TConstArrayView<T> input) { return input.Num(); }
+
+template <typename T, typename... Ts>
+int32 min_num(TConstArrayView<T> input, TConstArrayView<Ts>... inputs) {
+    int32 Shortest = input.Num();
+    ((Shortest = FMath::Min(Shortest, inputs.Num())), ...);
+    return Shortest;
+}
+
+template <typename T>
+TArray<T> snapshot(const TSet<T>& input) {
+    TArray<T> output;
+    output.Reserve(input.Num());
+    for (const T& Element : input) { output.Emplace(Element); }
     return output;
 }
 
-template <typename T, typename... Ts>
-TArray<TTuple<T, Ts...>> zip(TArray<T> a, TArray<Ts>... arrays) {
-    auto shortest = FMath::Min(a.Num(), arrays.Num()...);
-    TArray<TTuple<T, Ts...>> output;
+template <typename T>
+TArray<T> snapshot(const TDeque<T>& input) {
+    TArray<T> output;
+    output.Reserve(input.Num());
+    for (int32 index = 0; index < input.Num(); ++index) { output.Emplace(input[index]); }
+    return output;
+}
+
+template <typename K, typename V>
+TArray<TPair<K, V>> snapshot(const TMap<K, V>& input) {
+    TArray<TPair<K, V>> output;
+    output.Reserve(input.Num());
+    for (const TPair<K, V>& Entry : input) { output.Emplace(Entry.Key, Entry.value); }
+    return output;
+}
+} // namespace detail
+
+/**
+ * Create an array of multiple arrays in lockstep. The zip function yields
+ * elements until any subarray is exhausted.
+ */
+template <typename A, typename B>
+TArray<TTuple<A, B>> zip(TConstArrayView<A> left, TConstArrayView<B> right) {
+    const int32 Shortest = FMath::Min(left.Num(), right.Num());
+
+    TArray<TTuple<A, B>> output;
+    output.Reserve(Shortest);
+
+    for (int32 index = 0; index < Shortest; ++index) { output.Emplace(left[index], right[index]); }
+
+    return output;
+}
+
+template <typename A, typename... Ts>
+TArray<TTuple<A, Ts...>> zip(TConstArrayView<A> input, TConstArrayView<Ts>... inputs) {
+    const int32 shortest = detail::min_num(input, inputs...);
+
+    TArray<TTuple<A, Ts...>> output;
     output.Reserve(shortest);
-    for (int32 i = 0; i < shortest; ++i) { output.Emplace(a[i], arrays[i]...); }
+
+    for (int32 index = 0; index < shortest; ++index) {
+        output.Emplace(input[index], inputs[index]...);
+    }
+
     return output;
 }
 
 template <typename T1, typename T2>
-TArray4D<TTuple<T1, T2>> zip(TArray4D<T1> a, TArray4D<T2> b) {
-    auto shortest_d0 = FMath::Min(a.get_dim0(), b.get_dim0());
-    auto shortest_d1 = FMath::Min(a.get_dim1(), b.get_dim1());
-    auto shortest_d2 = FMath::Min(a.get_dim2(), b.get_dim2());
-    auto shortest_d3 = FMath::Min(a.get_dim3(), b.get_dim3());
-    TArray4D<TTuple<T1, T2>> output(shortest_d0, shortest_d1, shortest_d2, shortest_d3);
+TArray4D<TTuple<T1, T2>> zip(const TArray4D<T1>& left, const TArray4D<T2>& right) {
+    const auto sd0 = FMath::Min(left.get_dim0(), right.get_dim0());
+    const auto sd1 = FMath::Min(left.get_dim1(), right.get_dim1());
+    const auto sd2 = FMath::Min(left.get_dim2(), right.get_dim2());
+    const auto sd3 = FMath::Min(left.get_dim3(), right.get_dim3());
+
+    TArray4D<TTuple<T1, T2>> output(sd0, sd1, sd2, sd3);
+
     using types::usize;
-    for (usize i0 = 0; i0 < shortest_d0; ++i0) {
-        for (usize i1 = 0; i1 < shortest_d1; ++i1) {
-            for (usize i2 = 0; i2 < shortest_d2; ++i2) {
-                for (usize i3 = 0; i3 < shortest_d3; ++i3) {
-                    output(i0, i1, i2, i3) = {a(i0, i1, i2, i3), b(i0, i1, i2, i3)};
+    for (usize i0 = 0; i0 < sd0; ++i0) {
+        for (usize i1 = 0; i1 < sd1; ++i1) {
+            for (usize i2 = 0; i2 < sd2; ++i2) {
+                for (usize i3 = 0; i3 < sd3; ++i3) {
+                    output(i0, i1, i2, i3) = TTuple<T1, T2>{
+                        left(i0, i1, i2, i3),
+                        right(i0, i1, i2, i3)};
                 }
             }
         }
     }
+
     return output;
 }
 
 /**
- * Create an array of the "cartesian product" of two input arrays.
+ * Create an array of the cartesian product of two input arrays.
  */
-template <typename T>
-TArray<TTuple<T, T>> product(TArray<T> a, TArray<T> b) {
-    TArray<TTuple<T, T>> output;
-    output.Reserve(a.Num() * b.Num());
-    for (int32 i = 0; i < a.Num(); ++i) {
-        for (int32 j = 0; j < b.Num(); ++j) { output.Emplace(a[i], b[j]); }
+template <typename A, typename B>
+TArray<TTuple<A, B>> product(TConstArrayView<A> left, TConstArrayView<B> right) {
+    TArray<TTuple<A, B>> output;
+    output.Reserve(left.Num() * right.Num());
+
+    for (const A& left_element : left) {
+        for (const B& right_element : right) { output.Emplace(left_element, right_element); }
     }
+
     return output;
 }
 
-template <typename T, typename Ret>
-TArray<Ret> map(TArray<T> input, const TFunction<Ret(T)>& func) {
+template <typename A, typename B, typename F>
+TArray<detail::decay_invoke_result_t<std::invoke_result_t<F&, const A&, const B&>>> zip_map(
+    TConstArrayView<A> left,
+    TConstArrayView<B> right,
+    F&& func) {
+    using Ret = detail::decay_invoke_result_t<std::invoke_result_t<F&, const A&, const B&>>;
+
+    const int32 shortest = FMath::Min(left.Num(), right.Num());
+
+    TArray<Ret> output;
+    output.Reserve(shortest);
+
+    for (int32 index = 0; index < shortest; ++index) {
+        output.Emplace(std::invoke(func, left[index], right[index]));
+    }
+
+    return output;
+}
+
+template <typename T, typename Ret, typename F>
+void map_into(TConstArrayView<T> input, TArray<Ret>& output, F&& func) {
+    output.Reset();
+    output.Reserve(input.Num());
+
+    for (const T& Element : input) { output.Emplace(std::invoke(func, Element)); }
+}
+
+template <typename T, typename F>
+TArray<detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>> map(
+    TConstArrayView<T> input,
+    F&& func) {
+    using Ret = detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>;
+
     TArray<Ret> output;
     output.Reserve(input.Num());
-    for (int32 i = 0; i < input.Num(); ++i) { output.Emplace(func(input[i])); }
+
+    for (const T& element : input) { output.Emplace(std::invoke(func, element)); }
+
     return output;
 }
 
-template <typename T, typename ExpT, typename ErrT>
-TArray<std::expected<ExpT, ErrT>> map(
-    TArray<T> input,
-    const TFunction<std::expected<ExpT, ErrT>(T)>& func) {
-    TArray<std::expected<ExpT, ErrT>> output;
-    output.Reserve(input.Num());
+template <typename T, types::usize N, typename F>
+TStaticArray<detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>, N> map(
+    const TStaticArray<T, N>& input,
+    F&& func) {
+    using Ret = detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>;
 
-    for (int32 i = 0; i < input.Num(); ++i) { output.Emplace(func(input[i])); }
-    return output;
-}
-
-template <typename T, typename Ret, types::usize N>
-TStaticArray<Ret, N> map(TStaticArray<T, N> input, const TFunction<Ret(T)>& func) {
     TStaticArray<Ret, N> output;
-    for (types::usize i = 0; i < N; ++i) { output[i] = func(input[i]); }
-    return output;
-}
-
-template <typename Key, typename Value, typename RetKey, typename RetValue>
-TMap<RetKey, RetValue> map(
-    TMap<Key, Value> input,
-    const TFunction<TTuple<RetKey, RetValue>(Key, Value)>& func
-) {
-    TMap<RetKey, RetValue> output;
-    for (const auto& [key, value] : input) {
-        const auto& [new_key, new_value] = func(key, value);
-        output.Emplace(new_key, new_value);
+    for (types::usize index = 0; index < N; ++index) {
+        output[index] = std::invoke(func, input[index]);
     }
     return output;
 }
 
+template <typename Key, typename value, typename F>
+    requires detail::pair_like<std::invoke_result_t<F&, const Key&, const value&>>
+TMap<
+    typename detail::pair_like_traits<detail::decay_invoke_result_t<std::invoke_result_t<F&, const
+        Key&, const value&>>>::first_type,
+    typename detail::pair_like_traits<detail::decay_invoke_result_t<std::invoke_result_t<F&, const
+        Key&, const value&>>>::second_type> map(const TMap<Key, value>& input, F&& func) {
+    using Pair = detail::decay_invoke_result_t<std::invoke_result_t<F&, const Key&, const value&>>;
+    using PairTraits = detail::pair_like_traits<Pair>;
+    using RetKey = PairTraits::first_type;
+    using Retvalue = PairTraits::second_type;
+
+    TMap<RetKey, Retvalue> output;
+
+    for (const TPair<Key, value>& entry : input) {
+        const Pair result = std::invoke(func, entry.Key, entry.Value);
+        output.Emplace(PairTraits::first(result), PairTraits::second(result));
+    }
+
+    return output;
+}
+
 template <typename T>
-TDeque<T> deque_from_array(TArray<T> input) {
+TDeque<T> deque_from_array(TConstArrayView<T> input) {
     TDeque<T> output;
-    for (int32 i = 0; i < input.Num(); ++i) { output.EmplaceLast(input[i]); }
+    for (const T& element : input) { output.EmplaceLast(element); }
     return output;
 }
 
-template <typename ContainerType, typename T>
-    requires std::is_arithmetic_v<T>
-ContainerType range(T a, T b) {
-    check(a < b);
+template <typename ContainerType, std::integral T>
+    requires detail::is_supported_range_container_v<ContainerType, T>
+ContainerType range(T start, T end) {
+    check(start < end);
+
     ContainerType output;
-    for (T i = a; i < b; ++i) {
-        if constexpr (
-            std::is_same_v<ContainerType, TSet<T>> ||
-            std::is_same_v<ContainerType, TArray<T>>
-        ) {
-            output.Emplace(i);
-        } else if constexpr (std::is_same_v<ContainerType, TDeque<T>>) {
-            output.EmplaceLast(i);
-        } else {
-            static_assert(
-                std::is_same_v<ContainerType, TSet<T>> ||
-                std::is_same_v<ContainerType, TArray<T>> ||
-                std::is_same_v<ContainerType, TDeque<T>>,
-                "range only supports TSet, TArray, and TDeque as ContainerType"
-            );
-        }
+    if constexpr (std::is_same_v<ContainerType, TArray<T>>) {
+        output.Reserve(static_cast<int32>(end - start));
+    } else if constexpr (std::is_same_v<ContainerType, TSet<T>>) {
+        output.Reserve(static_cast<int32>(end - start));
     }
+
+    for (T value = start; value < end; ++value) { detail::append_value(output, value); }
+
     return output;
 }
 
-template <typename ContainerType, typename T>
-    requires std::is_arithmetic_v<T>
-ContainerType range_inclusive(T a, T b) { return range<ContainerType, T>(a, b + 1); }
+template <typename ContainerType, std::integral T>
+    requires detail::is_supported_range_container_v<ContainerType, T>
+ContainerType range_inclusive(T start, T end) {
+    check(start <= end);
 
-template <typename T, typename Ret>
-    requires std::is_arithmetic_v<T>
-TArray<Ret> map_range(T a, T b, const TFunction<Ret(T)>& func) {
-    check(a < b);
+    ContainerType output;
+    if constexpr (std::is_same_v<ContainerType, TArray<T>>) {
+        output.Reserve(static_cast<int32>(end - start + 1));
+    } else if constexpr (std::is_same_v<ContainerType, TSet<T>>) {
+        output.Reserve(static_cast<int32>(end - start + 1));
+    }
+
+    for (T value = start;; ++value) {
+        detail::append_value(output, value);
+        if (value == end) { break; }
+    }
+
+    return output;
+}
+
+template <std::integral T, typename F>
+TArray<detail::decay_invoke_result_t<std::invoke_result_t<F&, T>>> map_range(
+    T start,
+    T end,
+    F&& func) {
+    using Ret = detail::decay_invoke_result_t<std::invoke_result_t<F&, T>>;
+
+    check(start < end);
+
     TArray<Ret> output;
-    for (T i = a; i < b; ++i) { output.Emplace(func(i)); }
+    output.Reserve(static_cast<int32>(end - start));
+
+    for (T value = start; value < end; ++value) { output.Emplace(std::invoke(func, value)); }
+
     return output;
 }
 
-template <typename T, typename Ret>
-    requires std::is_arithmetic_v<T>
-TArray<Ret> map_range_inclusive(T a, T b, const TFunction<Ret(T)>& func) {
-    return map_range(a, b + 1, func);
+template <std::integral T, typename F>
+TArray<detail::decay_invoke_result_t<std::invoke_result_t<F&, T>>> map_range_inclusive(
+    T start,
+    T end,
+    F&& func) {
+    using Ret = detail::decay_invoke_result_t<std::invoke_result_t<F&, T>>;
+
+    check(start <= end);
+
+    TArray<Ret> output;
+    output.Reserve(static_cast<int32>(end - start + 1));
+
+    for (T value = start;; ++value) {
+        output.Emplace(std::invoke(func, value));
+        if (value == end) { break; }
+    }
+
+    return output;
 }
 
 template <typename T>
-TArray<T> rev(TArray<T> input) {
+TArray<T> rev(TConstArrayView<T> input) {
     TArray<T> output;
     output.Reserve(input.Num());
-    for (int32 i = input.Num() - 1; i >= 0; --i) { output.Emplace(input[i]); }
+
+    for (int32 index = input.Num(); index-- > 0;) { output.Emplace(input[index]); }
+
     return output;
 }
 
-template <typename T, typename Ret>
-    requires std::is_arithmetic_v<T>
-TArray<Ret> map_rev(TArray<T> input, const TFunction<Ret(T)>& func) {
+template <typename T, typename F>
+TArray<detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>> map_rev(
+    TConstArrayView<T> input,
+    F&& func) {
+    using Ret = detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>;
+
     TArray<Ret> output;
     output.Reserve(input.Num());
-    for (int32 i = input.Num() - 1; i >= 0; --i) { output.Emplace(func(input[i])); }
+
+    for (int32 index = input.Num(); index-- > 0;) {
+        output.Emplace(std::invoke(func, input[index]));
+    }
+
     return output;
 }
 
-template <typename T, typename Ret>
-    requires std::is_arithmetic_v<T>
-TArray<Ret> map_range_rev(T a, T b, const TFunction<Ret(T)>& func) {
-    check(a < b);
+template <std::integral T, typename F>
+TArray<detail::decay_invoke_result_t<std::invoke_result_t<F&, T>>> map_range_rev(
+    T start,
+    T end,
+    F&& func) {
+    using Ret = detail::decay_invoke_result_t<std::invoke_result_t<F&, T>>;
+
+    check(start < end);
+
     TArray<Ret> output;
-    for (T i = b - 1; i >= a; --i) { output.Emplace(func(i)); }
+    output.Reserve(static_cast<int32>(end - start));
+
+    for (T value = end; value-- > start;) { output.Emplace(std::invoke(func, value)); }
+
     return output;
 }
 
-template <typename T, typename Ret>
-    requires std::is_arithmetic_v<T>
-TArray<Ret> map_range_inclusive_rev(T a, T b, const TFunction<Ret(T)>& func) {
-    return map_range_rev(a, b + 1, func);
+template <std::integral T, typename F>
+TArray<detail::decay_invoke_result_t<std::invoke_result_t<F&, T>>> map_range_inclusive_rev(
+    T start,
+    T end,
+    F&& func) {
+    using Ret = detail::decay_invoke_result_t<std::invoke_result_t<F&, T>>;
+
+    check(start <= end);
+
+    TArray<Ret> output;
+    output.Reserve(static_cast<int32>(end - start + 1));
+
+    for (T value = end;; --value) {
+        output.Emplace(std::invoke(func, value));
+        if (value == start) { break; }
+    }
+
+    return output;
 }
 
-template <typename T>
-    requires std::is_arithmetic_v<T>
-TArray<T> step_by(T a, T b, T step) {
-    check(a < b);
+template <std::integral T>
+TArray<T> step_by(T start, T end, T step) {
+    check(start < end);
     check(step > 0);
+
     TArray<T> output;
-    if (a < b) { for (T i = a; i < b; i += step) { output.Emplace(i); } }
+
+    for (T value = start; value < end; value = static_cast<T>(value + step)) {
+        output.Emplace(value);
+    }
+
     return output;
 }
 
 template <typename T>
-struct Enumeration {
-    types::usize index;
-    T element;
-};
-
-template <typename T>
-TArray<Enumeration<T>> enumerate(const TArray<T>& input) {
-    TArray<Enumeration<T>> output;
+TArray<TTuple<types::usize, T>> enumerate(TConstArrayView<T> input) {
+    TArray<TTuple<types::usize, T>> output;
     output.Reserve(input.Num());
-    for (int32 i = 0; i < input.Num(); ++i) { output.Emplace(i, input[i]); }
+
+    for (int32 index = 0; index < input.Num(); ++index) {
+        output.Emplace(static_cast<types::usize>(index), input[index]);
+    }
+
     return output;
 }
 
 /**
- * Return an array of indexes and references to elements of the input array.
+ * Return an array of indexes and values from the input array.
  * Elements are visited in the logical order of the array, which is where the
  * rightmost index is varying the fastest.
  *
- * Note that iput arrays are row-major, meaning the shape is (width, height)
+ * Note that input arrays are row-major, meaning the shape is (width, height)
  * but the rightmost index is the x coordinate, which is the column. This is
  * because GDAL datasets are row-major, and we want to be able to index into
  * them directly.
  */
 template <typename T>
 TArray<TTuple<types::usize, types::usize, T>> indexed_iter(
-    TArray<T> input,
+    TConstArrayView<T> input,
     TTuple<types::usize, types::usize> shape
 ) {
+    check(shape.Get<0>() > 0);
+
     TArray<TTuple<types::usize, types::usize, T>> output;
     output.Reserve(input.Num());
-    for (int32 i = 0; i < input.Num(); ++i) {
-        // grab the correct index based on row-major shape input
-        auto x = i % shape.Get<0>();
-        auto y = i / shape.Get<0>();
-        output.Emplace(TTuple<types::usize, types::usize, T>{x, y, input[i]});
+
+    const types::usize Width = shape.Get<0>();
+
+    for (int32 index = 0; index < input.Num(); ++index) {
+        const types::usize X = static_cast<types::usize>(index) % Width;
+        const types::usize Y = static_cast<types::usize>(index) / Width;
+        output.Emplace(X, Y, input[index]);
     }
+
     return output;
 }
 
-template <typename T>
-TArray<TTuple<types::usize, types::usize, T>> indexed_iter(Buffer<T> input) {
-    return indexed_iter(input.data(), input.shape());
-}
-
-template <typename T>
-TArray<T> filter(TArray<T> input, const TFunction<bool(T)>& func) {
-    TArray<T> output;
-    for (int32 i = 0; i < input.Num(); ++i) { if (func(input[i])) { output.Emplace(input[i]); } }
-    return output;
-}
-
-template <typename T, typename Ret>
-TArray<Ret> filter_map(
-    TArray<T> input,
-    const TFunction<TOptional<Ret>(T)>& func
+template <typename T, typename F>
+void indexed_for_each(
+    TConstArrayView<T> input,
+    TTuple<types::usize, types::usize> shape,
+    F&& func
 ) {
+    check(shape.Get<0>() > 0);
+
+    const types::usize width = shape.Get<0>();
+
+    for (int32 index = 0; index < input.Num(); ++index) {
+        const types::usize X = static_cast<types::usize>(index) % width;
+        const types::usize Y = static_cast<types::usize>(index) / width;
+        std::invoke(func, X, Y, input[index]);
+    }
+}
+
+template <typename T>
+TArray<TTuple<types::usize, types::usize, T>> indexed_iter(const Buffer<T>& input) {
+    const types::usize_c shape = input.shape();
+    check(shape.Get<0>() > 0);
+
+    TArray<TTuple<types::usize, types::usize, T>> output;
+    output.Reserve(input.len());
+
+    const types::usize width = shape.Get<0>();
+
+    for (int32 index = 0; index < input.len(); ++index) {
+        const types::usize X = static_cast<types::usize>(index) % width;
+        const types::usize Y = static_cast<types::usize>(index) / width;
+        output.Emplace(X, Y, input.data()[index]);
+    }
+
+    return output;
+}
+
+template <typename T, typename Ret, typename F>
+void filter_map_into(TConstArrayView<T> input, TArray<Ret>& output, F&& func) {
+    output.Reset();
+    output.Reserve(input.Num());
+
+    for (const T& Element : input) {
+        TOptional<Ret> result = std::invoke(func, Element);
+        if (result.IsSet()) { output.Emplace(result.GetValue()); }
+    }
+}
+
+template <typename T, typename Ret, typename F>
+TArray<Ret> filter_map(TConstArrayView<T> input, F&& func) {
     TArray<Ret> output;
-    for (int32 i = 0; i < input.Num(); ++i) {
-        auto result = func(input[i]);
-        if (result.IsSet()) { output.Emplace(result.GetValue()); }
-    }
+    filter_map_into<T, Ret>(input, output, std::forward<F>(func));
     return output;
 }
 
-template <typename T, typename Ret>
-TSet<Ret> filter_map_unique(
-    TArray<T> input,
-    const TFunction<TOptional<Ret>(T)>& func
-) {
+template <typename T, typename F>
+TArray<T> filter(TConstArrayView<T> input, F&& func) {
+    TArray<T> output;
+    output.Reserve(input.Num());
+
+    for (const T& element : input) { if (std::invoke(func, element)) { output.Emplace(element); } }
+
+    return output;
+}
+
+template <typename T, typename F>
+void filter_into(TConstArrayView<T> input, TArray<T>& output, F&& func) {
+    output.Reset();
+    output.Reserve(input.Num());
+
+    for (const T& element : input) { if (std::invoke(func, element)) { output.Emplace(element); } }
+}
+
+template <typename T, typename Ret, typename F>
+TSet<Ret> filter_map_unique(TConstArrayView<T> input, F&& func) {
     TSet<Ret> output;
-    for (int32 i = 0; i < input.Num(); ++i) {
-        auto result = func(input[i]);
+    output.Reserve(input.Num());
+
+    for (const T& element : input) {
+        TOptional<Ret> result = std::invoke(func, element);
         if (result.IsSet()) { output.Emplace(result.GetValue()); }
     }
+
     return output;
 }
 
 /**
- * From the Rust itertools crate documentaiton on try_collect:
+ * Apply a function that returns std::expected<Ret, Err> and collect the
+ * unwrapped values into a single expected.
  *
- * @code{.rs}.try_collect()@endcode
- * is a more convenient way of writing
- * @code{.rs}.collect::<Result<_, _>>()@endcode
- *
- * @par Example
- * @code{.rs}
- * use std::{fs, io};
- * use itertools::Itertools;
- * fn process_dir_entries(entries: &[fs::DirEntry]) {
- *      // ...
- * }
- *
- * fn do_stuff() -> io::Result<()> {
- *      let entries: Vec<_> = fs::read_dir(".")?.try_collect()?;
- *      process_dir_entries(&entries);
- *
- *      Ok(())
- * }
- * @endcode
- *
- * @brief Apply a function to a collection that returns a
- * @code std::expected<Ret, Err>@endcode and return a collection of all values
- * wrapped in an expected.
- *
- * @note A collection of Results are collected into  a result of a collection.
- * If any of the results is an error, the first error is returned.
- * Otherwise, a collection of all the unwrapped values is returned.
- *
+ * The first error short-circuits the collection.
  */
-template <typename T, typename InErr, typename Ret, typename OutErr>
-std::expected<TArray<Ret>, OutErr> map_try_collect(
-    TArray<std::expected<T, InErr>> input,
-    const TFunction<std::expected<Ret, OutErr>(std::expected<T, InErr>)
-    >& func
-) {
+template <typename T, typename F>
+std::expected<
+    TArray<typename detail::expected_traits<detail::decay_invoke_result_t<std::invoke_result_t<F&,
+        const T&>>>::value_type>,
+    typename detail::expected_traits<detail::decay_invoke_result_t<std::invoke_result_t<F&, const T
+        &>>>::error_type> map_try_collect(TConstArrayView<T> input, F&& func) {
+    using Result = detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>;
+    static_assert(
+        detail::is_expected_v<Result>,
+        "map_try_collect requires func to return std::expected<...>");
+
+    using Ret = detail::expected_traits<Result>::value_type;
+    // using Err = detail::expected_traits<Result>::error_type;
+
     TArray<Ret> output;
     output.Reserve(input.Num());
-    for (int32 i = 0; i < input.Num(); ++i) {
-        auto result = func(input[i]);
-        if (!result.has_value()) { return std::unexpected{result.error()}; }
-        output.Emplace(result.value());
+
+    for (const T& element : input) {
+        Result mapped = std::invoke(func, element);
+        if (!mapped.has_value()) { return std::unexpected(mapped.error()); }
+        output.Emplace(mapped.value());
     }
+
+    return output;
+}
+
+template <typename T>
+TArray<T> drain(TArray<T>& input) {
+    TArray<T> output = MoveTemp(input);
+    input.Reset();
+    return output;
+}
+
+template <typename T>
+TArray<T> drain(TDeque<T>& input) {
+    TArray<T> output;
+    output.Reserve(input.Num());
+
+    for (int32 index = 0; index < input.Num(); ++index) { output.Emplace(MoveTemp(input[index])); }
+
+    input.Empty();
     return output;
 }
 
@@ -334,221 +601,185 @@ template <typename ContainerType, typename T>
 TArray<T> drain(ContainerType& input) {
     TArray<T> output;
     output.Reserve(input.Num());
-    for (const auto& element : input) { output.Emplace(element); }
+
+    for (const T& element : input) { output.Emplace(element); }
+
     input.Empty();
     return output;
 }
 
 template <typename T, typename B, typename F>
-B fold(TArray<T> input, B init, F func) {
-    auto accum = init;
-    while (!input.IsEmpty()) {
-        auto element = input.Pop();
-        accum = func(accum, element);
-    }
+B fold(TConstArrayView<T> input, B init, F&& func) {
+    B accum = MoveTemp(init);
+    for (const T& Element : input) { accum = std::invoke(func, MoveTemp(accum), Element); }
     return accum;
 }
 
 template <typename T>
-TArray<T> flatten(const TArray<TArray<T>> Array) {
+TArray<T> flatten(const TArray<TArray<T>>& input) {
+    int32 total_count = 0;
+    for (const TArray<T>& subarr : input) { total_count += subarr.Num(); }
+
     TArray<T> output;
-    for (const auto& subarray : Array) { output.Append(subarray); }
+    output.Reserve(total_count);
+
+    for (const TArray<T>& subarr : input) { output.Append(subarr); }
+
     return output;
 }
 
-template <typename T>
-void retain(TDeque<T>& input, TFunction<bool(T)> f) {
-    const auto len = input.Num();
-    auto idx = 0;
-    auto cur = 0;
+template <typename T, typename F>
+void retain(TDeque<T>& input, F&& predicate) {
+    const int32 len = input.Num();
+    int32 write_index = 0;
 
-    while (cur < len) {
-        if (!f(input[cur])) {
-            cur += 1;
-            break;
-        }
-        cur += 1;
-        idx += 1;
+    for (int32 read_index = 0; read_index < len; ++read_index) {
+        if (!std::invoke(predicate, input[read_index])) { continue; }
+
+        if (write_index != read_index) { Swap(input[write_index], input[read_index]); }
+
+        ++write_index;
     }
 
-    while (cur < len) {
-        if (!f(input[cur])) {
-            cur += 1;
-            continue;
-        }
-
-        Swap(input[idx], input[cur]);
-        cur += 1;
-        idx += 1;
-    }
-
-    if (cur != idx) {
-        // drop all elements after idx
-        while (input.Num() > idx) {
-            T dummy;
-            if (!input.TryPopLast(dummy)) {
-                UE_LOG(LogTemp, Fatal, TEXT("Failed to pop from deque while retaining!"));
-            }
-        }
+    while (input.Num() > write_index) {
+        T removed;
+        const bool was_removed = input.TryPopLast(removed);
+        check(was_removed);
     }
 }
 
-template <typename K, typename V>
-void retain(TMap<K, V>& input, const TFunction<bool(K, V)>& f) {
+template <typename K, typename V, typename F>
+void retain(TMap<K, V>& input, F&& predicate) {
     for (auto it = input.CreateIterator(); it; ++it) {
-        if (!f(it.Key(), it.Value())) { it.RemoveCurrent(); }
+        if (!std::invoke(predicate, it.Key(), it.Value())) { it.RemoveCurrent(); }
     }
 }
 
-template <typename T>
-void retain(TArray<T>& input, const TFunction<bool(T)>& f) {
-    int32 idx = 0;
-    for (int32 i = 0; i < input.Num(); ++i) { if (f(input[i])) { input[idx++] = input[i]; } }
-    if (idx < input.Num()) { input.SetNum(idx); }
+template <typename T, typename F>
+void retain(TArray<T>& input, F&& predicate) {
+    int32 write_index = 0;
+
+    for (int32 read_index = 0; read_index < input.Num(); ++read_index) {
+        if (std::invoke(predicate, input[read_index])) {
+            if (write_index != read_index) { input[write_index] = MoveTemp(input[read_index]); }
+            ++write_index;
+        }
+    }
+
+    if (write_index < input.Num()) { input.SetNum(write_index, EAllowShrinking::No); }
 }
 
 namespace parallel {
-template <typename T>
-TArray<T> par_map_impl(TArray<T> input, const TFunction<T(T)>& func) {
-    TArray<T> output;
-    output.SetNum(input.Num());
-    ParallelFor(input.Num(), [&](int32 i) { output[i] = func(input[i]); });
+template <typename T, typename F>
+TArray<detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>> par_map(
+    TConstArrayView<T> input,
+    F&& func) {
+    using Ret = detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>;
+
+    TArray<Ret> output;
+    output.SetNum(input.Num(), EAllowShrinking::No);
+
+    ParallelFor(
+        input.Num(),
+        [&](int32 index) { output[index] = std::invoke(func, input[index]); });
+
     return output;
 }
 
-template <typename T>
-TSet<T> par_map_impl(TArray<T> input, const TFunction<T(T)>& func) {
-    TSet<T> output;
+template <typename T, typename F>
+TSet<detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>> par_map(
+    const TSet<T>& input,
+    F&& func) {
+    using Ret = detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>;
+
+    const TArray<T> snapshot = detail::snapshot(input);
+    TArray<Ret> mapped;
+    mapped.SetNum(snapshot.Num(), EAllowShrinking::No);
+
     ParallelFor(
-        input.Num(),
-        [&](int32 i) {
-            const auto result = func(input[i]);
-            // ReSharper disable once CppLocalVariableWithNonTrivialDtorIsNeverUsed
-            FScopeLock lock(&output.GetCriticalSection());
-            output.Emplace(result);
-        });
+        snapshot.Num(),
+        [&](int32 index) { mapped[index] = std::invoke(func, snapshot[index]); });
+
+    TSet<Ret> output;
+    output.Reserve(mapped.Num());
+    for (Ret& element : mapped) { output.Emplace(MoveTemp(element)); }
+
     return output;
 }
 
-template <typename T>
-TDeque<T> par_map_impl(TArray<T> input, const TFunction<T(T)>& func) {
-    TDeque<T> output;
+template <typename T, typename F>
+TDeque<detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>> par_map(
+    const TDeque<T>& input,
+    F&& func) {
+    using Ret = detail::decay_invoke_result_t<std::invoke_result_t<F&, const T&>>;
+
+    const TArray<T> snapshot = detail::snapshot(input);
+    TArray<Ret> mapped;
+    mapped.SetNum(snapshot.Num(), EAllowShrinking::No);
+
     ParallelFor(
-        input.Num(),
-        [&](int32 i) {
-            const auto result = func(input[i]);
-            // ReSharper disable once CppLocalVariableWithNonTrivialDtorIsNeverUsed
-            FScopeLock lock(&output.GetCriticalSection());
-            output.EmplaceLast(result);
-        });
+        snapshot.Num(),
+        [&](int32 index) { mapped[index] = std::invoke(func, snapshot[index]); });
+
+    TDeque<Ret> output;
+    for (Ret& Element : mapped) { output.EmplaceLast(MoveTemp(Element)); }
+
     return output;
 }
 
-template <typename K, typename V>
-TMap<K, V> par_map_impl(TArray<TTuple<K, V>> input, const TFunction<TTuple<K, V>(K, V)>& func) {
-    TMap<K, V> output;
+template <typename K, typename V, typename F>
+    requires detail::pair_like<std::invoke_result_t<F&, const K&, const V&>>
+TMap<
+    typename detail::pair_like_traits<detail::decay_invoke_result_t<std::invoke_result_t<F&, const K
+        &, const V&>>>::first_type,
+    typename detail::pair_like_traits<detail::decay_invoke_result_t<std::invoke_result_t<F&, const K
+        &, const V&>>>::second_type> par_map(const TMap<K, V>& input, F&& func) {
+    using Pair = detail::decay_invoke_result_t<std::invoke_result_t<F&, const K&, const V&>>;
+    using PairTraits = detail::pair_like_traits<Pair>;
+    using RetKey = PairTraits::first_type;
+    using Retvalue = PairTraits::second_type;
+
+    const TArray<TPair<K, V>> snapshot = detail::snapshot(input);
+    TArray<Pair> mapped;
+    mapped.SetNum(snapshot.Num(), EAllowShrinking::No);
+
     ParallelFor(
-        input.Num(),
-        [&](int32 i) {
-            const auto& [key, value] = input[i];
-            const auto& [new_key, new_value] = func(key, value);
-            // ReSharper disable once CppLocalVariableWithNonTrivialDtorIsNeverUsed
-            FScopeLock lock(&output.GetCriticalSection());
-            output.Emplace(new_key, new_value);
+        snapshot.Num(),
+        [&](int32 index) {
+            mapped[index] = std::invoke(func, snapshot[index].Key, snapshot[index].value);
         });
+
+    TMap<RetKey, Retvalue> output;
+    for (const Pair& Result : mapped) {
+        output.Emplace(PairTraits::first(Result), PairTraits::second(Result));
+    }
+
     return output;
 }
 
-template <typename T>
-void par_for_each_impl(TArray<T> input, const TFunction<void(T)>& func) {
-    ParallelFor(input.Num(), [&](int32 i) { func(input[i]); });
+template <typename T, typename F>
+void par_for_each(TConstArrayView<T> input, F&& func) {
+    ParallelFor(input.Num(), [&](int32 index) { std::invoke(func, input[index]); });
 }
 
-template <typename T>
-void par_for_each_impl(TSet<T> input, const TFunction<void(T)>& func) {
+template <typename T, typename F>
+void par_for_each(const TSet<T>& input, F&& func) {
+    const TArray<T> snapshot = detail::snapshot(input);
+    ParallelFor(snapshot.Num(), [&](int32 index) { std::invoke(func, snapshot[index]); });
+}
+
+template <typename T, typename F>
+void par_for_each(const TDeque<T>& input, F&& func) {
+    const TArray<T> snapshot = detail::snapshot(input);
+    ParallelFor(snapshot.Num(), [&](int32 index) { std::invoke(func, snapshot[index]); });
+}
+
+template <typename K, typename V, typename F>
+void par_for_each(const TMap<K, V>& input, F&& func) {
+    const TArray<TPair<K, V>> snapshot = detail::snapshot(input);
     ParallelFor(
-        input.Num(),
-        [&](int32 i) {
-            const auto& element = input.Array()[i];
-            func(element);
-        });
+        snapshot.Num(),
+        [&](int32 index) { std::invoke(func, snapshot[index].Key, snapshot[index].value); });
 }
-
-template <typename T>
-void par_for_each_impl(TDeque<T> input, const TFunction<void(T)>& func) {
-    ParallelFor(
-        input.Num(),
-        [&](int32 i) {
-            const auto& element = input[i];
-            func(element);
-        });
-}
-
-template <typename K, typename V>
-void par_for_each_impl(TMap<K, V> input, const TFunction<void(K, V)>& func) {
-    auto arr = input.Array();
-    ParallelFor(
-        arr.Num(),
-        [&](int32 i) {
-            const auto& [key, value] = arr[i];
-            func(key, value);
-        });
-}
-
-template <template <typename> typename C, typename T>
-C<T> par_map(C<T> input, const TFunction<T(T)>& func) {
-    if constexpr (std::is_same_v<C<T>, TArray<T>> ||
-        std::is_same_v<C<T>, TSet<T>> ||
-        std::is_same_v<C<T>, TDeque<T>>) { return par_map_impl(input, func); } else {
-        static_assert(
-            std::is_same_v<C<T>, TArray<T>> ||
-            std::is_same_v<C<T>, TSet<T>> ||
-            std::is_same_v<C<T>, TDeque<T>>,
-            "parallel map only supports TArray, TSet, and TDeque as "
-            "ContainerType, if using TMap, did you forget to specify both key and value types?"
-        );
-    }
-    return C<T>();
-}
-
-template <template <typename, typename> typename C, typename K, typename V>
-C<K, V> par_map(C<K, V> input, const TFunction<TPair<K, V>(K, V)>& func) {
-    if constexpr (std::is_same_v<C<K, V>, TMap<K, V>>) { return par_map_impl(input, func); } else {
-        static_assert(
-            std::is_same_v<C<K, V>, TMap<K, V>>,
-            "parallel map only supports TMap as key-value container type,"
-            "if using TArray, TSet, or TDeque, did you specify too many template parameters?"
-        );
-    }
-    return C<K, V>();
-}
-
-template <template <typename> typename C, typename T>
-void par_for_each(C<T> input, const TFunction<void(T)>& func) {
-    if constexpr (std::is_same_v<C<T>, TArray<T>> ||
-        std::is_same_v<C<T>, TSet<T>> ||
-        std::is_same_v<C<T>, TDeque<T>>) { par_for_each_impl(input, func); } else {
-        static_assert(
-            std::is_same_v<C<T>, TArray<T>> ||
-            std::is_same_v<C<T>, TSet<T>> ||
-            std::is_same_v<C<T>, TDeque<T>>,
-            "parallel for_each only supports TArray, TSet, and TDeque as "
-            "ContainerType, if using TMap, did you forget to specify both key and value types?"
-        );
-    }
-}
-
-template <template <typename, typename> typename C, typename K, typename V>
-void par_for_each(C<K, V> input, const TFunction<void(K, V)>& func) {
-    if constexpr (std::is_same_v<C<K, V>, TMap<K, V>>) {
-        par_for_each_impl<K, V>(input, func);
-    } else {
-        static_assert(
-            std::is_same_v<C<K, V>, TMap<K, V>>,
-            "parallel for_each only supports TMap as key-value container type,"
-            "if using TArray, TSet, or TDeque, did you specify too many template parameters?"
-        );
-    }
-}
-} // namespace ext::iter::parallel
+} // namespace parallel
 } // namespace ext::iter

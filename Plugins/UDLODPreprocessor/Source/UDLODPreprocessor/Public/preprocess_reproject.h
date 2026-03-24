@@ -16,21 +16,16 @@ PreprocessResult<TMap<uint32, FaceInfo>> reproject_planar(
     const auto height = static_cast<uint64>(src_dataset->GetRasterYSize());
 
     const auto max_dimension = static_cast<double>(FMath::Max(width, height));
-    const auto tile_size = static_cast<double>(context.attachment.
-        center_size());
+    const auto tile_size = static_cast<double>(context.attachment.center_size());
     const double lod_ratio = max_dimension / tile_size;
     const uint32 max_lod = lod_ratio <= 1.0
         ? 0u
         : static_cast<uint32>(FMath::CeilToInt(FMath::Log2(lod_ratio)));
     context.lod_count = max_lod + 1;
 
-    const FString stub = FString::Printf(TEXT("face%u.tif"), face);
-    const FString dst_path = context.temp_dir / stub;
-    const FTCHARToUTF8 utf8_dst_path(*dst_path);
-
     PreprocessResult<GDALDatasetRef> dst_dataset_result =
         create_empty_dataset<T>(
-            utf8_dst_path.Get(),
+            FTCHARToUTF8(*(context.temp_dir / FString::Printf(TEXT("face%u.tif"), face))).Get(),
             {width, height},
             geo_transform(src_dataset),
             context);
@@ -41,9 +36,7 @@ PreprocessResult<TMap<uint32, FaceInfo>> reproject_planar(
     const auto band_count = src_dataset->GetRasterCount();
     constexpr uint64 TargetChunkBytes = 64ull * 1024ull * 1024ull;
     constexpr uint64 MaxChunkRows = 1024ull;
-    const uint64 bytes_per_row = FMath::Max<uint64>(
-        1ull,
-        width * sizeof(T));
+    const uint64 bytes_per_row = FMath::Max<uint64>(1ull, width * sizeof(T));
     const uint64 chunk_size = FMath::Clamp<uint64>(
         TargetChunkBytes / bytes_per_row,
         1ull,
@@ -53,11 +46,8 @@ PreprocessResult<TMap<uint32, FaceInfo>> reproject_planar(
         auto* src_band = src_dataset->GetRasterBand(band + 1);
         auto* dst_band = dst_dataset->GetRasterBand(band + 1);
 
-        for (const auto& chunk_start :
-             ext::iter::step_by(0ull, height, chunk_size)) {
-            const auto chunk_height = FMath::Min(
-                chunk_size,
-                height - chunk_start);
+        for (const auto& chunk_start : ext::iter::step_by(0ull, height, chunk_size)) {
+            const auto chunk_height = FMath::Min(chunk_size, height - chunk_start);
 
             ext::BufferResult<T> src_band_result = read_as<T>(
                 src_band,
@@ -66,9 +56,7 @@ PreprocessResult<TMap<uint32, FaceInfo>> reproject_planar(
                 {width, chunk_height});
 
             if (!src_band_result.has_value()) {
-                return std::unexpected{
-                    FPreprocessError::Gdal(src_band_result.error())
-                };
+                return std::unexpected{FPreprocessError::Gdal(src_band_result.error())};
             }
 
             auto buffer = src_band_result.value();
@@ -80,32 +68,24 @@ PreprocessResult<TMap<uint32, FaceInfo>> reproject_planar(
                 buffer);
 
             if (!dst_band_result.has_value()) {
-                return std::unexpected{
-                    FPreprocessError::From(dst_band_result.error())
-                };
+                return std::unexpected{FPreprocessError::From(dst_band_result.error())};
             }
         }
     }
 
     if (context.attachment_label.ToLower() == "height") {
         TStaticArray<double, 2> min_max{0., 0.};
-        dst_dataset->GetRasterBand(1)->ComputeRasterMinMax(
-            true,
-            min_max.GetData());
+        dst_dataset->GetRasterBand(1)->ComputeRasterMinMax(true, min_max.GetData());
 
-        context.min_height = FMath::Min(
-            context.min_height,
-            static_cast<float>(min_max[0]));
-        context.max_height = FMath::Max(
-            context.max_height,
-            static_cast<float>(min_max[1]));
+        context.min_height = FMath::Min(context.min_height, static_cast<float>(min_max[0]));
+        context.max_height = FMath::Max(context.max_height, static_cast<float>(min_max[1]));
     }
 
     const auto face_info = FaceInfo{
         .lod = max_lod,
         .pixel_start = {0, 0},
         .pixel_end = {static_cast<int32>(width), static_cast<int32>(height)},
-        .path = dst_path
+        .path = (context.temp_dir / FString::Printf(TEXT("face%u.tif"), face))
     };
 
     auto faces = TMap<uint32, FaceInfo>{};

@@ -144,12 +144,10 @@ struct FTileCoordinate {
     }
 
     TArray<FTileCoordinate> children() const {
-        return ext::iter::map_range<int32, FTileCoordinate>(
+        return ext::iter::map_range(
             0,
             4,
-            [&](
-            const int32 index
-        ) -> FTileCoordinate {
+            [&](const int32 index) -> FTileCoordinate {
                 return FTileCoordinate{
                     static_cast<uint32>(face),
                     static_cast<uint32>(lod) + 1,

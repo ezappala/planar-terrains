@@ -111,7 +111,7 @@ void ATerrainParentActor::rebuild_terrains() {
     }
 
     UE_LOGFMT(LogTemp, Log, "Spawning terrain actors for terrain parent actor: {n}", GetName());
-    TArray<ext::iter::Enumeration<FTerrains>> iter = ext::iter::enumerate(terrains_to_spawn);
+    auto iter = ext::iter::enumerate<FTerrains>(terrains_to_spawn);
     for (const auto& [i, out_terrains] : iter) {
         const auto& [terrain_config, terrain_view_config, material_instance, view] = out_terrains;
         const FTerrainConfig& config = terrain_config;
