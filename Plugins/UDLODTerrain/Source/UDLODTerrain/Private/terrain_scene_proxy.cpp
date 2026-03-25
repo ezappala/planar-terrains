@@ -1,26 +1,10 @@
 #include "terrain_scene_proxy.h"
 
 #include "SceneInterface.h"
-#include "Engine/World.h"
 #include "Runtime/Renderer/Private/ScenePrivate.h"
 
 FTerrainSceneProxy::FTerrainSceneProxy(const UTerrain* component) : FPrimitiveSceneProxy
-    {component},
-    last_camera_position{FVector::ZeroVector} {
-    FVector camera_position = FVector::ZeroVector;
-    if (const UWorld* world = component->GetWorld()) {
-        if (const APlayerController* pc = world->GetFirstPlayerController()) {
-            if (pc->PlayerCameraManager) {
-                camera_position = pc->PlayerCameraManager->GetCameraLocation();
-            }
-        }
-    }
-
-    if (camera_position.IsZero() || camera_position.ContainsNaN()) {
-        const FVector component_location = component->GetComponentLocation();
-        camera_position = component_location + FVector(0, 0, 2000.0f);
-    }
-
+    {component} {
     bWillEverBeLit = true;
     bCastDynamicShadow = true;
     bCastStaticShadow = false;
@@ -33,6 +17,14 @@ FTerrainSceneProxy::~FTerrainSceneProxy() {}
 SIZE_T FTerrainSceneProxy::GetTypeHash() const {
     static size_t unique_pointer;
     return reinterpret_cast<size_t>(&unique_pointer);
+}
+
+void FTerrainSceneProxy::GetDynamicMeshElements(
+    const TArray<const FSceneView*>& Views,
+    const FSceneViewFamily& ViewFamily,
+    uint32 VisibilityMap,
+    FMeshElementCollector& Collector) const {
+    FPrimitiveSceneProxy::GetDynamicMeshElements(Views, ViewFamily, VisibilityMap, Collector);
 }
 
 FPrimitiveViewRelevance FTerrainSceneProxy::GetViewRelevance(
@@ -49,3 +41,7 @@ FPrimitiveViewRelevance FTerrainSceneProxy::GetViewRelevance(
 }
 
 uint32 FTerrainSceneProxy::GetMemoryFootprint() const { return sizeof(*this) + GetAllocatedSize(); }
+
+uint32 FTerrainSceneProxy::GetAllocatedSize() const {
+    return FPrimitiveSceneProxy::GetAllocatedSize();
+}

@@ -16,7 +16,7 @@ class UTexture2D;
 struct FTerrains {
     FTerrainConfig terrain_config;
     FTerrainViewConfig terrain_view_config;
-    TObjectPtr<UMaterialInstance> material_instance;
+    TObjectPtr<UMaterialInterface> material_instance;
     FView view;
 };
 
@@ -40,7 +40,7 @@ public:
     FTerrainPreprocessSettings terrain_preprocess_settings;
     FPrimaryTerrainSettings terrain_settings;
     TArray<FTerrains> terrains;
-    TArray<TObjectPtr<UMaterialInstance>> materials;
+    TArray<TObjectPtr<UMaterialInterface>> materials;
     TArray<FTerrainConfig> configs;
     TMap<TObjectPtr<UTerrain>, FTileTree> view_components;
     FTerrainSettings settings;

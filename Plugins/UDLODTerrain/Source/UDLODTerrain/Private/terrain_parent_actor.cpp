@@ -200,7 +200,7 @@ UGPUTessellationComponent* spawn_tessellation_fallback(
     ATerrainParentActor& owner,
     const FTerrainConfig& config,
     const FView& view,
-    UMaterialInstance* material,
+    UMaterialInterface* material,
     UTexture2D* height_texture,
     const int32 terrain_index
 ) {
@@ -325,10 +325,10 @@ void ATerrainParentActor::rebuild_terrains() {
     UE_LOGFMT(LogTemp, Log, "Spawning terrain actors for terrain parent actor: {n}", GetName());
     auto iter = ext::iter::enumerate<FTerrains>(terrains_to_spawn);
     for (const auto& [i, out_terrains] : iter) {
-        const auto& [terrain_config, terrain_view_config, material_instance, view] = out_terrains;
+        const auto& [terrain_config, terrain_view_config, material_interface, view] = out_terrains;
         const FTerrainConfig& config = terrain_config;
         const FTerrainViewConfig& view_config = terrain_view_config;
-        UMaterialInstance* material = material_instance;
+        UMaterialInterface* material = material_interface;
         FString terrain_comp_name = FString::Printf(TEXT("TerrainComp_%llu"), i);
         auto* terrain = NewObject<UTerrain>(this, *terrain_comp_name, RF_Transient);
         terrain->RegisterComponent();
