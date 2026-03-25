@@ -22,7 +22,6 @@ public:
     virtual SIZE_T GetTypeHash() const override;
     virtual FPrimitiveViewRelevance GetViewRelevance(const FSceneView* view) const override;
     virtual uint32 GetMemoryFootprint() const override;
-    uint32 GetAllocatedSize() const;
 #pragma endregion
 
 private:

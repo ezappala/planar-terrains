@@ -160,35 +160,36 @@ struct FTileTree {
 
     static void approximate_height_readback(
         FRDGBuilder& gb,
-        TMap<TObjectPtr<UTerrain>, FTileTree>& tile_trees) {
-        for (auto& [terrain, tile_tree] : tile_trees) {
-            const FRDGBufferRef approximate_height_buffer = tile_tree.approximate_height_buffer;
-            if (approximate_height_buffer == nullptr) { continue; }
-            FRHIGPUBufferReadback* buffer_readback =
-                new FRHIGPUBufferReadback(TEXT("UDLOD.ApproximateHeightReadback"));
-            AddEnqueueCopyPass(gb, buffer_readback, approximate_height_buffer, 0u);
-            auto async_callback = [&tile_tree](const float out_value) {
-                tile_tree.approximate_height = out_value;
-            };
-
-            auto runner = [buffer_readback, async_callback](auto&& fn) -> void {
-                if (buffer_readback->IsReady()) {
-                    const float* data = static_cast<float*>(buffer_readback->Lock(1));
-                    float out_value = data[0];
-                    buffer_readback->Unlock();
-                    AsyncTask(
-                        ENamedThreads::GameThread,
-                        [async_callback, out_value] {
-                            async_callback(out_value);
-                        });
-                    delete buffer_readback;
-                } else {
-                    AsyncTask(ENamedThreads::ActualRenderingThread, [fn] { fn(fn); });
-                }
-            };
-
-            AsyncTask(ENamedThreads::ActualRenderingThread, [runner] { runner(runner); });
+        FTileTree* tile_tree) {
+        const FRDGBufferRef approximate_height_buffer = tile_tree->approximate_height_buffer;
+        if (approximate_height_buffer == nullptr) {
+            UE_LOGFMT(
+                LogTemp,
+                Warning,
+                "[FTerrainSceneViewExtension::draw_tile_tree] "
+                "Approximate height buffer is null for tile tree readback, skipping");
+            return;
         }
+        FRHIGPUBufferReadback* buffer_readback =
+            new FRHIGPUBufferReadback(TEXT("UDLOD.ApproximateHeightReadback"));
+        AddEnqueueCopyPass(gb, buffer_readback, approximate_height_buffer, 0u);
+        auto async_callback = [&tile_tree](const float out_value) {
+            tile_tree->approximate_height = out_value;
+        };
+
+        auto runner = [&buffer_readback, &async_callback](auto&& fn) -> void {
+            if (buffer_readback->IsReady()) {
+                const float* data = static_cast<float*>(buffer_readback->Lock(1));
+                float out_value = data[0];
+                buffer_readback->Unlock();
+                AsyncTask(
+                    ENamedThreads::GameThread,
+                    [async_callback, out_value] { async_callback(out_value); });
+                delete buffer_readback;
+            } else { AsyncTask(ENamedThreads::ActualRenderingThread, [fn] { fn(fn); }); }
+        };
+
+        AsyncTask(ENamedThreads::ActualRenderingThread, [runner] { runner(runner); });
     }
 
     FVector2d get_tile_count(const uint32 lod) const {

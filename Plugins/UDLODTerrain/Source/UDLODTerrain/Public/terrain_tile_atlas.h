@@ -10,7 +10,7 @@
 #include "Logging/StructuredLog.h"
 
 struct FTileAtlas {
-    FTileAtlas() = default;
+    FTileAtlas() = delete;
 
     FTileAtlas(
         const FTerrainConfig& config,

@@ -5,7 +5,7 @@
 #include "terrain.h"
 #include "Logging/StructuredLog.h"
 
-BEGIN_SHADER_PARAMETER_STRUCT(FUploadTilePassParameters, )
+BEGIN_SHADER_PARAMETER_STRUCT(FUploadTilePassParameters, UDLODTERRAIN_API)
     RDG_TEXTURE_ACCESS(Texture, ERHIAccess::CopyDest)
 END_SHADER_PARAMETER_STRUCT()
 
@@ -34,66 +34,54 @@ struct FGpuTileAtlas {
 
     static void initialize(
         FRDGBuilder& gb,
-        TMap<TObjectPtr<UTerrain>, FGpuTileAtlas>& gpu_tile_atlases,
-        TMap<TObjectPtr<UTerrain>, FTileAtlas>& tile_atlases,
+        TOptional<FGpuTileAtlas>& gpu_tile_atlas,
+        const FTileAtlas& tile_atlas,
         const FTerrainSettings& settings
     ) {
-        gpu_tile_atlases.Reset();
-        for (const auto& [terrain, tile_atlas] : tile_atlases) {
-            gpu_tile_atlases.Add(terrain, FGpuTileAtlas{gb, tile_atlas, settings});
-        }
+        gpu_tile_atlas.Reset();
+        gpu_tile_atlas.Emplace(gb, tile_atlas, settings);
     }
 
     static void extract(
-        TMap<TObjectPtr<UTerrain>, FTileAtlas>& tile_atlases,
-        TMap<TObjectPtr<UTerrain>, FGpuTileAtlas>& gpu_tile_atlases
+        FTileAtlas& tile_atlas,
+        TOptional<FGpuTileAtlas>& gpu_tile_atlas
     ) {
-        for (auto& [terrain, tile_atlas] : tile_atlases) {
-            FGpuTileAtlas* gpu_tile_atlas = gpu_tile_atlases.Find(terrain);
-            if (gpu_tile_atlas == nullptr) {
-                UE_LOGFMT(
-                    LogTemp,
-                    Warning,
-                    "[FGpuTileAtlas::Extract] No GPU tile atlas found for terrain {n}, skipping",
-                    terrain->GetName()
-                );
-                continue;
-            }
-
-            gpu_tile_atlas->upload_tiles.Empty();
-            for (const auto& [loaded_tile, loaded_data] : tile_atlas.loaded_tile_data) {
-                const FTileLoadingState* tile_state = tile_atlas.tile_states.Find(
-                    loaded_tile.coordinate);
-                if (tile_state == nullptr || !tile_state->state.is_loaded) { continue; }
-
-                gpu_tile_atlas->upload_tiles.Add(
-                    FAttachmentTileWithData{
-                        tile_state->atlas_index,
-                        loaded_tile.label,
-                        loaded_data
-                    }
-                );
-            }
-
-            tile_atlas.downloading_tiles.Append(gpu_tile_atlas->download_tiles);
-            gpu_tile_atlas->download_tiles.Empty();
+        if (!gpu_tile_atlas.IsSet()) {
+            UE_LOGFMT(
+                LogTemp,
+                Warning,
+                "[FGpuTileAtlas::Extract] GPU tile atlas is not set, skipping extraction");
+            return;
         }
+
+        gpu_tile_atlas->upload_tiles.Empty();
+        for (const auto& [loaded_tile, loaded_data] : tile_atlas.loaded_tile_data) {
+            const FTileLoadingState* tile_state = tile_atlas.tile_states.Find(
+                loaded_tile.coordinate);
+            if (tile_state == nullptr || !tile_state->state.is_loaded) { continue; }
+
+            gpu_tile_atlas->upload_tiles.Add(
+                FAttachmentTileWithData{
+                    tile_state->atlas_index,
+                    loaded_tile.label,
+                    loaded_data
+                }
+            );
+        }
+
+        tile_atlas.downloading_tiles.Append(gpu_tile_atlas->download_tiles);
+        gpu_tile_atlas->download_tiles.Empty();
     }
 
     static void prepare(
         FRDGBuilder& gb,
-        TMap<TObjectPtr<UTerrain>, FGpuTileAtlas>& gpu_tile_atlases
+        TOptional<FGpuTileAtlas>& gpu_tile_atlas
     ) {
-        // TODO: double check rust source
-        for (auto& [terrain, gpu_tile_atlas] : gpu_tile_atlases) {
-            // for (const auto& [label, attachment] : gpu_tile_atlas->attachments) {
-            // }
-            gpu_tile_atlas.exec_upload_tiles(gb);
-        }
+        gpu_tile_atlas->exec_upload_tiles(gb);
     }
 
     static void queue(
-        TMap<TObjectPtr<UTerrain>, FGpuTileAtlas>& gpu_tile_atlases
+        TOptional<FGpuTileAtlas>&
     ) {
         // noop
         // TODO: if dealing with mips, generate pipeline specializations here.
@@ -140,8 +128,8 @@ struct FGpuTileAtlas {
                     upload_parameters,
                     ERDGPassFlags::Copy | ERDGPassFlags::NeverCull,
                     [staging_texture, source_data, source_stride, texture_size](
-                        FRHICommandListImmediate& cmd
-                    ) {
+                    FRHICommandListImmediate& cmd
+                ) {
                         uint32 destination_stride = 0;
                         void* destination_data = cmd.LockTexture2D(
                             staging_texture->GetRHI(),

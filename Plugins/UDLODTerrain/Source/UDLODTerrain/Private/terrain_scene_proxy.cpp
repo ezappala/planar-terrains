@@ -35,7 +35,3 @@ FPrimitiveViewRelevance FTerrainSceneProxy::GetViewRelevance(const FSceneView* v
 }
 
 uint32 FTerrainSceneProxy::GetMemoryFootprint() const { return sizeof(*this) + GetAllocatedSize(); }
-
-uint32 FTerrainSceneProxy::GetAllocatedSize() const {
-    return FPrimitiveSceneProxy::GetAllocatedSize();
-}

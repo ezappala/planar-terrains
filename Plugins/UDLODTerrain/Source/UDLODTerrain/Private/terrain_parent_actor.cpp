@@ -108,26 +108,31 @@ void normalize_height_samples(
 UTexture2D* create_fallback_height_texture(
     UObject* outer,
     const FTerrainConfig& config,
-    const FTileAtlas& atlas,
-    const int32 terrain_index
+    const TOptional<FTileAtlas>& atlas
 ) {
     const TOptional<FString> height_label = find_attachment_label(config, TEXT("height"));
     if (!height_label.IsSet()) {
         UE_LOGFMT(
             LogTemp,
             Warning,
-            "[UDLODTerrain] Missing height attachment for fallback terrain {Index}",
-            terrain_index);
+            "[UDLODTerrain] Missing height attachment for fallback terrain");
         return nullptr;
     }
 
-    const FAttachment* attachment = atlas.attachments.Find(height_label.GetValue());
+    if (!atlas.IsSet()) {
+        UE_LOGFMT(
+            LogTemp,
+            Warning,
+            "[UDLODTerrain] Missing tile atlas for fallback terrain");
+        return nullptr;
+    }
+
+    const FAttachment* attachment = atlas->attachments.Find(height_label.GetValue());
     if (attachment == nullptr) {
         UE_LOGFMT(
             LogTemp,
             Warning,
-            "[UDLODTerrain] Missing height attachment data for fallback terrain {Index}",
-            terrain_index);
+            "[UDLODTerrain] Missing height attachment data for fallback terrain");
         return nullptr;
     }
 
@@ -136,8 +141,7 @@ UTexture2D* create_fallback_height_texture(
         UE_LOGFMT(
             LogTemp,
             Warning,
-            "[UDLODTerrain] Missing tiles for fallback terrain {Index}",
-            terrain_index);
+            "[UDLODTerrain] Missing tiles for fallback terrain");
         return nullptr;
     }
 
@@ -163,8 +167,7 @@ UTexture2D* create_fallback_height_texture(
         UE_LOGFMT(
             LogTemp,
             Warning,
-            "[UDLODTerrain] Unsupported height data for fallback terrain {Index}",
-            terrain_index);
+            "[UDLODTerrain] Unsupported height data for fallback terrain {Index}");
         return nullptr;
     }
 
@@ -201,8 +204,7 @@ UGPUTessellationComponent* spawn_tessellation_fallback(
     const FTerrainConfig& config,
     const FView& view,
     UMaterialInterface* material,
-    UTexture2D* height_texture,
-    const int32 terrain_index
+    UTexture2D* height_texture
 ) {
     if (height_texture == nullptr || owner.root == nullptr) { return nullptr; }
 
@@ -281,15 +283,14 @@ void ATerrainParentActor::PreprocessTerrain() {
 
     log_time(start_preprocessing, "Finished terrain preprocessing.");
 
-    terrains.Emplace(
-        FTerrains{
-            FTerrainConfig::from_file(
-                FPaths::Combine(terrain_preprocess_settings.terrain_path, TEXT("config.json"))).
-            Get(FTerrainConfig{}),
-            FTerrainViewConfig{},
-            nullptr,
-            FView{}
-        });
+    terrain = FTerrains{
+        FTerrainConfig::from_file(
+            FPaths::Combine(terrain_preprocess_settings.terrain_path, TEXT("config.json"))).
+        Get(FTerrainConfig{}),
+        FTerrainViewConfig{},
+        nullptr,
+        FView{}
+    };
 
     rebuild_terrains();
 }
@@ -297,7 +298,12 @@ void ATerrainParentActor::PreprocessTerrain() {
 void ATerrainParentActor::rebuild_terrains() {
     UE_LOGFMT(LogTemp, Log, "Rebuilding terrains for terrain parent actor: {n}", GetName());
     if (IsTemplate()) {
-        UE_LOGFMT(LogTemp, Warning, "Skipping terrain rebuild for terrain parent actor template: {n}", GetName());
+        UE_LOGFMT(
+            LogTemp,
+            Warning,
+            "Skipping terrain rebuild for terrain parent actor template: {n}",
+            GetName()
+        );
         return;
     }
 
@@ -313,123 +319,116 @@ void ATerrainParentActor::rebuild_terrains() {
 
     clear_spawned_terrains();
 
-    TArray<FTerrains> terrains_to_spawn = terrains;
-    if (terrains_to_spawn.IsEmpty()) {
-        if (const TOptional<FTerrains> default_terrain = load_default_terrain_descriptor(
-            terrain_preprocess_settings
-        )) {
-            terrains_to_spawn.Add(default_terrain.GetValue());
-        }
+    if (!terrain.IsSet()) {
+        terrain = load_default_terrain_descriptor(terrain_preprocess_settings);
     }
 
     UE_LOGFMT(LogTemp, Log, "Spawning terrain actors for terrain parent actor: {n}", GetName());
-    auto iter = ext::iter::enumerate<FTerrains>(terrains_to_spawn);
-    for (const auto& [i, out_terrains] : iter) {
-        const auto& [terrain_config, terrain_view_config, material_interface, view] = out_terrains;
-        const FTerrainConfig& config = terrain_config;
-        const FTerrainViewConfig& view_config = terrain_view_config;
-        UMaterialInterface* material = material_interface;
-        FString terrain_comp_name = FString::Printf(TEXT("TerrainComp_%llu"), i);
-        auto* terrain = NewObject<UTerrain>(this, *terrain_comp_name, RF_Transient);
-        terrain->RegisterComponent();
-        if (!terrain->AttachToComponent(root, FAttachmentTransformRules::KeepRelativeTransform)) {
-            UE_LOGFMT(
-                LogTemp,
-                Warning,
-                "Failed to attach terrain component: {n} to root for terrain parent actor: {parent_n}, skipping terrain index: {i}",
-                terrain->GetName(),
-                GetName(),
-                i);
-            terrain->DestroyComponent();
-            continue;
-        }
-
-        if (!IsValid(terrain)) {
-            UE_LOGFMT(
-                LogTemp,
-                Warning,
-                "Failed to create terrain component for terrain parent actor: {n}, skipping terrain index: {i}",
-                GetName(),
-                i);
-            continue;
-        }
-
+    const auto& [terrain_config, terrain_view_config, material_interface, view] = terrain.
+        GetValue();
+    UTerrain* new_terrain = NewObject<UTerrain>(this, TEXT("TerrainComp_0"));
+    new_terrain->RegisterComponent();
+    if (!new_terrain->AttachToComponent(root, FAttachmentTransformRules::KeepRelativeTransform)) {
         UE_LOGFMT(
             LogTemp,
-            Log,
-            "Created terrain component: {n} for terrain parent actor: {parent_n}, terrain index: {i}",
-            terrain->GetName(),
-            GetName(),
-            i);
-        terrain->set_object_data(config, settings, material);
-        terrain->UpdateBounds();
-        terrain->MarkRenderStateDirty();
-
-        spawned_terrains.Add(terrain);
-        materials.Add(material);
-        configs.Add(config);
-        view_components.Emplace(terrain, FTileTree{config, view_config});
-
-        tile_atlases.Emplace(terrain, terrain->atlas);
-        if (bEnableTessellationFallback) {
-            UTexture2D* const height_texture = create_fallback_height_texture(
-                this,
-                config,
-                terrain->atlas,
-                i);
-            if (height_texture != nullptr) {
-                fallback_height_textures.Add(height_texture);
-
-                if (UGPUTessellationComponent* const fallback_component =
-                    spawn_tessellation_fallback(
-                        *this,
-                        config,
-                        view,
-                        material,
-                        height_texture,
-                        i
-                    )) { spawned_fallback_components.Add(fallback_component); }
-            }
-        }
-        UE_LOGFMT(
-            LogTemp,
-            Log,
-            "Added tile atlas for terrain component: {n} "
-            "in terrain parent actor: {parent_n}, terrain index: {i}",
-            terrain->GetName(),
-            GetName(),
-            i);
+            Error,
+            "Failed to attach terrain component: {n} "
+            "to root for terrain parent actor: {parent_n}",
+            new_terrain->GetName(),
+            GetName());
+        new_terrain->DestroyComponent();
+        return;
     }
+
+    if (!IsValid(new_terrain)) {
+        UE_LOGFMT(
+            LogTemp,
+            Error,
+            "Failed to create terrain component for terrain parent actor: {n}",
+            GetName());
+        return;
+    }
+
+    new_terrain->set_object_data(terrain_config, settings, material_interface);
+    new_terrain->UpdateBounds();
+    new_terrain->MarkRenderStateDirty();
+
+    spawned_terrain = new_terrain;
+    material = material_interface;
+    config = terrain_config;
+    view_component = FTileTree{terrain_config, terrain_view_config};
+
+    tile_atlas = new_terrain->atlas;
+    if (bEnableTessellationFallback) {
+        UTexture2D* const height_texture = create_fallback_height_texture(
+            this,
+            terrain_config,
+            new_terrain->atlas);
+        if (height_texture != nullptr) {
+            fallback_height_texture = height_texture;
+
+            if (UGPUTessellationComponent* const fallback_component =
+                spawn_tessellation_fallback(
+                    *this,
+                    terrain_config,
+                    view,
+                    material,
+                    height_texture
+                )) { spawned_fallback_component = fallback_component; }
+        }
+    }
+    UE_LOGFMT(
+        LogTemp,
+        Log,
+        "Added tile atlas for terrain component: {n} "
+        "in terrain parent actor: {parent_n}",
+        new_terrain->GetName(),
+        GetName());
+    // }
 }
 
 void ATerrainParentActor::clear_spawned_terrains() {
     UE_LOGFMT(LogTemp, Log, "Clearing spawned terrains for terrain parent actor: {n}", GetName());
-    for (USceneComponent* fallback_component : spawned_fallback_components) {
-        if (IsValid(fallback_component)) { fallback_component->DestroyComponent(); }
+    if (IsValid(spawned_fallback_component)) {
+        UE_LOGFMT(
+            LogTemp,
+            Log,
+            "Destroying fallback component: {n} "
+            "in terrain parent actor: {parent_n}",
+            spawned_fallback_component->GetName(),
+            GetName());
+        spawned_fallback_component->DestroyComponent();
+    } else if (spawned_fallback_component != nullptr) {
+        UE_LOGFMT(
+            LogTemp,
+            Warning,
+            "Invalid fallback component found while clearing spawned terrains for terrain parent actor: {n}",
+            GetName());
     }
 
-    for (TObjectPtr<UTerrain>& terrain : spawned_terrains) {
-        if (IsValid(terrain)) {
-            UE_LOGFMT(LogTemp, Log, "Destroying terrain actor: {n}", terrain->GetName());
-            terrain->DestroyComponent();
+    if (spawned_terrain != nullptr) {
+        if (IsValid(spawned_terrain)) {
+            UE_LOGFMT(LogTemp, Log, "Destroying terrain actor: {n}", spawned_terrain->GetName());
+            spawned_terrain->DestroyComponent();
         } else {
             UE_LOGFMT(
                 LogTemp,
                 Warning,
-                "Invalid terrain actor found while clearing spawned terrains for terrain parent actor: {n}",
+                "Invalid terrain actor found while clearing spawned terrains "
+                "for terrain parent actor: {n}",
                 GetName());
         }
     }
 
     // spawned_terrain_actors.Reset();
-    spawned_terrains.Reset();
-    spawned_fallback_components.Reset();
-    fallback_height_textures.Reset();
-    materials.Reset();
-    configs.Reset();
-    view_components.Reset();
-    tile_atlases.Reset();
-    gpu_tile_atlases.Reset();
-    gpu_terrains.Reset();
-    gpu_terrain_views.Reset();
+    spawned_terrain = nullptr;
+    spawned_fallback_component = nullptr;
+    fallback_height_texture = nullptr;
+    material = nullptr;
+    config.Reset();
+    view_component.Reset();
+    tile_atlas.Reset();
+    gpu_tile_atlas.Reset();
+    gpu_terrain.Reset();
+    gpu_terrain_view.Reset();
 }

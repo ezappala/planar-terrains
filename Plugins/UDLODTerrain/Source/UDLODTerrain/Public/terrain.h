@@ -2,7 +2,6 @@
 #include "terrain_config.h"
 #include "terrain_settings.h"
 #include "terrain_tile_atlas.h"
-#include "terrain_typedefs.h"
 #include "Components/MeshComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
@@ -12,11 +11,7 @@
 #include "terrain.generated.h"
 
 using CellCoord = FIntVector3;
-USTRUCT(Blueprintable)
 struct FView {
-    GENERATED_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FTransform tile_world_transform = FTransform::Identity;
     // CellCoord cell_coord;
 };
@@ -61,7 +56,7 @@ public:
 #pragma endregion
 #endif
 
-    virtual void SetMaterial(int32 ElementIndex, class UMaterialInterface* Material) override;
+    virtual void SetMaterial(int32 ElementIndex, UMaterialInterface* Material) override;
 
     void set_object_data(
         const FTerrainConfig& in_config,
@@ -80,21 +75,10 @@ public:
 
     FTerrainConfig config;
     FTerrainSettings settings;
-    FTileAtlas atlas;
+    TOptional<FTileAtlas> atlas = NullOpt;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain")
-    TObjectPtr<UMaterialInterface> material;
-
-    virtual void SendRenderDynamicData_Concurrent() override;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UDLOD|Terrain")
+    UMaterialInterface* material;
 
     friend class FTerrainSceneProxy;
-};
-
-USTRUCT(Blueprintable)
-struct FTerrainViewKey {
-    GENERATED_BODY()
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UTerrain* terrain;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FView view;
 };

@@ -83,6 +83,7 @@ void UTerrain::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEven
         }
     }
 }
+#endif
 
 void UTerrain::SetMaterial(const int32 ElementIndex, UMaterialInterface* Material) {
     if (ElementIndex == 0) {
@@ -90,7 +91,4 @@ void UTerrain::SetMaterial(const int32 ElementIndex, UMaterialInterface* Materia
         MarkRenderStateDirty();
     }
 }
-
-void UTerrain::SendRenderDynamicData_Concurrent() { Super::SendRenderDynamicData_Concurrent(); }
-#endif
 

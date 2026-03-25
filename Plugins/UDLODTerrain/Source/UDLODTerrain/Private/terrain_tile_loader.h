@@ -171,26 +171,24 @@ inline FAttachmentTileData load_tile_data(
 }
 }
 
-inline void drain_tile_loads(TMap<TObjectPtr<UTerrain>, FTileAtlas>& tile_atlases) {
-    for (auto& [terrain, tile_atlas] : tile_atlases) {
-        TArray<FAttachmentTile> pending = MoveTemp(tile_atlas.to_load);
-        tile_atlas.to_load.Reset();
+inline void drain_tile_loads(FTileAtlas* tile_atlas) {
+    TArray<FAttachmentTile> pending = MoveTemp(tile_atlas->to_load);
+    tile_atlas->to_load.Reset();
 
-        for (const FAttachmentTile& tile : pending) {
-            const FAttachment* attachment = tile_atlas.attachments.Find(tile.label);
-            if (attachment == nullptr) {
-                UE_LOGFMT(
-                    LogTemp,
-                    Warning,
-                    "[UDLODTerrain] Missing attachment {Label} for terrain {Terrain}",
-                    tile.label,
-                    terrain->GetName()
-                );
-                continue;
-            }
-
-            tile_atlas.tile_loaded(tile, detail::load_tile_data(*attachment, tile));
+    for (const FAttachmentTile& tile : pending) {
+        const FAttachment* attachment = tile_atlas->attachments.Find(tile.label);
+        if (attachment == nullptr) {
+            UE_LOGFMT(
+                LogTemp,
+                Warning,
+                "[UDLODTerrain] No attachment with label {Label} found for tile {Tile}; skipping load",
+                tile.label,
+                tile.coordinate.to_string()
+            );
+            continue;
         }
+
+        tile_atlas->tile_loaded(tile, detail::load_tile_data(*attachment, tile));
     }
 }
 }
