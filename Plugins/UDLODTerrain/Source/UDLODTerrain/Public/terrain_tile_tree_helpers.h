@@ -24,6 +24,7 @@ inline FRDGBufferRef terrain_view_from_tile_tree(FRDGBuilder& gb, const FTileTre
         [&tile_tree](const FCoordinate& view_coordinate) {
             return view_coordinate_from_coordinate(view_coordinate, tile_tree.view_lod);
         });
+    terrain_view->height_scale = 1.0f;
     terrain_view->world_position = tile_tree.view_world_position;
     terrain_view->half_spaces = tile_tree.half_spaces;
     const auto data = CreateStructuredBuffer(

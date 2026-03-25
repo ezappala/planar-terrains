@@ -360,6 +360,7 @@ void FTerrainSceneViewExtension::draw_tile_tree(
         // );
 
         auto* params = gb.AllocParameters<DrawElementsIndirectParameters>();
+        params->View = view.ViewUniformBuffer;
         params->terrain = gpu_terrain->terrain_buffer;
         params->terrain_sampler = gpu_terrain->atlas_sampler;
         params->height_attachment = height_attachemnt;

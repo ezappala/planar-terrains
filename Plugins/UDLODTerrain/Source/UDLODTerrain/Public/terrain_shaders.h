@@ -2,6 +2,7 @@
 #include "ext_matrix2x4.h"
 #include "GlobalShader.h"
 #include "HLSLTypeAliases.h"
+#include "SceneView.h"
 #include "ShaderParameterStruct.h"
 #include "Runtime/Engine/Public/Matrix3x4.h"
 
@@ -140,6 +141,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(GeometryTile, UDLODTERRAIN_API)
 END_SHADER_PARAMETER_STRUCT()
 
 BEGIN_SHADER_PARAMETER_STRUCT(DrawElementsIndirectParameters, UDLODTERRAIN_API)
+    SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
     // General bindings: bindings.ush
     SHADER_PARAMETER_STRUCT_REF(Terrain, terrain)
     SHADER_PARAMETER_STRUCT(Attachments, attachments)
