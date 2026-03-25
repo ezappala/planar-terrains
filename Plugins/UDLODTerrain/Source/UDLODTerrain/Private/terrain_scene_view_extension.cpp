@@ -21,10 +21,6 @@
 #include "Runtime/Renderer/Private/ScenePrivate.h"
 #include "Runtime/Renderer/Private/SceneRendering.h"
 
-#include "Runtime/Renderer/Private/SpriteIndexBuffer.h"
-
-TGlobalResource<FSpriteIndexBuffer<64>> GSpriteIndexBuffer;
-
 void FTerrainSceneViewExtension::PostRenderBasePassDeferred_RenderThread(
     FRDGBuilder& gb,
     FSceneView& in_view,
@@ -407,8 +403,8 @@ void FTerrainSceneViewExtension::draw_tile_tree(
                 pso.RasterizerState = reverse_culling
                     ? TStaticRasterizerState<FM_Solid, CM_CCW>::GetRHI()
                     : TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI();
-                pso.DepthStencilState = TStaticDepthStencilState<>::GetRHI();
-                pso.PrimitiveType = GRHISupportsRectTopology ? PT_RectList : PT_TriangleList;
+                pso.DepthStencilState = TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI();
+                pso.PrimitiveType = PT_TriangleStrip;
                 pso.BoundShaderState.VertexDeclarationRHI = GEmptyVertexDeclaration.
                     VertexDeclarationRHI;
                 pso.BoundShaderState.VertexShaderRHI = vertex_shader.GetVertexShader();
@@ -423,14 +419,7 @@ void FTerrainSceneViewExtension::draw_tile_tree(
                     *params);
                 cmd.SetStreamSource(0, nullptr, 0);
 
-                if (GRHISupportsRectTopology) {
-                    cmd.DrawPrimitiveIndirect(params->IndirectArgs->GetIndirectRHICallBuffer(), 0);
-                } else {
-                    cmd.DrawIndexedPrimitiveIndirect(
-                        GSpriteIndexBuffer.IndexBufferRHI,
-                        params->IndirectArgs->GetIndirectRHICallBuffer(),
-                        0);
-                }
+                cmd.DrawPrimitiveIndirect(params->IndirectArgs->GetIndirectRHICallBuffer(), 0);
             });
     }
 }
