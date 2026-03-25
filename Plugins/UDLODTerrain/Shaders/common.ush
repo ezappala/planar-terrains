@@ -256,10 +256,6 @@ struct PrepassState {
     int final_index;
 };
 
-struct IndirectBuffer {
-    uint3 workgroup_count;
-};
-
 struct ApproximateHeight {
     float value;
 };

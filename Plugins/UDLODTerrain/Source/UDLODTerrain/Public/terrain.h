@@ -49,13 +49,8 @@ public:
         MarkRenderStateDirty();
     }
 
-    UPROPERTY(VisibleAnywhere)
     FTerrainConfig config;
-
-    UPROPERTY(VisibleAnywhere)
     FTerrainSettings settings;
-
-    UPROPERTY(VisibleAnywhere)
     FTileAtlas atlas;
 
     UPROPERTY()

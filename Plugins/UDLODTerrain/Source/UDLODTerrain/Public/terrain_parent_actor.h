@@ -2,7 +2,7 @@
 #include "gpu_terrain.h"
 #include "gpu_terrain_atlas_buffer_info.h"
 #include "terrain_config.h"
-#include "terrain_picking.h"
+// #include "terrain_picking.h"
 #include "terrain_settings.h"
 #include "terrain_tile_atlas.h"
 #include "terrain_typedefs.h"
@@ -11,20 +11,12 @@
 
 #include "terrain_parent_actor.generated.h"
 
-USTRUCT()
+class UTexture2D;
+
 struct FTerrains {
-    GENERATED_BODY()
-
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     FTerrainConfig terrain_config;
-
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     FTerrainViewConfig terrain_view_config;
-
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     TObjectPtr<UMaterialInstance> material_instance;
-
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD")
     FView view;
 };
 
@@ -40,43 +32,33 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UDLOD")
     USceneComponent* root;
 
-    TSharedPtr<FPickingData> picking_data = nullptr;
+    // TSharedPtr<FPickingData> picking_data = nullptr;
 
     UFUNCTION(Exec, CallInEditor, BlueprintCallable, Category = "UDLOD")
     void PreprocessTerrain();
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UDLOD")
     FTerrainPreprocessSettings terrain_preprocess_settings;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UDLOD")
     FPrimaryTerrainSettings terrain_settings;
-
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD|Data")
     TArray<FTerrains> terrains;
-
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD|Data")
     TArray<TObjectPtr<UMaterialInstance>> materials;
-
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD|Data")
     TArray<FTerrainConfig> configs;
-
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD|Data")
-    TMap<UTerrain*, FTileTree> view_components;
-
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD|Data")
+    TMap<TObjectPtr<UTerrain>, FTileTree> view_components;
     FTerrainSettings settings;
+    TMap<TObjectPtr<UTerrain>, FTileAtlas> tile_atlases;
+    TMap<TObjectPtr<UTerrain>, FGpuTileAtlas> gpu_tile_atlases;
+    TMap<TObjectPtr<UTerrain>, FGpuTerrain> gpu_terrains;
+    TMap<TObjectPtr<UTerrain>, FGpuTerrainView> gpu_terrain_views;
 
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD|Data")
-    TMap<UTerrain*, FTileAtlas> tile_atlases;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UDLOD|Fallback")
+    bool bEnableTessellationFallback = false;
 
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD|Data|Gpu")
-    TMap<UTerrain*, FGpuTileAtlas> gpu_tile_atlases;
-
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD|Data|Gpu")
-    TMap<UTerrain*, FGpuTerrain> gpu_terrains;
-
-    UPROPERTY(VisibleAnywhere, Category = "UDLOD|Data|Gpu")
-    TMap<UTerrain*, FGpuTerrainView> gpu_terrain_views;
+    UPROPERTY(
+        EditAnywhere,
+        BlueprintReadWrite,
+        Category="UDLOD|Fallback",
+        meta=(ClampMin="1", ClampMax="128", EditCondition="bEnableTessellationFallback",
+            EditConditionHides))
+    int32 tessellation_fallback_factor = 32;
 
 private:
     void rebuild_terrains();
@@ -84,4 +66,10 @@ private:
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTerrain>> spawned_terrains;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<USceneComponent>> spawned_fallback_components;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UTexture2D>> fallback_height_textures;
 };

@@ -8,7 +8,6 @@
 #include "functions.ush"
 
 RWStructuredBuffer<PrepassState> state;
-RWStructuredBuffer<IndirectBuffer> indirect_buffer;
 RWStructuredBuffer<TileCoordinate> temporary_tiles;
 RWStructuredBuffer<GeometryTile> final_tiles;
 

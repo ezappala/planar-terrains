@@ -8,10 +8,11 @@
 #include "SystemTextures.h"
 #include "terrain_funcs.h"
 #include "terrain_parent_actor.h"
-#include "terrain_picking.h"
+// #include "terrain_picking.h"
+#include "Editor.h"
 #include "terrain_shaders.h"
 #include "terrain_tile_atlas.h"
-#include "terrain_world_subsystem.h"
+#include "terrain_tile_loader.h"
 #include "TextureResource.h"
 #include "Engine/Texture.h"
 #include "Engine/Texture2D.h"
@@ -24,20 +25,26 @@
 
 TGlobalResource<FSpriteIndexBuffer<64>> GSpriteIndexBuffer;
 
-void FTerrainSceneViewExtension::PreRenderView_RenderThread(
+void FTerrainSceneViewExtension::PostRenderBasePassDeferred_RenderThread(
     FRDGBuilder& gb,
-    FSceneView& in_view
+    FSceneView& in_view,
+    const FRenderTargetBindingSlots& render_targets,
+    TRDGUniformBufferRef<FSceneTextureUniformParameters> scene_textures
 ) {
+    // if (!in_view.Family->EngineShowFlags.Editor || !in_view.Family->EngineShowFlags.Game) {
+    //     UE_LOGFMT(
+    //         LogTemp,
+    //         Warning,
+    //         "[FTerrainSceneViewExtension::PostRenderBasePassDeferred_RenderThread] Skipping terrain "
+    //         "rendering because we're in editor view (not game view)");
+    //     return;
+    // }
+    (void)scene_textures;
     if (in_view.Family == nullptr || in_view.Family->Scene == nullptr) { return; }
     if (!in_view.bIsViewInfo) { return; }
 
     const FViewInfo& view_info = reinterpret_cast<FViewInfo&>(in_view);
-    // if (!terrains_spawned) {
-        // spawn_terrains(gb, *in_view.Family->Scene);
-        // terrains_spawned = true;
-    // }
-
-    draw_terrain(gb, *in_view.Family->Scene->GetRenderScene(), view_info);
+    draw_terrain(gb, *in_view.Family->Scene->GetRenderScene(), view_info, render_targets);
 }
 
 FRDGTextureSRVRef FTerrainSceneViewExtension::CreateRDGTextureFromUTexture(
@@ -72,56 +79,11 @@ FRDGTextureSRVRef FTerrainSceneViewExtension::GetDefaultWhiteTexture(
     return gb.CreateSRV(GSystemTextures.GetWhiteDummy(gb));
 }
 
-void FTerrainSceneViewExtension::spawn_terrains(
-    FRDGBuilder& gb,
-    FSceneInterface& scene
-) {
-    // RDG_EVENT_SCOPE(gb, "UDLOD.SpawnTerrains");
-    // auto* world = scene.GetWorld();
-    // auto subsys = world->GetSubsystemChecked<UTerrainWorldSubsystem>();
-    // auto root = subsys->get_terrain_root_checked();
-    // auto* terrains = &root->terrains;
-    // auto* settings = &root->settings;
-    // auto* materials = &root->materials;
-    // auto* tile_trees = &root->view_components;
-    //
-    // for (const auto& terrain : *terrains) {
-    //     const auto& [config, view_config, material, view] = terrain;
-    //     FActorSpawnParameters params{};
-    //     params.Owner = root;
-    //     const auto* terrain_actor = world->SpawnActor<ATerrainActor>(params);
-    //     // Spawn terrain actors based on the provided configurations
-    //     terrain_actor->GetRootComponent()
-    //         // TODO: set transform from scale?
-    //         ->SetWorldTransform(FTransform::Identity);
-    //
-    //     terrain_actor->terrain->set_object_data(config, *settings, material);
-    //     // TODO: Do we need to track this separately
-    //     materials->Add(material);
-    //
-    //     auto tile_tree = FTileTree{config, view_config};
-    //     auto* approximate_height = gb.AllocParameters<ApproximateHeight>();
-    //     approximate_height->value = tile_tree.approximate_height;
-    //     tile_tree.approximate_height_buffer = CreateStructuredBuffer(
-    //         gb,
-    //         TEXT("ApproximateHeightBuffer"),
-    //         sizeof(ApproximateHeight),
-    //         1,
-    //         approximate_height,
-    //         sizeof(ApproximateHeight)
-    //     );
-    //
-    //     tile_tree.terrain_view_buffer = terrain_view_from_tile_tree(gb, tile_tree);
-    //     tile_tree.tile_tree_buffer = tile_tree_from_cpu_tree(gb, tile_tree);
-    //
-    //     tile_trees->Emplace(terrain_actor->terrain, tile_tree);
-    // }
-}
-
 void FTerrainSceneViewExtension::draw_terrain(
     FRDGBuilder& gb,
     const FScene& scene,
-    const FViewInfo& view
+    const FViewInfo& view,
+    const FRenderTargetBindingSlots& render_targets
 ) const {
     RDG_EVENT_SCOPE(gb, "UDLOD.DrawTerrain");
 
@@ -132,9 +94,7 @@ void FTerrainSceneViewExtension::draw_terrain(
             Fatal,
             "[FTerrainSceneViewExtension::DrawTerrain] World is nullptr nullptr");
     }
-    const auto subsys = world->GetSubsystemChecked<UTerrainWorldSubsystem>();
-    const auto root = subsys->get_terrain_root_checked();
-    TMap<UTerrain*, FTileTree>* tile_trees = &root->view_components;
+    TMap<TObjectPtr<UTerrain>, FTileTree>* tile_trees = &root->view_components;
 
     auto* tile_atlases = &root->tile_atlases;
     if (tile_trees->IsEmpty() || tile_atlases->IsEmpty()) {
@@ -143,6 +103,7 @@ void FTerrainSceneViewExtension::draw_terrain(
 
     tile_tree_compute_requests(*tile_trees, view);
     tile_atlas_update(*tile_trees, *tile_atlases);
+    terrain::tile_loader::drain_tile_loads(*tile_atlases);
     tile_tree_adjust_to_tile_atlas(*tile_trees, *tile_atlases);
     tile_tree_update_terrain_view_buffer(gb, *tile_trees);
 
@@ -158,21 +119,17 @@ void FTerrainSceneViewExtension::draw_terrain(
         return;
     }
 
-    draw_tile_tree(gb, scene, view);
+    draw_tile_tree(gb, view, render_targets);
     FTileTree::approximate_height_readback(gb, *tile_trees);
-    picking_readback(gb, root->picking_data->buffer, root->picking_data);
+    // picking_readback(gb, root->picking_data->buffer, root->picking_data);
 }
 
 void FTerrainSceneViewExtension::draw_tile_tree(
     FRDGBuilder& gb,
-    const FScene& scene,
-    const FViewInfo& view
+    const FViewInfo& view,
+    const FRenderTargetBindingSlots& render_targets
 ) const {
     RDG_EVENT_SCOPE(gb, "UDLOD.DrawTileTree");
-
-    const UWorld* world = scene.GetWorld();
-    const auto subsys = world->GetSubsystemChecked<UTerrainWorldSubsystem>();
-    const auto root = subsys->get_terrain_root_checked();
 
     auto* tile_atlases = &root->tile_atlases;
     auto* tile_trees = &root->view_components;
@@ -198,18 +155,19 @@ void FTerrainSceneViewExtension::draw_tile_tree(
     FGpuTerrainView::prepare(gb, *gpu_terrain_views);
     // TODO: prepare_terrain_depth_textures
 
-    auto* picking_params = picking(
-        gb,
-        view,
-        root->picking_data->buffer
-    );
+    // auto* picking_params = picking(
+    //     gb,
+    //     view,
+    //     root->picking_data->buffer,
+    //     view.GetSceneTexturesChecked()
+    // );
 
     const auto* gsm = GetGlobalShaderMap(GMaxRHIFeatureLevel);
     const auto prep_root_cs = gsm->GetShader<FTerrainPrepassPrepareRootComputeShader>();
     const auto prep_next_cs = gsm->GetShader<FTerrainPrepassPrepareNextComputeShader>();
     const auto prep_render_cs = gsm->GetShader<FTerrainPrepassPrepareRenderComputeShader>();
     const auto refine_tiles_cs = gsm->GetShader<FTerrainPrepassRefineTilesComputeShader>();
-    const auto picking_cs = gsm->GetShader<FTerrainPickingComputeShader>();
+    // const auto picking_cs = gsm->GetShader<FTerrainPickingComputeShader>();
 
     for (const auto& [terrain, tile_tree] : *tile_trees) {
         if (!terrain->IsValidLowLevel() || !terrain->IsRegistered()) {
@@ -299,24 +257,17 @@ void FTerrainSceneViewExtension::draw_tile_tree(
             continue;
         }
 
-        if (albedo_attachment_ptr == nullptr) {
-            UE_LOGFMT(
-                LogTemp,
-                Warning,
-                "[FTerrainSceneViewExtension::DrawTileTree] No albedo attachment found in GPU tile atlas for terrain {n}, skipping",
-                terrain->GetName()
-            );
-            continue;
-        }
-        FRDGTextureSRV* albedo_attachment = albedo_attachment_ptr->atlas_texture;
+        FRDGTextureSRV* albedo_attachment = albedo_attachment_ptr != nullptr
+            ? albedo_attachment_ptr->atlas_texture
+            : nullptr;
         if (albedo_attachment == nullptr) {
             UE_LOGFMT(
                 LogTemp,
                 Warning,
-                "[FTerrainSceneViewExtension::DrawTileTree] Invalid albedo attachment view in GPU tile atlas for terrain {n}, skipping",
+                "[FTerrainSceneViewExtension::DrawTileTree] Missing albedo attachment for terrain {n}; using height attachment fallback",
                 terrain->GetName()
             );
-            continue;
+            albedo_attachment = height_attachemnt;
         }
 
         const Terrain terrain_uniform = new_terrain(
@@ -354,6 +305,8 @@ void FTerrainSceneViewExtension::draw_tile_tree(
         gpu_terrain_view->refine_tiles_parameters->approximate_height = approximate_height_uav;
         gpu_terrain_view->refine_tiles_parameters->tile_tree = tile_tree_buffer;
 
+        const FRDGBufferRef indirect_args_buffer = gpu_terrain_view->indirect_args_buffer;
+
         FComputeShaderUtils::AddPass(
             gb,
             RDG_EVENT_NAME("UDLOD.Prepass.PrepRoot"),
@@ -363,14 +316,34 @@ void FTerrainSceneViewExtension::draw_tile_tree(
             FIntVector{1, 1, 1}
         );
 
-        FComputeShaderUtils::AddPass(
-            gb,
-            RDG_EVENT_NAME("UDLOD.Prepass.PrepNext"),
-            ERDGPassFlags::NeverCull | ERDGPassFlags::Compute,
-            prep_next_cs,
-            gpu_terrain_view->prepass_parameters,
-            FIntVector{1, 1, 1}
-        );
+        auto add_refine_tiles_pass = [&gb, refine_tiles_cs, indirect_args_buffer](
+            RefineTiles* refine_tiles_parameters
+        ) {
+            FComputeShaderUtils::AddPass(
+                gb,
+                RDG_EVENT_NAME("UDLOD.Prepass.RefineTiles"),
+                refine_tiles_cs,
+                refine_tiles_parameters,
+                indirect_args_buffer,
+                0
+            );
+        };
+
+        for (uint32 refinement_step = 0; refinement_step < gpu_terrain_view->refinement_count; ++
+             refinement_step) {
+            add_refine_tiles_pass(gpu_terrain_view->refine_tiles_parameters);
+
+            FComputeShaderUtils::AddPass(
+                gb,
+                RDG_EVENT_NAME("UDLOD.Prepass.PrepNext"),
+                ERDGPassFlags::NeverCull | ERDGPassFlags::Compute,
+                prep_next_cs,
+                gpu_terrain_view->prepass_parameters,
+                FIntVector{1, 1, 1}
+            );
+        }
+
+        add_refine_tiles_pass(gpu_terrain_view->refine_tiles_parameters);
 
         FComputeShaderUtils::AddPass(
             gb,
@@ -381,23 +354,14 @@ void FTerrainSceneViewExtension::draw_tile_tree(
             FIntVector{1, 1, 1}
         );
 
-        FComputeShaderUtils::AddPass(
-            gb,
-            RDG_EVENT_NAME("UDLOD.Prepass.RefineTiles"),
-            ERDGPassFlags::NeverCull | ERDGPassFlags::Compute,
-            refine_tiles_cs,
-            gpu_terrain_view->refine_tiles_parameters,
-            FIntVector{64, 1, 1}
-        );
-
-        FComputeShaderUtils::AddPass(
-            gb,
-            RDG_EVENT_NAME("UDLOD.Picking"),
-            ERDGPassFlags::NeverCull | ERDGPassFlags::Compute,
-            picking_cs,
-            picking_params,
-            FIntVector{1, 1, 1}
-        );
+        // FComputeShaderUtils::AddPass(
+        //     gb,
+        //     RDG_EVENT_NAME("UDLOD.Picking"),
+        //     ERDGPassFlags::NeverCull | ERDGPassFlags::Compute,
+        //     picking_cs,
+        //     picking_params,
+        //     FIntVector{1, 1, 1}
+        // );
 
         auto* params = gb.AllocParameters<DrawElementsIndirectParameters>();
         params->terrain = gpu_terrain->terrain_buffer;
@@ -408,24 +372,26 @@ void FTerrainSceneViewExtension::draw_tile_tree(
         params->terrain_view = gpu_terrain_view->terrain_view_buffer;
         params->approximate_height = approximate_height_srv;
         params->tile_tree = tile_tree_buffer;
-        params->geometry_tiles = GetAsBufferSRV(gpu_terrain_view->final_tiles_buffer);
+        params->geometry_tiles = gpu_terrain_view->final_tiles_srv;
         params->tile_uv = FVector3f::ZeroVector;
         params->tile_index = 0u;
         params->view_distance = 0.0f;
         params->height = 0.0f;
-        params->IndirectArgs = GetAsBuffer(
-            reinterpret_cast<FRDGViewableResource*>(gpu_terrain_view->indirect_buffer));
+        params->IndirectArgs = indirect_args_buffer;
+        params->RenderTargets = render_targets;
 
         auto vertex_shader = gsm->GetShader<FTerrainVertexShader>();
         auto fragment_shader = gsm->GetShader<FTerrainFragmentShader>();
 
         const FIntRect& view_rect = view.ViewRect;
+        const bool reverse_culling = view.bReverseCulling;
 
         gb.AddPass(
             RDG_EVENT_NAME("UDLOD.DrawTileTree"),
             params,
             ERDGPassFlags::NeverCull | ERDGPassFlags::Raster,
-            [params, vertex_shader, fragment_shader, &view_rect](FRHICommandList& cmd) {
+            [params, vertex_shader, fragment_shader, &view_rect, reverse_culling](
+            FRHICommandList& cmd) {
                 FGraphicsPipelineStateInitializer pso;
                 cmd.ApplyCachedRenderTargets(pso);
                 cmd.SetViewport(
@@ -438,7 +404,9 @@ void FTerrainSceneViewExtension::draw_tile_tree(
                 );
 
                 pso.BlendState = TStaticBlendState<>::GetRHI();
-                pso.RasterizerState = TStaticRasterizerState<>::GetRHI();
+                pso.RasterizerState = reverse_culling
+                    ? TStaticRasterizerState<FM_Solid, CM_CCW>::GetRHI()
+                    : TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI();
                 pso.DepthStencilState = TStaticDepthStencilState<>::GetRHI();
                 pso.PrimitiveType = GRHISupportsRectTopology ? PT_RectList : PT_TriangleList;
                 pso.BoundShaderState.VertexDeclarationRHI = GEmptyVertexDeclaration.
@@ -466,6 +434,3 @@ void FTerrainSceneViewExtension::draw_tile_tree(
             });
     }
 }
-
-TSharedPtr<FTerrainSceneViewExtension> FTerrainSceneViewExtension::instance =
-    FSceneViewExtensions::NewExtension<FTerrainSceneViewExtension>();

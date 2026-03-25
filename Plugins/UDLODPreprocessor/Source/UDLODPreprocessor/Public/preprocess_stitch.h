@@ -48,7 +48,6 @@ PreprocessResult<void> stitch_corners(
     }
 
     for (GDALRasterBand* raster : rasters_result.value()) {
-
         TArray<PreprocessResult<T>> corner_values{};
         for (uint8 j = 0; j < 3; ++j) {
             const auto offset = corner_offsets[corner][j];

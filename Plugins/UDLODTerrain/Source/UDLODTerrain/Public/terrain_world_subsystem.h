@@ -1,8 +1,12 @@
 ﻿#pragma once
+
 #include "terrain_parent_actor.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "Templates/SharedPointer.h"
 
 #include "terrain_world_subsystem.generated.h"
+
+class FTerrainSceneViewExtension;
 
 UCLASS()
 class UTerrainWorldSubsystem : public UWorldSubsystem {
@@ -23,4 +27,5 @@ protected:
     ATerrainParentActor* terrain_root = nullptr;
 
     bool terrain_root_was_auto_spawned = false;
+    TSharedPtr<FTerrainSceneViewExtension> terrain_view_extension;
 };

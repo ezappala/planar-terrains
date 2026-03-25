@@ -7,14 +7,7 @@
 #include "terrain_shader_helpers.h"
 #include "terrain_tile_atlas.h"
 
-#include "gpu_terrain.generated.h"
-
-USTRUCT()
 struct FGpuTerrain {
-    GENERATED_BODY()
-
-    FGpuTerrain() = default;
-
     FGpuTerrain(
         FRDGBuilder& gb,
         const FRDGTextureSRVRef fallback_texture,
@@ -86,9 +79,9 @@ struct FGpuTerrain {
     static void initialize(
         FRDGBuilder& gb,
         const FRDGTextureSRVRef fallback_texture,
-        TMap<UTerrain*, FGpuTerrain>& gpu_terrains,
-        TMap<UTerrain*, FGpuTileAtlas>& gpu_tile_atlases,
-        TMap<UTerrain*, FTileAtlas>& tile_atlases
+        TMap<TObjectPtr<UTerrain>, FGpuTerrain>& gpu_terrains,
+        TMap<TObjectPtr<UTerrain>, FGpuTileAtlas>& gpu_tile_atlases,
+        TMap<TObjectPtr<UTerrain>, FTileAtlas>& tile_atlases
     ) {
         gpu_terrains.Reset();
         for (auto& [terrain, tile_atlas] : tile_atlases) {
@@ -107,7 +100,7 @@ struct FGpuTerrain {
     //
     // static void prepare(
     //     FRDGBuilder& gb,
-    //     TMap<UTerrain*, FGpuTerrain>& gpu_terrains
+    //     TMap<TObjectPtr<UTerrain>, FGpuTerrain>& gpu_terrains
     // ) {
     //     for (auto& [terrain, gpu_terrain] : gpu_terrains) {
     //         const auto terrain_buffer = gpu_terrain.terrain_buffer;
@@ -133,23 +126,20 @@ struct FGpuTerrain {
     // }
 };
 
-USTRUCT()
 struct FGpuTerrainView {
-    GENERATED_BODY()
-
-    FGpuTerrainView() = default;
-
     FGpuTerrainView(FRDGBuilder& gb, const FTileTree& tile_tree) : order{tile_tree.order},
         refinement_count{tile_tree.refinement_count},
         terrain_view_buffer{
             gb.CreateSRV(tile_tree.terrain_view_buffer)
         },
-        indirect_buffer{
-            gb.CreateUAV(
-                gb.CreateBuffer(
-                    FRDGBufferDesc::CreateStructuredDesc<IndirectBuffer>(1),
-                    TEXT("UDLOD.PrepassIndirectBuffer")
-                ))
+        indirect_args_buffer{
+            gb.CreateBuffer(
+                FRDGBufferDesc::CreateIndirectDesc(4),
+                TEXT("UDLOD.PrepassIndirectArgsBuffer")
+            )
+        },
+        indirect_args_uav{
+            gb.CreateUAV(indirect_args_buffer, PF_R32_UINT)
         },
         prepass_state_buffer{
             gb.CreateUAV(
@@ -167,43 +157,51 @@ struct FGpuTerrainView {
                 ))
         },
         final_tiles_buffer{
-            gb.CreateUAV(
-                gb.CreateBuffer(
-                    FRDGBufferDesc::CreateStructuredDesc<TileCoordinate>(
-                        tile_tree.geometry_tile_count),
-                    TEXT("UDLOD.FinalTilesBuffer")
-                ))
+            gb.CreateBuffer(
+                FRDGBufferDesc::CreateStructuredDesc<GeometryTile>(
+                    tile_tree.geometry_tile_count),
+                TEXT("UDLOD.FinalTilesBuffer")
+            )
+        },
+        final_tiles_uav{
+            gb.CreateUAV(final_tiles_buffer)
+        },
+        final_tiles_srv{
+            gb.CreateSRV(final_tiles_buffer)
         },
         prepass_parameters{nullptr},
         refine_tiles_parameters{nullptr} {}
 
-    UPROPERTY(VisibleAnywhere)
     uint32 order;
-
-    UPROPERTY(VisibleAnywhere)
     uint32 refinement_count;
 
     FRDGBufferSRVRef terrain_view_buffer;
-    FRDGBufferUAVRef indirect_buffer;
+    FRDGBufferRef indirect_args_buffer;
+    FRDGBufferUAVRef indirect_args_uav;
     FRDGBufferUAVRef prepass_state_buffer;
     FRDGBufferUAVRef temporary_tiles_buffer;
-    FRDGBufferUAVRef final_tiles_buffer;
+    FRDGBufferRef final_tiles_buffer;
+    FRDGBufferUAVRef final_tiles_uav;
+    FRDGBufferSRVRef final_tiles_srv;
     Prepass* prepass_parameters;
     RefineTiles* refine_tiles_parameters;
 
     friend bool operator==(const FGpuTerrainView& a, const FGpuTerrainView& b) {
         return a.order == b.order
             && a.refinement_count == b.refinement_count
-            && a.indirect_buffer == b.indirect_buffer
+            && a.indirect_args_buffer == b.indirect_args_buffer
+            && a.indirect_args_uav == b.indirect_args_uav
             && a.prepass_state_buffer == b.prepass_state_buffer
             && a.temporary_tiles_buffer == b.temporary_tiles_buffer
-            && a.final_tiles_buffer == b.final_tiles_buffer;
+            && a.final_tiles_buffer == b.final_tiles_buffer
+            && a.final_tiles_uav == b.final_tiles_uav
+            && a.final_tiles_srv == b.final_tiles_srv;
     }
 
     static void initialize(
         FRDGBuilder& gb,
-        TMap<UTerrain*, FGpuTerrainView>& gpu_terrain_views,
-        TMap<UTerrain*, FTileTree>& tile_trees
+        TMap<TObjectPtr<UTerrain>, FGpuTerrainView>& gpu_terrain_views,
+        TMap<TObjectPtr<UTerrain>, FTileTree>& tile_trees
     ) {
         gpu_terrain_views.Reset();
         for (auto& [terrain, tile_tree] : tile_trees) {
@@ -213,25 +211,25 @@ struct FGpuTerrainView {
 
     static void prepare(
         FRDGBuilder& gb,
-        TMap<UTerrain*, FGpuTerrainView>& gpu_terrain_views
+        TMap<TObjectPtr<UTerrain>, FGpuTerrainView>& gpu_terrain_views
     ) {
         for (auto& [terrain, gpu_terrain_view] : gpu_terrain_views) {
             gpu_terrain_view.prepass_parameters = gb.AllocParameters<Prepass>();
             gpu_terrain_view.prepass_parameters->terrain_view = gpu_terrain_view.terrain_view_buffer;
             gpu_terrain_view.prepass_parameters->state = gpu_terrain_view.prepass_state_buffer;
-            gpu_terrain_view.prepass_parameters->indirect_buffer = gpu_terrain_view.indirect_buffer;
+            gpu_terrain_view.prepass_parameters->indirect_buffer = gpu_terrain_view.indirect_args_uav;
             gpu_terrain_view.prepass_parameters->temporary_tiles = gpu_terrain_view.
                 temporary_tiles_buffer;
 
             gpu_terrain_view.refine_tiles_parameters = gb.AllocParameters<RefineTiles>();
             gpu_terrain_view.refine_tiles_parameters->terrain_view = gpu_terrain_view.terrain_view_buffer;
             gpu_terrain_view.refine_tiles_parameters->state = gpu_terrain_view.prepass_state_buffer;
-            gpu_terrain_view.refine_tiles_parameters->indirect_buffer = gpu_terrain_view.
-                indirect_buffer;
             gpu_terrain_view.refine_tiles_parameters->temporary_tiles = gpu_terrain_view.
                 temporary_tiles_buffer;
             gpu_terrain_view.refine_tiles_parameters->final_tiles = gpu_terrain_view.
-                final_tiles_buffer;
+                final_tiles_uav;
+            gpu_terrain_view.refine_tiles_parameters->IndirectArgs = gpu_terrain_view.
+                indirect_args_buffer;
         }
     }
 };
@@ -260,13 +258,22 @@ FORCEINLINE uint32 GetTypeHash(const FGpuTerrainView& gpu_terrain_view) {
                     GetTypeHash(gpu_terrain_view.order),
                     GetTypeHash(gpu_terrain_view.refinement_count)
                 ),
-                GetTypeHash(gpu_terrain_view.indirect_buffer)
+                GetTypeHash(gpu_terrain_view.indirect_args_buffer)
             ),
-            GetTypeHash(gpu_terrain_view.prepass_state_buffer)
+            GetTypeHash(gpu_terrain_view.indirect_args_uav)
         ),
         HashCombine(
-            GetTypeHash(gpu_terrain_view.temporary_tiles_buffer),
-            GetTypeHash(gpu_terrain_view.final_tiles_buffer)
+            GetTypeHash(gpu_terrain_view.prepass_state_buffer),
+            HashCombine(
+                HashCombine(
+                    GetTypeHash(gpu_terrain_view.temporary_tiles_buffer),
+                    GetTypeHash(gpu_terrain_view.final_tiles_buffer)
+                ),
+                HashCombine(
+                    GetTypeHash(gpu_terrain_view.final_tiles_uav),
+                    GetTypeHash(gpu_terrain_view.final_tiles_srv)
+                )
+            )
         )
     );
 }

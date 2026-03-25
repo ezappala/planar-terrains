@@ -1,22 +1,29 @@
 ﻿#pragma once
 #include "AssetDefinition.h"
 #include "SceneViewExtension.h"
-#include "terrain.h"
-#include "terrain_config.h"
-#include "terrain_tile_atlas.h"
-#include "terrain_typedefs.h"
-#include "terrain_view_config.h"
+#include "terrain_parent_actor.h"
+#include "terrain_world_subsystem.h"
 
-class FTerrainSceneViewExtension final : public FSceneViewExtensionBase {
+class FTerrainSceneViewExtension final : public FWorldSceneViewExtension {
 public:
-    explicit FTerrainSceneViewExtension(const FAutoRegister& auto_register) : FSceneViewExtensionBase
-        {auto_register},
+    FTerrainSceneViewExtension(
+        const FAutoRegister& auto_register,
+        UWorld* in_world
+    ) : FWorldSceneViewExtension{auto_register, in_world},
+        root{in_world->GetSubsystemChecked<UTerrainWorldSubsystem>()->get_terrain_root_checked()},
         heightmap_texture{nullptr},
         albedo_texture{nullptr}
-        // terrains_spawned{false}
+    // terrains_spawned{false}
     {}
 
-    virtual void PreRenderView_RenderThread(FRDGBuilder& gb, FSceneView& in_view) override;
+    TNotNull<ATerrainParentActor*> root;
+
+    virtual void PostRenderBasePassDeferred_RenderThread(
+        FRDGBuilder& gb,
+        FSceneView& in_view,
+        const FRenderTargetBindingSlots& render_targets,
+        TRDGUniformBufferRef<FSceneTextureUniformParameters> scene_textures
+    ) override;
 
     static FRDGTextureSRVRef CreateRDGTextureFromUTexture(
         FRDGBuilder& gb,
@@ -32,18 +39,21 @@ public:
 
     static FRDGTextureSRVRef GetDefaultWhiteTexture(FRDGBuilder& gb);
 
-    using FTerrains = TTuple<FTerrainConfig, FTerrainViewConfig, FMaterialInstancePtr, FView>;
+    void draw_terrain(
+        FRDGBuilder& gb,
+        const FScene& scene,
+        const FViewInfo& view,
+        const FRenderTargetBindingSlots& render_targets
+    ) const;
 
-    static void spawn_terrains(FRDGBuilder& gb, FSceneInterface& scene);
-
-    void draw_terrain(FRDGBuilder& gb, const FScene& scene, const FViewInfo& view) const;
-    void draw_tile_tree(FRDGBuilder& gb, const FScene& scene, const FViewInfo& view) const;
+    void draw_tile_tree(
+        FRDGBuilder& gb,
+        const FViewInfo& view,
+        const FRenderTargetBindingSlots& render_targets
+    ) const;
 
 private:
     mutable FRDGTextureRef heightmap_texture;
     mutable FRDGTextureRef albedo_texture;
     // bool terrains_spawned;
-
-public:
-    static TSharedPtr<FTerrainSceneViewExtension> instance;
 };

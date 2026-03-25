@@ -21,23 +21,23 @@ bool FPreprocessAttachmentConfigFormatMappingsTest::RunTest(const FString& Param
 
     TestEqual(
         TEXT("Rgb8U pixel format"),
-        attachment_format_as_pixel_format(EAttachmentFormat::Rgb8U),
+        to_pixel_format(EAttachmentFormat::Rgb8U),
         PF_R8G8B8A8_UINT);
     TestEqual(
         TEXT("R16U pixel format"),
-        attachment_format_as_pixel_format(EAttachmentFormat::R16U),
+        to_pixel_format(EAttachmentFormat::R16U),
         PF_R16_UINT);
     TestEqual(
         TEXT("R16I pixel format"),
-        attachment_format_as_pixel_format(EAttachmentFormat::R16I),
+        to_pixel_format(EAttachmentFormat::R16I),
         PF_R16_SINT);
     TestEqual(
         TEXT("Rg16U pixel format"),
-        attachment_format_as_pixel_format(EAttachmentFormat::Rg16U),
+        to_pixel_format(EAttachmentFormat::Rg16U),
         PF_R16G16_UINT);
     TestEqual(
         TEXT("R32F pixel format"),
-        attachment_format_as_pixel_format(EAttachmentFormat::R32F),
+        to_pixel_format(EAttachmentFormat::R32F),
         PF_R32_FLOAT);
 
     return true;

@@ -1,19 +1,12 @@
-﻿#include "terrain_scene_proxy.h"
+#include "terrain_scene_proxy.h"
 
 #include "SceneInterface.h"
 #include "Engine/World.h"
-
-#include "terrain_scene_view_extension.h"
 #include "Runtime/Renderer/Private/ScenePrivate.h"
 
 FTerrainSceneProxy::FTerrainSceneProxy(const UTerrain* component) : FPrimitiveSceneProxy
     {component},
     last_camera_position{FVector::ZeroVector} {
-    if (!FTerrainSceneViewExtension::instance.IsValid()) {
-        FTerrainSceneViewExtension::instance = FSceneViewExtensions::NewExtension<
-            FTerrainSceneViewExtension>();
-    }
-
     FVector camera_position = FVector::ZeroVector;
     if (const UWorld* world = component->GetWorld()) {
         if (const APlayerController* pc = world->GetFirstPlayerController()) {

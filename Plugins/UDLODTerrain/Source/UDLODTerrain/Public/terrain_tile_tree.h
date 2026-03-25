@@ -8,26 +8,24 @@
 #include "terrain_view_config.h"
 #include "Async/Async.h"
 
-#include "terrain_tile_tree.generated.h"
-
 class UTerrain;
 
-UENUM()
 enum class ERequestState : uint8 {
     Requested,
     Released
 };
 
-USTRUCT()
 struct FTileState {
-    GENERATED_BODY()
+    FTileState() : coordinate(FTileCoordinate::INVALID()),
+        request_state(ERequestState::Released) {}
 
-    FTileState() = default;
+    FTileState(
+        const FTileCoordinate& in_coordinate,
+        const ERequestState in_request_state
+    ) : coordinate(in_coordinate),
+        request_state(in_request_state) {}
 
-    UPROPERTY(VisibleAnywhere)
     FTileCoordinate coordinate;
-
-    UPROPERTY(VisibleAnywhere)
     ERequestState request_state;
 
     friend bool operator ==(const FTileState& a, const FTileState& b) {
@@ -43,11 +41,23 @@ FORCEINLINE uint32 GetTypeHash(const FTileState& tile_state) {
     );
 }
 
-USTRUCT()
-struct FTileTree {
-    GENERATED_BODY()
+inline TArray<FIntPoint> build_lod_tile_counts(const FTerrainConfig& config) {
+    TArray<FIntPoint> result;
+    result.Init(FIntPoint::ZeroValue, static_cast<int32>(config.lod_count));
 
-    FTileTree() = default;
+    for (const FTileCoordinate& tile : config.tiles) {
+        if (!result.IsValidIndex(tile.lod)) { continue; }
+
+        FIntPoint& counts = result[tile.lod];
+        counts.X = FMath::Max(counts.X, tile.xy.X + 1);
+        counts.Y = FMath::Max(counts.Y, tile.xy.Y + 1);
+    }
+
+    return result;
+}
+
+struct FTileTree {
+    FTileTree() = delete;
 
     FTileTree(
         const FTerrainConfig& config,
@@ -69,6 +79,7 @@ struct FTileTree {
         morph_range{view_config.morph_range},
         blend_range{view_config.blend_range},
         precision_distance{view_config.precision_distance * config.scale_scalar},
+        lod_tile_counts{build_lod_tile_counts(config)},
         view_face{0},
         view_lod{view_config.view_lod},
         data{
@@ -90,82 +101,36 @@ struct FTileTree {
         // terrain_view_buffer{nullptr},
         approximate_height_buffer{nullptr} {}
 
-    UPROPERTY(VisibleAnywhere)
     uint32 tree_size;
-
-    UPROPERTY(VisibleAnywhere)
     uint32 lod_count;
-
-    UPROPERTY(VisibleAnywhere)
     double side_length;
-
-    UPROPERTY(VisibleAnywhere)
     uint32 geometry_tile_count;
-
-    UPROPERTY(VisibleAnywhere)
     uint32 refinement_count;
-
-    UPROPERTY(VisibleAnywhere)
     uint32 grid_size;
-
-    UPROPERTY(VisibleAnywhere)
     double morph_distance;
-
-    UPROPERTY(VisibleAnywhere)
     double blend_distance;
-
-    UPROPERTY(VisibleAnywhere)
     double load_distance;
-
-    UPROPERTY(VisibleAnywhere)
     double subdivision_distance;
-
-    UPROPERTY(VisibleAnywhere)
     float morph_range;
-
-    UPROPERTY(VisibleAnywhere)
     float blend_range;
-
-    UPROPERTY(VisibleAnywhere)
     double precision_distance;
-
-    UPROPERTY(VisibleAnywhere)
+    TArray<FIntPoint> lod_tile_counts;
     uint32 view_face;
-
-    UPROPERTY(VisibleAnywhere)
     uint32 view_lod;
-
-    UPROPERTY(VisibleAnywhere)
-    FVector3d view_local_position;
-
-    UPROPERTY(VisibleAnywhere)
-    FVector3f view_world_position;
-
+    FVector3d view_local_position = FVector3d::ZeroVector;
+    FVector3f view_world_position = FVector3f::ZeroVector;
     TArray4D<TileTreeEntry> data;
-
     TArray4D<FTileState> tiles;
-
-    UPROPERTY(VisibleAnywhere)
-    TArray<FTileCoordinate> requested_tiles;
-
-    UPROPERTY(VisibleAnywhere)
-    TArray<FTileCoordinate> released_tiles;
-
-    TStaticArray<FCoordinate, 6> view_coordinates;
-
-    TStaticArray<FVector4f, 6> half_spaces;
-
-    UPROPERTY(VisibleAnywhere)
+    TArray<FTileCoordinate> requested_tiles{};
+    TArray<FTileCoordinate> released_tiles{};
+    TStaticArray<FCoordinate, 6> view_coordinates{};
+    TStaticArray<FVector4f, 6> half_spaces{};
     float approximate_height;
-
-    UPROPERTY(VisibleAnywhere)
     uint32 order;
 
     FRDGBufferRef tile_tree_buffer;
-
     FRDGBufferRef terrain_view_buffer;
     // FRDGUniformBufferRef terrain_view_buffer;
-
     FRDGBufferRef approximate_height_buffer;
 
     friend bool operator==(const FTileTree& a, const FTileTree& b) {
@@ -182,6 +147,7 @@ struct FTileTree {
             && a.morph_range == b.morph_range
             && a.blend_range == b.blend_range
             && a.precision_distance == b.precision_distance
+            && a.lod_tile_counts == b.lod_tile_counts
             && a.view_face == b.view_face
             && a.view_lod == b.view_lod
             && a.view_local_position == b.view_local_position
@@ -194,7 +160,7 @@ struct FTileTree {
 
     static void approximate_height_readback(
         FRDGBuilder& gb,
-        TMap<UTerrain*, FTileTree>& tile_trees) {
+        TMap<TObjectPtr<UTerrain>, FTileTree>& tile_trees) {
         for (auto& [terrain, tile_tree] : tile_trees) {
             const FRDGBufferRef approximate_height_buffer = tile_tree.approximate_height_buffer;
             if (approximate_height_buffer == nullptr) { continue; }
@@ -225,26 +191,46 @@ struct FTileTree {
         }
     }
 
-    static FVector2d compute_tree_xy(const FCoordinate& coordinate, const double tile_count) {
+    FVector2d get_tile_count(const uint32 lod) const {
+        if (lod_tile_counts.IsValidIndex(static_cast<int32>(lod))) {
+            const FIntPoint counts = lod_tile_counts[static_cast<int32>(lod)];
+            if (counts.X > 0 && counts.Y > 0) {
+                return FVector2d{
+                    static_cast<double>(counts.X),
+                    static_cast<double>(counts.Y)
+                };
+            }
+        }
+
+        const double fallback = FMath::Exp2(static_cast<double>(lod));
+        return FVector2d{fallback, fallback};
+    }
+
+    static FVector2d compute_tree_xy(const FCoordinate& coordinate, const FVector2d& tile_count) {
         return FVector2d::Min(
-            coordinate.uv * tile_count,
-            FVector2d{tile_count - 1e-6, tile_count - 1e-6});
+            FVector2d{
+                coordinate.uv.X * tile_count.X,
+                coordinate.uv.Y * tile_count.Y
+            },
+            FVector2d{tile_count.X - 1e-6, tile_count.Y - 1e-6});
     }
 
     FIntVector2 compute_origin(const FCoordinate& view_coordinate, const uint32 lod) const {
-        const auto tile_count = FMath::Exp2(static_cast<double>(lod));
+        const FVector2d tile_count = get_tile_count(lod);
         const auto tree_xy = compute_tree_xy(view_coordinate, tile_count);
+        const double max_origin_x = FMath::Max(0.0, tile_count.X - static_cast<double>(tree_size));
+        const double max_origin_y = FMath::Max(0.0, tile_count.Y - static_cast<double>(tree_size));
 
         return {
             static_cast<int32>(FMath::Clamp(
                 FMath::RoundHalfFromZero(tree_xy.X - 0.5 * static_cast<double>(tree_size)),
                 0.,
-                tile_count - static_cast<double>(tree_size)
+                max_origin_x
             )),
             static_cast<int32>(FMath::Clamp(
                 FMath::RoundHalfFromZero(tree_xy.Y - 0.5 * static_cast<double>(tree_size)),
                 0.,
-                tile_count - static_cast<double>(tree_size)
+                max_origin_y
             )),
         };
     }
@@ -253,7 +239,7 @@ struct FTileTree {
         const FTileCoordinate& tile,
         const FCoordinate& view_coordinate
     ) const {
-        const auto tile_count = FMath::Exp2(static_cast<double>(tile.lod));
+        const FVector2d tile_count = get_tile_count(tile.lod);
         const auto view_tile_xy = compute_tree_xy(view_coordinate, tile_count);
         const auto tile_offset = FIntVector2{
             tile.xy.X - static_cast<int32>(view_tile_xy.X),
@@ -271,9 +257,9 @@ struct FTileTree {
         const auto tile_position = FCoordinate{
             static_cast<uint32>(tile.face),
             FVector2d{
-                tile.xy.X + offset.X,
-                tile.xy.Y + offset.Y
-            } / tile_count
+                (tile.xy.X + offset.X) / tile_count.X,
+                (tile.xy.Y + offset.Y) / tile_count.Y
+            }
         };
         const auto tile_local_position = tile_position.local_position(
             approximate_height,
@@ -295,45 +281,63 @@ struct FTileTree {
         auto lods = range<TArray<int32>, int32>(0, lod_count);
         for (const auto& lod : lods) {
             const auto origin = compute_origin(view_coordinate, lod);
+            const FVector2d tile_count = get_tile_count(lod);
             auto trees = range<TArray<int32>, int32>(0, tree_size);
-            for (const auto& [x, y] : product<int32, int32>(trees, trees)
-            ) {
-                const auto tile_coordinate = FTileCoordinate{
-                    0u,
-                    static_cast<uint32>(lod),
-                    FIntPoint{origin.X + x, origin.Y + y}
-                };
-                const auto tile_dist = compute_tile_distance(tile_coordinate, view_coordinate);
-                const double tile_coord_lod = tile_coordinate.lod;
-                const auto dist = load_distance / FMath::Exp2(tile_coord_lod);
-                const auto state = [&lod, &tile_dist, &dist] {
+            auto indices = product<int32, int32>(trees, trees);
+            for (const auto& [x, y] : indices) {
+                const int32 tile_x = origin.X + x;
+                const int32 tile_y = origin.Y + y;
+                const bool is_valid_coordinate =
+                    tile_x >= 0 &&
+                    tile_y >= 0 &&
+                    static_cast<double>(tile_x) < tile_count.X &&
+                    static_cast<double>(tile_y) < tile_count.Y;
+                const auto tile_coordinate = is_valid_coordinate
+                    ? FTileCoordinate{
+                        static_cast<uint32>(view_coordinate.face),
+                        static_cast<uint32>(lod),
+                        FIntPoint{tile_x, tile_y}
+                    }
+                    : FTileCoordinate::INVALID();
+                const auto state = [&] {
+                    if (!is_valid_coordinate) { return ERequestState::Released; }
+
+                    const auto tile_dist = compute_tile_distance(tile_coordinate, view_coordinate);
+                    const auto dist = load_distance / FMath::Max(tile_count.X, tile_count.Y);
                     if (lod == 0 || tile_dist < dist) { return ERequestState::Requested; }
                     return ERequestState::Released;
                 }();
+                const uint32 storage_x = static_cast<uint32>(tile_x % static_cast<int32>(tree_size));
+                const uint32 storage_y = static_cast<uint32>(tile_y % static_cast<int32>(tree_size));
 
                 auto* tile = &tiles(
-                    0,
+                    view_coordinate.face,
                     lod,
-                    tile_coordinate.xy.X % tree_size,
-                    tile_coordinate.xy.Y % tree_size
+                    storage_x,
+                    storage_y
                 );
 
                 if (tile_coordinate != tile->coordinate) {
-                    if (tile->request_state == ERequestState::Requested) {
+                    if (
+                        tile->request_state == ERequestState::Requested &&
+                        tile->coordinate != FTileCoordinate::INVALID()
+                    ) {
                         tile->request_state = ERequestState::Released;
                         released_tiles.Add(tile->coordinate);
                     }
                     tile->coordinate = tile_coordinate;
                 }
 
-                if (tile->request_state == ERequestState::Released && state ==
-                    ERequestState::Requested) {
+                if (tile->request_state == ERequestState::Released &&
+                    state == ERequestState::Requested) {
                     tile->request_state = ERequestState::Requested;
                     requested_tiles.Add(tile->coordinate);
-                } else if (tile->request_state == ERequestState::Requested && state ==
-                    ERequestState::Released) {
+                } else if (tile->request_state == ERequestState::Requested &&
+                    state == ERequestState::Released) {
                     tile->request_state = ERequestState::Released;
-                    released_tiles.Add(tile->coordinate);
+                    if (tile->coordinate != FTileCoordinate::INVALID()) {
+                        released_tiles.Add(tile->coordinate);
+                    }
                 }
             }
         }
@@ -341,7 +345,7 @@ struct FTileTree {
 };
 
 FORCEINLINE uint32 GetTypeHash(const FTileTree& tile_tree) {
-    return HashCombine(
+    uint32 hash = HashCombine(
         HashCombine(
             HashCombine(
                 HashCombine(
@@ -384,4 +388,10 @@ FORCEINLINE uint32 GetTypeHash(const FTileTree& tile_tree) {
             )
         )
     );
+
+    for (const FIntPoint& counts : tile_tree.lod_tile_counts) {
+        hash = HashCombine(hash, GetTypeHash(counts));
+    }
+
+    return hash;
 }

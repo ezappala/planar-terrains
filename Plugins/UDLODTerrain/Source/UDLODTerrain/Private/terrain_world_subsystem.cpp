@@ -1,12 +1,14 @@
 #include "terrain_world_subsystem.h"
 
 #include "EngineUtils.h"
+#include "terrain_scene_view_extension.h"
 #include "Engine/World.h"
 
 namespace {
 TArray<ATerrainParentActor*> find_terrain_roots(const UWorld* world) {
     TArray<ATerrainParentActor*> parent_actors;
-    if (world == nullptr) {
+    // Note: a TActorIterator cannot be used in a non-game thread.
+    if (world == nullptr || !IsInGameThread()) {
         return parent_actors;
     }
 
@@ -20,6 +22,7 @@ TArray<ATerrainParentActor*> find_terrain_roots(const UWorld* world) {
 
 void UTerrainWorldSubsystem::Deinitialize() {
     UE_LOGFMT(LogTemp, Log, "Shutting down UDLOD Terrain Subsystem...");
+    terrain_view_extension.Reset();
     terrain_root = nullptr;
     terrain_root_was_auto_spawned = false;
     Super::Deinitialize();
@@ -29,6 +32,10 @@ void UTerrainWorldSubsystem::Initialize(FSubsystemCollectionBase& collection) {
     Super::Initialize(collection);
 
     UE_LOGFMT(LogTemp, Log, "Initializing UDLOD Terrain Subsystem...");
+    if (UWorld* world = GetWorld(); world != nullptr) {
+        terrain_view_extension = FSceneViewExtensions::NewExtension<FTerrainSceneViewExtension>(
+            world);
+    }
 }
 
 void UTerrainWorldSubsystem::PostInitialize() {

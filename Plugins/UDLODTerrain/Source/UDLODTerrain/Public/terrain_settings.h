@@ -234,17 +234,11 @@ struct FTerrainPreprocessSettings {
     EAttachmentFormat albedo_attachment_format = EAttachmentFormat::Rgba8U;
 };
 
-USTRUCT()
 struct FTerrainSettings {
-    GENERATED_BODY()
-
     FTerrainSettings() : attachments{"height", "albedo"},
         atlas_size{1028} {}
 
-    UPROPERTY(VisibleAnywhere)
     TArray<FString> attachments;
-
-    UPROPERTY(VisibleAnywhere)
     uint32 atlas_size;
 
     FString ToString() const {

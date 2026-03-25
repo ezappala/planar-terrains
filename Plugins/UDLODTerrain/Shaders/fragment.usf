@@ -127,30 +127,21 @@ float4 color_dataset(AtlasTile tile) {
 }
 
 float4 sample_color(AtlasTile tile) {
-    float4 color;
-    // switch (gradient_info.mode) {
-    // case 0: {
-    //     color = color_dataset(tile);
-    //     break;
-    // }
-    // case 1: {
-    //     color = color_earth(tile);
-    //     break;
-    // }
-    // case 2: {
-    //     color = sample_albedo(tile);
-    //     break;
-    // }
-    // case 3: {
-    //     color = sample_albedo(tile);
-    //     if (color.a == 0.0f) { color = float4(0.5f, 0.5f, 0.5f, 0.5f); }
-    //     break;
-    // }
-    // default: {}
-    // }
+    float height = sample_height(tile);
+    float height_range = max(terrain.max_height - terrain.min_height, 1.0f);
+    float height01 = saturate((height - terrain.min_height) / height_range);
 
-    color = color_earth(tile);
-    return color;
+    float3 water = float3(0.03f, 0.10f, 0.22f);
+    float3 shore = float3(0.24f, 0.34f, 0.17f);
+    float3 highland = float3(0.49f, 0.43f, 0.30f);
+    float3 snow = float3(0.93f, 0.95f, 0.98f);
+
+    float3 land = lerp(shore, highland, saturate(height01 * 1.25f));
+    land = lerp(land, snow, saturate((height01 - 0.72f) / 0.28f));
+
+    float ocean_depth = saturate(abs(min(height, 0.0f)) / max(abs(terrain.min_height), 1.0f));
+    float3 color = height < 0.0f ? lerp(shore, water, ocean_depth) : land;
+    return float4(color, 1.0f);
 }
 
 float4 slope_gradient(float3 world_normal, float3 surface_gradient) {

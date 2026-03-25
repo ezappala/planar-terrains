@@ -27,7 +27,7 @@ inline FMatrix44d get_camera_projection_matrix(const UCameraComponent* camera_co
 }
 
 inline void tile_tree_compute_requests(
-    TMap<UTerrain*, FTileTree>& tile_trees,
+    TMap<TObjectPtr<UTerrain>, FTileTree>& tile_trees,
     const FSceneView& view
 ) {
     const FVector3d view_world_position(view.ViewMatrices.GetViewOrigin());
@@ -68,8 +68,8 @@ inline void tile_tree_compute_requests(
 }
 
 inline void tile_tree_adjust_to_tile_atlas(
-    TMap<UTerrain*, FTileTree>& tile_trees,
-    TMap<UTerrain*, FTileAtlas>& tile_atlases
+    TMap<TObjectPtr<UTerrain>, FTileTree>& tile_trees,
+    TMap<TObjectPtr<UTerrain>, FTileAtlas>& tile_atlases
 ) {
     for (auto& [terrain, tile_tree] : tile_trees) {
         FTileAtlas* tile_atlas = tile_atlases.Find(terrain);
@@ -85,7 +85,7 @@ inline void tile_tree_adjust_to_tile_atlas(
 
 inline void tile_tree_update_terrain_view_buffer(
     FRDGBuilder& gb,
-    TMap<UTerrain*, FTileTree>& tile_trees
+    TMap<TObjectPtr<UTerrain>, FTileTree>& tile_trees
 ) {
     for (auto& [terrain, tile_tree] : tile_trees) {
         const float approximate_height = tile_tree.approximate_height;
@@ -103,8 +103,8 @@ inline void tile_tree_update_terrain_view_buffer(
 }
 
 inline void tile_atlas_update(
-    TMap<UTerrain*, FTileTree>& tile_trees,
-    TMap<UTerrain*, FTileAtlas>& tile_atlases
+    TMap<TObjectPtr<UTerrain>, FTileTree>& tile_trees,
+    TMap<TObjectPtr<UTerrain>, FTileAtlas>& tile_atlases
 ) {
     for (auto& [terrain, tile_tree] : tile_trees) {
         FTileAtlas* tile_atlas = tile_atlases.Find(terrain);
@@ -118,15 +118,10 @@ inline void tile_atlas_update(
             continue;
         }
 
-        for (
-            const auto& coordinate :
-            ext::iter::drain<TArray<FTileCoordinate>, FTileCoordinate>(
-                tile_tree.released_tiles
-            )) { tile_atlas->release_tile(coordinate); }
+        auto released_tiles = ext::iter::drain(tile_tree.released_tiles);
+        for (const auto& coordinate : released_tiles) { tile_atlas->release_tile(coordinate); }
 
-        for (const auto& coordinate :
-             ext::iter::drain<TArray<FTileCoordinate>, FTileCoordinate>(
-                 tile_tree.requested_tiles
-             )) { tile_atlas->request_tile(coordinate); }
+        auto requested_tiles = ext::iter::drain(tile_tree.requested_tiles);
+        for (const auto& coordinate : requested_tiles) { tile_atlas->request_tile(coordinate); }
     }
 }

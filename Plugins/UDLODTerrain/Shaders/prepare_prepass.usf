@@ -8,7 +8,7 @@
 #include "functions.ush"
 
 RWStructuredBuffer<PrepassState> state;
-RWStructuredBuffer<IndirectBuffer> indirect_buffer;
+RWBuffer<uint> indirect_buffer;
 RWStructuredBuffer<TileCoordinate> temporary_tiles;
 
 [numthreads(1, 1, 1)]
@@ -17,7 +17,10 @@ void prepare_root() {
     state[0].child_index = terrain_view[0].geometry_tile_count - 1u;
     state[0].final_index = 0;
 
-    indirect_buffer[0].workgroup_count = uint3(1u, 1u, 1u);
+    indirect_buffer[0] = 1u;
+    indirect_buffer[1] = 1u;
+    indirect_buffer[2] = 1u;
+    indirect_buffer[3] = 0u;
 
     temporary_tiles[0] = tile_coordinate(0u, 0u, uint2(0u, 0u));
 
@@ -50,7 +53,10 @@ void prepare_next() {
     }
 
     state[0].counter = -state[0].counter;
-    indirect_buffer[0].workgroup_count.x = (state[0].tile_count + 63u) / 64u;
+    indirect_buffer[0] = (state[0].tile_count + 63u) / 64u;
+    indirect_buffer[1] = 1u;
+    indirect_buffer[2] = 1u;
+    indirect_buffer[3] = 0u;
 }
 
 [numthreads(1, 1, 1)]
@@ -58,5 +64,8 @@ void prepare_render() {
     uint tile_count = asuint(state[0].final_index);
     uint vertex_count = terrain_view[0].vertices_per_tile * tile_count;
 
-    indirect_buffer[0].workgroup_count = uint3(vertex_count, 1u, 0u);
+    indirect_buffer[0] = vertex_count;
+    indirect_buffer[1] = 1u;
+    indirect_buffer[2] = 0u;
+    indirect_buffer[3] = 0u;
 }

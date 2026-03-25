@@ -84,7 +84,7 @@ bool FPreprocessUtilSaveTerrainConfigWritesInsideTerrainPathTest::RunTest(const 
 
     const FString expected_path = FPaths::Combine(context.terrain_path, TEXT("config.json"));
     const FString unexpected_path = context.terrain_path + TEXT("config.json");
-    const TArray<FTileCoordinate> tiles{FTileCoordinate{0u, 2u, FIntPoint{3, 4}}};
+    const TArray tiles{FTileCoordinate{0u, 2u, FIntPoint{3, 4}}};
 
     util::save_terrain_config(tiles, context);
 

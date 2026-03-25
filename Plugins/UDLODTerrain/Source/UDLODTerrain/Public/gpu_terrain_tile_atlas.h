@@ -1,17 +1,15 @@
 ﻿#pragma once
 #include "gpu_terrain_attachment.h"
 #include "RenderGraphBuilder.h"
+#include "RenderGraphUtils.h"
 #include "terrain.h"
 #include "Logging/StructuredLog.h"
 
-#include "gpu_terrain_tile_atlas.generated.h"
+BEGIN_SHADER_PARAMETER_STRUCT(FUploadTilePassParameters, )
+    RDG_TEXTURE_ACCESS(Texture, ERHIAccess::CopyDest)
+END_SHADER_PARAMETER_STRUCT()
 
-USTRUCT()
 struct FGpuTileAtlas {
-    GENERATED_BODY()
-
-    FGpuTileAtlas() = default;
-
     FGpuTileAtlas(
         FRDGBuilder& gb,
         const FTileAtlas& tile_atlas,
@@ -26,13 +24,8 @@ struct FGpuTileAtlas {
             })
     } {}
 
-    UPROPERTY(VisibleAnywhere)
     TMap<FString, FGpuAttachment> attachments;
-
-    UPROPERTY(VisibleAnywhere)
     TArray<FAttachmentTileWithData> upload_tiles;
-
-    UPROPERTY(VisibleAnywhere)
     TArray<FAttachmentTileWithData> download_tiles;
 
     friend bool operator ==(const FGpuTileAtlas& a, const FGpuTileAtlas& b) {
@@ -41,8 +34,8 @@ struct FGpuTileAtlas {
 
     static void initialize(
         FRDGBuilder& gb,
-        TMap<UTerrain*, FGpuTileAtlas>& gpu_tile_atlases,
-        TMap<UTerrain*, FTileAtlas>& tile_atlases,
+        TMap<TObjectPtr<UTerrain>, FGpuTileAtlas>& gpu_tile_atlases,
+        TMap<TObjectPtr<UTerrain>, FTileAtlas>& tile_atlases,
         const FTerrainSettings& settings
     ) {
         gpu_tile_atlases.Reset();
@@ -52,8 +45,8 @@ struct FGpuTileAtlas {
     }
 
     static void extract(
-        TMap<UTerrain*, FTileAtlas>& tile_atlases,
-        TMap<UTerrain*, FGpuTileAtlas>& gpu_tile_atlases
+        TMap<TObjectPtr<UTerrain>, FTileAtlas>& tile_atlases,
+        TMap<TObjectPtr<UTerrain>, FGpuTileAtlas>& gpu_tile_atlases
     ) {
         for (auto& [terrain, tile_atlas] : tile_atlases) {
             FGpuTileAtlas* gpu_tile_atlas = gpu_tile_atlases.Find(terrain);
@@ -67,8 +60,20 @@ struct FGpuTileAtlas {
                 continue;
             }
 
-            Swap(tile_atlas.uploading_tiles, gpu_tile_atlas->upload_tiles);
-            // TODO: decide if we wanna deal with mips
+            gpu_tile_atlas->upload_tiles.Empty();
+            for (const auto& [loaded_tile, loaded_data] : tile_atlas.loaded_tile_data) {
+                const FTileLoadingState* tile_state = tile_atlas.tile_states.Find(
+                    loaded_tile.coordinate);
+                if (tile_state == nullptr || !tile_state->state.is_loaded) { continue; }
+
+                gpu_tile_atlas->upload_tiles.Add(
+                    FAttachmentTileWithData{
+                        tile_state->atlas_index,
+                        loaded_tile.label,
+                        loaded_data
+                    }
+                );
+            }
 
             tile_atlas.downloading_tiles.Append(gpu_tile_atlas->download_tiles);
             gpu_tile_atlas->download_tiles.Empty();
@@ -77,7 +82,7 @@ struct FGpuTileAtlas {
 
     static void prepare(
         FRDGBuilder& gb,
-        TMap<UTerrain*, FGpuTileAtlas>& gpu_tile_atlases
+        TMap<TObjectPtr<UTerrain>, FGpuTileAtlas>& gpu_tile_atlases
     ) {
         // TODO: double check rust source
         for (auto& [terrain, gpu_tile_atlas] : gpu_tile_atlases) {
@@ -88,7 +93,7 @@ struct FGpuTileAtlas {
     }
 
     static void queue(
-        TMap<UTerrain*, FGpuTileAtlas>& gpu_tile_atlases
+        TMap<TObjectPtr<UTerrain>, FGpuTileAtlas>& gpu_tile_atlases
     ) {
         // noop
         // TODO: if dealing with mips, generate pipeline specializations here.
@@ -101,75 +106,87 @@ struct FGpuTileAtlas {
             const auto& tile :
             ext::iter::drain<TArray<FAttachmentTileWithData>, FAttachmentTileWithData>(upload_tiles)
         ) {
-            const auto attachment = attachments[tile.label];
+            const FGpuAttachment* attachment = attachments.Find(tile.label);
+            if (attachment == nullptr ||
+                attachment->atlas_texture_resource == nullptr) { continue; }
 
-            auto input_tex = gb.CreateTexture(
-                FRDGTextureDesc::Create2D(
-                    FIntPoint{
-                        static_cast<int>(attachment.buffer_info.texture_size),
-                        static_cast<int>(attachment.buffer_info.texture_size)
-                    },
-                    attachment_format_as_pixel_format(attachment.buffer_info.format),
-                    FClearValueBinding::Transparent,
-                    ETextureCreateFlags::Dynamic | ETextureCreateFlags::ShaderResource,
-                    attachment.buffer_info.mip_level_count
-                ),
-                *FString::Printf(TEXT("UDLOD.TileUploadTexture.%s"), *tile.label)
-            );
+            const EPixelFormat pixel_format = to_pixel_format(attachment->buffer_info.format);
+            const uint32 source_stride = attachment->buffer_info.actual_side_size;
+            const uint32 texture_size = attachment->buffer_info.texture_size;
+            FRDGTextureRef atlas_texture = attachment->atlas_texture_resource;
+            const uint32 atlas_index = tile.atlas_index;
 
-            if (tile.data.IsType<TArray<TStaticArray<uint8, 4>>>()) {
-                CopyTextureData2D(
-                    tile.data.TryGet<TArray<TStaticArray<uint8, 4>>>(),
-                    attachment.atlas_texture,
-                    attachment.buffer_info.texture_size,
-                    attachment_format_as_pixel_format(attachment.buffer_info.format),
-                    attachment.buffer_info.actual_side_size,
-                    attachment.buffer_info.actual_side_size
+            auto add_upload_pass = [&gb, atlas_texture, atlas_index, pixel_format, source_stride,
+                    texture_size, &tile]<typename PixelType>(const TArray<PixelType>& source_data) {
+                FRDGTextureRef staging_texture = gb.CreateTexture(
+                    FRDGTextureDesc::Create2D(
+                        FIntPoint{
+                            static_cast<int32>(texture_size),
+                            static_cast<int32>(texture_size)
+                        },
+                        pixel_format,
+                        FClearValueBinding::None,
+                        ETextureCreateFlags::CPUWritable
+                    ),
+                    *FString::Printf(TEXT("UDLOD.StageTile.%s.%u"), *tile.label, atlas_index)
                 );
-            } else if (tile.data.IsType<TArray<uint16>>()) {
-                CopyTextureData2D(
-                    tile.data.TryGet<TArray<uint16>>(),
-                    attachment.atlas_texture,
-                    attachment.buffer_info.texture_size,
-                    attachment_format_as_pixel_format(attachment.buffer_info.format),
-                    attachment.buffer_info.actual_side_size,
-                    attachment.buffer_info.actual_side_size
+
+                FUploadTilePassParameters* upload_parameters =
+                    gb.AllocParameters<FUploadTilePassParameters>();
+                upload_parameters->Texture = staging_texture;
+
+                gb.AddPass(
+                    RDG_EVENT_NAME("UDLOD.StageTile.%s.%u", *tile.label, atlas_index),
+                    upload_parameters,
+                    ERDGPassFlags::Copy | ERDGPassFlags::NeverCull,
+                    [staging_texture, source_data, source_stride, texture_size](
+                        FRHICommandListImmediate& cmd
+                    ) {
+                        uint32 destination_stride = 0;
+                        void* destination_data = cmd.LockTexture2D(
+                            staging_texture->GetRHI(),
+                            0,
+                            RLM_WriteOnly,
+                            destination_stride,
+                            false
+                        );
+
+                        if (destination_data == nullptr) {
+                            UE_LOG(
+                                LogTemp,
+                                Warning,
+                                TEXT("Failed to lock staging terrain texture for upload"));
+                            return;
+                        }
+
+                        const uint8* source_bytes = reinterpret_cast<const uint8*>(
+                            source_data.GetData());
+                        uint8* destination_bytes = static_cast<uint8*>(destination_data);
+                        for (uint32 y = 0; y < texture_size; ++y) {
+                            FMemory::Memcpy(
+                                destination_bytes + y * destination_stride,
+                                source_bytes + y * source_stride,
+                                source_stride);
+                        }
+
+                        cmd.UnlockTexture2D(staging_texture->GetRHI(), 0, false);
+                    }
                 );
-            } else if (tile.data.IsType<TArray<int16>>()) {
-                CopyTextureData2D(
-                    tile.data.TryGet<TArray<int16>>(),
-                    attachment.atlas_texture,
-                    attachment.buffer_info.texture_size,
-                    attachment_format_as_pixel_format(attachment.buffer_info.format),
-                    attachment.buffer_info.actual_side_size,
-                    attachment.buffer_info.actual_side_size
-                );
-            } else if (tile.data.IsType<TArray<TStaticArray<uint16, 2>>>()) {
-                CopyTextureData2D(
-                    tile.data.TryGet<TArray<TStaticArray<uint16, 2>>>(),
-                    attachment.atlas_texture,
-                    attachment.buffer_info.texture_size,
-                    attachment_format_as_pixel_format(attachment.buffer_info.format),
-                    attachment.buffer_info.actual_side_size,
-                    attachment.buffer_info.actual_side_size
-                );
-            } else if (tile.data.IsType<TArray<float>>()) {
-                CopyTextureData2D(
-                    tile.data.TryGet<TArray<float>>(),
-                    attachment.atlas_texture,
-                    attachment.buffer_info.texture_size,
-                    attachment_format_as_pixel_format(attachment.buffer_info.format),
-                    attachment.buffer_info.actual_side_size,
-                    attachment.buffer_info.actual_side_size
-                );
-            } else {
-                UE_LOGFMT(
-                    LogTemp,
-                    Error,
-                    "[FGpuTileAtlas::ExecUploadTiles] Unsupported tile data type for tile {l}, skipping",
-                    tile.label
-                );
-            }
+
+                FRHICopyTextureInfo copy_info;
+                copy_info.DestSliceIndex = atlas_index;
+                copy_info.Size = FIntVector(texture_size, texture_size, 1);
+                AddCopyTexturePass(gb, staging_texture, atlas_texture, copy_info);
+            };
+
+            // @formatter:off
+            if (const auto* rgba_data = tile.data.TryGet<TArray<TStaticArray<uint8, 4>>>()) { add_upload_pass(*rgba_data); }
+            else if (const auto* r16u_data = tile.data.TryGet<TArray<uint16>>()) { add_upload_pass(*r16u_data); }
+            else if (const auto* r16i_data = tile.data.TryGet<TArray<int16>>()) { add_upload_pass(*r16i_data); }
+            else if (const auto* rg16u_data = tile.data.TryGet<TArray<TStaticArray<uint16, 2>>>()) { add_upload_pass(*rg16u_data); }
+            else if (const auto* r32f_data = tile.data.TryGet<TArray<float>>()) { add_upload_pass(*r32f_data); }
+            else { UE_LOGFMT( LogTemp, Error, "[FGpuTileAtlas::ExecUploadTiles] Unsupported tile data type for tile {Label}, skipping", tile.label ); }
+            // @formatter:on
         }
     }
 };

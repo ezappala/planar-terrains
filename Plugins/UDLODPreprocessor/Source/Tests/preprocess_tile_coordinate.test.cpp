@@ -20,7 +20,7 @@ bool FPreprocessTileCoordinateHierarchyAndPathTest::RunTest(const FString& Param
         tile.path(TEXT("tiles/")),
         FString(TEXT("tiles/3/1_1/1_3_9_10.tif")));
 
-    const TArray<FTileCoordinate> children = tile.children();
+    const auto children = tile.children();
     TestEqual(TEXT("Child count"), children.Num(), 4);
     if (children.Num() != 4) { return false; }
 
@@ -29,7 +29,7 @@ bool FPreprocessTileCoordinateHierarchyAndPathTest::RunTest(const FString& Param
     TestTrue(TEXT("Child 2"), children[2] == FTileCoordinate(1u, 4u, FIntPoint{18, 21}));
     TestTrue(TEXT("Child 3"), children[3] == FTileCoordinate(1u, 4u, FIntPoint{19, 21}));
 
-    const TOptional<FTileCoordinate> parent = tile.parent();
+    const auto parent = tile.parent();
     TestTrue(TEXT("Parent exists"), parent.IsSet());
     if (!parent.IsSet()) { return false; }
     TestTrue(
@@ -47,7 +47,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FPreprocessTileCoordinateNeighborsAndCoordinateRoundTripTest::RunTest(
     const FString& Parameters) {
     const FTileCoordinate edge_tile{0u, 2u, FIntPoint{0, 0}};
-    const TArray<TTuple<FTileCoordinate, FaceRotation>> neighbors = edge_tile.neighbors();
+    auto neighbors = edge_tile.neighbors();
 
     TestEqual(TEXT("Neighbor count"), neighbors.Num(), 8);
     if (neighbors.Num() != 8) { return false; }

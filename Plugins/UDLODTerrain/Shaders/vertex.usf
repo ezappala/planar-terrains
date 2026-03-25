@@ -47,10 +47,9 @@ VertexInfo vertex_info(VertexInput input) {
 VertexOutput vertex_output(VertexInfo info, float height) {
     VertexOutput output;
     output.clip_position = mul(
-        DFDemote(FDFInverseMatrix(PrimaryView.WorldToClip)),
+        DFDemote(PrimaryView.WorldToClip),
         float4(apply_height(info.world_coordinate, height), 1.0f)
     );
-    // output.clip_position = PrimaryView.WorldToClip(apply_height(info.world_coordinate, height));
     output.tile_uv = info.coordinate.uv;
     output.tile_index = info.tile_index;
     output.view_distance = info.world_coordinate.view_distance;

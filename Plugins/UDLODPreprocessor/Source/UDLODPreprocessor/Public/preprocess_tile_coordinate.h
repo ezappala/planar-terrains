@@ -6,9 +6,6 @@
 #include "Math/Vector.h"
 #include "Math/Vector2D.h"
 #include "Misc/Paths.h"
-#include "UObject/ObjectMacros.h"
-
-#include "preprocess_tile_coordinate.generated.h"
 
 constexpr int32 BLOCK_SIZE = 8;
 
@@ -27,9 +24,7 @@ inline FVector3d position_local_to_unit(
     const FVector3d& local_position,
     const FVector3d& scale
 ) {
-    auto unit_position = local_position / scale;
-    unit_position.Normalize();
-    return unit_position;
+    return FVector3d{1.0, 0.0, 1.0} * local_position / scale;
 }
 
 struct FCoordinate {
@@ -106,9 +101,7 @@ const FIntPoint NEIGHBOR_OFFSETS[8] = {
     {-1, 1}
 };
 
-USTRUCT(BlueprintType)
 struct FTileCoordinate {
-    GENERATED_BODY()
     FTileCoordinate() : face(0),
         lod(0),
         xy(FIntPoint::ZeroValue) {}
@@ -121,13 +114,8 @@ struct FTileCoordinate {
         lod{static_cast<int32>(in_lod)},
         xy{in_xy} {}
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 face;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 lod;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FIntPoint xy;
 
     FString path(FString in_path) const {
@@ -161,7 +149,7 @@ struct FTileCoordinate {
         return FTileCoordinate{
             static_cast<uint32>(face),
             static_cast<uint32>(lod) - 1,
-            {xy.X >> 1, xy.Y >> 1}
+            FIntPoint{xy.X >> 1, xy.Y >> 1}
         };
     }
 
@@ -169,7 +157,7 @@ struct FTileCoordinate {
         return {
             MAX_uint32,
             MAX_uint32,
-            FIntPoint{MAX_int32, MAX_int32}
+            {MAX_int32, MAX_int32}
         };
     }
 
@@ -180,8 +168,10 @@ struct FTileCoordinate {
             const auto edge_position = xy + offset;
             const auto tile_count = 1 << lod;
 
-            if (edge_position.X < 0 || edge_position.Y < 0 || edge_position.X
-                >= tile_count || edge_position.Y >= tile_count) {
+            if (edge_position.X < 0 ||
+                edge_position.Y < 0 ||
+                edge_position.X >= tile_count ||
+                edge_position.Y >= tile_count) {
                 result.Emplace(INVALID(), FaceRotation::Identical);
             } else {
                 result.Emplace(
