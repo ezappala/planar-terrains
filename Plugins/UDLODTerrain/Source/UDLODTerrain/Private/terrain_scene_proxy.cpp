@@ -19,24 +19,18 @@ SIZE_T FTerrainSceneProxy::GetTypeHash() const {
     return reinterpret_cast<size_t>(&unique_pointer);
 }
 
-void FTerrainSceneProxy::GetDynamicMeshElements(
-    const TArray<const FSceneView*>& Views,
-    const FSceneViewFamily& ViewFamily,
-    uint32 VisibilityMap,
-    FMeshElementCollector& Collector) const {
-    FPrimitiveSceneProxy::GetDynamicMeshElements(Views, ViewFamily, VisibilityMap, Collector);
-}
-
-FPrimitiveViewRelevance FTerrainSceneProxy::GetViewRelevance(
-    const FSceneView* view
-) const {
+FPrimitiveViewRelevance FTerrainSceneProxy::GetViewRelevance(const FSceneView* view) const {
     FPrimitiveViewRelevance relevance;
     relevance.bDrawRelevance = IsShown(view);
     relevance.bShadowRelevance = IsShadowCast(view);
     relevance.bDynamicRelevance = true;
     relevance.bRenderInMainPass = ShouldRenderInMainPass();
     relevance.bUsesLightingChannels = GetLightingChannelMask() != GetDefaultLightingChannelMask();
-    relevance.bOpaque = true;
+    relevance.bRenderCustomDepth = ShouldRenderCustomDepth();
+    relevance.bTranslucentSelfShadow = bCastVolumetricTranslucentShadow;
+
+    CombinedMaterialRelevance.SetPrimitiveViewRelevance(relevance);
+
     return relevance;
 }
 

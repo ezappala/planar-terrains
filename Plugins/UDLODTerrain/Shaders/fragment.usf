@@ -32,7 +32,7 @@ struct FragmentInfo {
 
 FragmentInfo fragment_info(FragmentInput input) {
     FragmentInfo info;
-#if FRAGMENT
+#if PIXELSHADER
     info.clip_position = input.clip_position;
     info.tile_index = input.tile_index;
     info.height = input.height;
@@ -92,14 +92,14 @@ struct GradientInfo {
     uint mode;
 };
 
-Texture2D<float> gradient : register(t2);
-SamplerState gradient_sampler : register(s1);
+// Texture2D<float> gradient : register(t2);
+// SamplerState gradient_sampler : register(s1);
 // GradientInfo gradient_info;
 
 float4 sample_albedo(AtlasTile tile) {
     SampleUV uv = compute_sample_uv(tile, attachment_configs[1]);
 
-#if SAMPLE_GRAD && FRAGMENT
+#if SAMPLE_GRAD && PIXELSHADER
     float3 coord = float3(uv.uv, tile.index);
     return albedo_attachment.SampleGrad(terrain_sampler, coord, uv.dx, uv.dy);
 #else
@@ -149,8 +149,61 @@ float4 slope_gradient(float3 world_normal, float3 surface_gradient) {
     return gradient.SampleLevel(gradient_sampler, float2(5.0f * slope + 0.1f, 0.5f), 0.0f);
 }
 
+float4 index_color(uint index) {
+    float4 COLOR_ARRAY[6] = {
+        float4(1.0f, 0.0f, 0.0f, 1.0f),
+        float4(0.0f, 1.0f, 0.0f, 1.0f),
+        float4(0.0f, 0.0f, 1.0f, 1.0f),
+        float4(1.0f, 1.0f, 0.0f, 1.0f),
+        float4(1.0f, 0.0f, 1.0f, 1.0f),
+        float4(0.0f, 1.0f, 1.0f, 1.0f)
+    };
+
+    return lerp(COLOR_ARRAY[index % 6], float4(0.6f, 0.6f, 0.6f, 0.6f), 0.2f);
+}
+
+float tile_tree_outlines(float2 uv) {
+    float thickness = 0.015;
+    float2 inside =
+        step(float2(thickness, thickness), uv) *
+        step(uv, float2(1.0f - thickness, 1.0f - thickness));
+
+    return 1.0f - inside.x * inside.y;
+}
+
+float4 checker_color(Coordinate coordinate, float ratio) {
+    float4 color = index_color(coordinate.lod);
+    float4 parent_color = index_color(coordinate.lod - 1u);
+    color = select(
+        (coordinate.xy.x + coordinate.xy.y) % 2u == 0u,
+        lerp(color, float4(0.0f, 0.0f, 0.0f, 0.5f), ratio),
+        color);
+    parent_color = select(
+        ((coordinate.xy.x >> 1) + (coordinate.xy.y >> 1)) % 2u == 0u,
+        lerp(parent_color, float4(0.0f, 0.0f, 0.0f, 0.0f), 0.5),
+        parent_color);
+
+    return lerp(color, parent_color, ratio);
+}
+
+float4 show_tile_tree(Coordinate coordinate, WorldCoordinate world_coordinate) {
+    float target_lod = log2(terrain_view[0].load_distance / world_coordinate.view_distance);
+    BestLookup best_lookup = lookup_best(coordinate);
+    float4 color = checker_color(best_lookup.tile.coordinate, 0.0);
+    color = lerp(
+        color,
+        float4(0.1f, 0.1f, 0.1f, 0.1f),
+        tile_tree_outlines(best_lookup.tile_tree_uv));
+
+    if (frac(target_lod) < 0.01 && target_lod >= 1.0) {
+        color = lerp(index_color(asuint(target_lod)), float4(0.0f, 0.0f, 0.0f, 0.0f), 0.8f);
+    }
+
+    return color;
+}
+
 void fragment_debug(
-#if SHOW_NORMALS
+#if SHOW_NORMALS || SHOW_DATA_LOD || SHOW_GEOMETRY_LOD || SHOW_TILE_TREE
     inout FragmentInfo info,
 #endif
     inout FragmentOutput output,
@@ -164,7 +217,7 @@ void fragment_debug(
     output.color = show_geometry_lod(info.coordinate, tile.tile_index);
 #endif
 #if SHOW_TILE_TREE
-    output.color = show_tile_tree(info.coordinate, info.world_coordinatella);
+    output.color = show_tile_tree(info.coordinate, info.world_coordinate);
 #endif
 #if SHOW_PIXELS
     output.color = lerp(output.color, show_pixels(tile), 0.5);
@@ -183,7 +236,7 @@ FragmentOutput fragment(FragmentInput input) {
     AtlasTile tile = lookup_tile(info.coordinate, info.blend);
     bool mask = sample_height_mask(tile);
     float4 color = sample_color(tile);
-#if FRAGMENT
+#if PIXELSHADER
     float3 surface_gradient = sample_surface_gradient(tile, info.tangent_space);
 #else
     float3 surface_gradient = float3(0.0f, 0.0f, 0.0f);
@@ -207,7 +260,7 @@ FragmentOutput fragment(FragmentInput input) {
         color,
         surface_gradient);
     fragment_debug(
-#if SHOW_NORMALS
+#if SHOW_NORMALS || SHOW_DATA_LOD || SHOW_GEOMETRY_LOD || SHOW_TILE_TREE
         info,
 #endif
         output,

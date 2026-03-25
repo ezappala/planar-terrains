@@ -20,7 +20,6 @@ public:
 
 #pragma region FPrimitiveSceneProxy_interface
     virtual SIZE_T GetTypeHash() const override;
-    virtual void GetDynamicMeshElements(const TArray<const FSceneView*>& Views, const FSceneViewFamily& ViewFamily, uint32 VisibilityMap, FMeshElementCollector& Collector) const override;
     virtual FPrimitiveViewRelevance GetViewRelevance(const FSceneView* view) const override;
     virtual uint32 GetMemoryFootprint() const override;
     uint32 GetAllocatedSize() const;

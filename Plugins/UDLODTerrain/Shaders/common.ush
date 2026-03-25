@@ -3,8 +3,6 @@
 // ReSharper disable once CppUnusedIncludeDirective
 #include "/Engine/Private/Common.ush"
 
-// #define FRAGMENT 0
-// #define VERTEX 0
 // #define SAMPLE_GRAD 1
 // #define TILE_TREE_LOD 1
 // #define PREPASS 1
@@ -58,13 +56,13 @@ struct TerrainView {
 
 struct SampleUV {
     float2 uv;
-#if FRAGMENT
+#if PIXELSHADER
     float2 dx;
     float2 dy;
 #endif
 };
 
-#if FRAGMENT
+#if PIXELSHADER
 SampleUV _SampleUV(float2 uv, float2 dx, float2 dy) {
     SampleUV result;
     result.uv = uv;
@@ -107,7 +105,7 @@ struct Coordinate {
     uint lod;
     uint2 xy;
     float2 uv;
-#if FRAGMENT
+#if PIXELSHADER
     float2 uv_dx;
     float2 uv_dy;
 #endif
@@ -119,7 +117,7 @@ Coordinate make_coordinate() {
     result.lod = 0u;
     result.xy = uint2(0u, 0u);
     result.uv = float2(0.0f, 0.0f);
-#if FRAGMENT
+#if PIXELSHADER
     result.uv_dx = float2(0.0f, 0.0f);
     result.uv_dy = float2(0.0f, 0.0f);
 #endif
@@ -128,7 +126,7 @@ Coordinate make_coordinate() {
 
 Coordinate make_coordinate(
     uint face, uint lod, uint2 xy, float2 uv
-#if FRAGMENT
+#if PIXELSHADER
     , float2 uv_dx, float2 uv_dy
 #endif
 ) {
@@ -137,7 +135,7 @@ Coordinate make_coordinate(
     result.lod = lod;
     result.xy = xy;
     result.uv = uv;
-#if FRAGMENT
+#if PIXELSHADER
     result.uv_dx = uv_dx;
     result.uv_dy = uv_dy;
 #endif

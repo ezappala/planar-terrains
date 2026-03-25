@@ -20,7 +20,10 @@ struct FTerrains {
     FView view;
 };
 
-UCLASS()
+UCLASS(
+    Blueprintable,
+    ClassGroup = (Rendering),
+    hidecategories = (Object, LOD, Physics, Collision))
 class UDLODTERRAIN_API ATerrainParentActor : public AActor {
     GENERATED_BODY()
 
@@ -37,13 +40,21 @@ public:
     UFUNCTION(Exec, CallInEditor, BlueprintCallable, Category = "UDLOD")
     void PreprocessTerrain();
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UDLOD")
     FTerrainPreprocessSettings terrain_preprocess_settings;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UDLOD")
     FPrimaryTerrainSettings terrain_settings;
+
     TArray<FTerrains> terrains;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UDLOD")
     TArray<TObjectPtr<UMaterialInterface>> materials;
+
+    FTerrainSettings settings;
+
     TArray<FTerrainConfig> configs;
     TMap<TObjectPtr<UTerrain>, FTileTree> view_components;
-    FTerrainSettings settings;
     TMap<TObjectPtr<UTerrain>, FTileAtlas> tile_atlases;
     TMap<TObjectPtr<UTerrain>, FGpuTileAtlas> gpu_tile_atlases;
     TMap<TObjectPtr<UTerrain>, FGpuTerrain> gpu_terrains;

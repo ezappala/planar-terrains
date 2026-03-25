@@ -27,20 +27,22 @@ void FTerrainSceneViewExtension::PostRenderBasePassDeferred_RenderThread(
     const FRenderTargetBindingSlots& render_targets,
     TRDGUniformBufferRef<FSceneTextureUniformParameters> scene_textures
 ) {
-    // if (!in_view.Family->EngineShowFlags.Editor || !in_view.Family->EngineShowFlags.Game) {
-    //     UE_LOGFMT(
-    //         LogTemp,
-    //         Warning,
-    //         "[FTerrainSceneViewExtension::PostRenderBasePassDeferred_RenderThread] Skipping terrain "
-    //         "rendering because we're in editor view (not game view)");
-    //     return;
-    // }
     (void)scene_textures;
+
     if (in_view.Family == nullptr || in_view.Family->Scene == nullptr) { return; }
     if (!in_view.bIsViewInfo) { return; }
 
+    if (!stopped_error_spam && error_spam_buffer >= MAX_ERROR_SPAM_BUFFER) {
+        UE_LOGFMT(
+            LogTemp,
+            Warning,
+            "[FTerrainSceneViewExtension::PostRenderBasePassDeferred_RenderThread] "
+            "Reached max error spam buffer, stopping further warnings.");
+        stopped_error_spam = true;
+    }
+
     const FViewInfo& view_info = reinterpret_cast<FViewInfo&>(in_view);
-    draw_terrain(gb, *in_view.Family->Scene->GetRenderScene(), view_info, render_targets);
+    draw_terrain(gb, view_info, render_targets);
 }
 
 FRDGTextureSRVRef FTerrainSceneViewExtension::CreateRDGTextureFromUTexture(
@@ -77,23 +79,58 @@ FRDGTextureSRVRef FTerrainSceneViewExtension::GetDefaultWhiteTexture(
 
 void FTerrainSceneViewExtension::draw_terrain(
     FRDGBuilder& gb,
-    const FScene& scene,
     const FViewInfo& view,
     const FRenderTargetBindingSlots& render_targets
 ) const {
     RDG_EVENT_SCOPE(gb, "UDLOD.DrawTerrain");
 
-    const auto* world = scene.GetWorld();
-    if (world == nullptr) {
-        UE_LOGFMT(
-            LogTemp,
-            Fatal,
-            "[FTerrainSceneViewExtension::DrawTerrain] World is nullptr nullptr");
-    }
-    TMap<TObjectPtr<UTerrain>, FTileTree>* tile_trees = &root->view_components;
-
+    auto* tile_trees = &root->view_components;
     auto* tile_atlases = &root->tile_atlases;
-    if (tile_trees->IsEmpty() || tile_atlases->IsEmpty()) {
+    if (tile_trees == nullptr) {
+        error_spam_buffer += 1;
+        if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
+            UE_LOGFMT(
+                LogTemp,
+                Warning,
+                "[FTerrainSceneViewExtension::draw_terrain] "
+                "Tile trees map is null for terrain rendering, skipping");
+        }
+        return;
+    }
+
+    if (tile_trees->IsEmpty()) {
+        error_spam_buffer += 1;
+        if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
+            UE_LOGFMT(
+                LogTemp,
+                Warning,
+                "[FTerrainSceneViewExtension::draw_terrain] "
+                "No tile trees found for terrain rendering, skipping");
+        }
+        return;
+    }
+
+    if (tile_atlases == nullptr) {
+        error_spam_buffer += 1;
+        if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
+            UE_LOGFMT(
+                LogTemp,
+                Warning,
+                "[FTerrainSceneViewExtension::draw_terrain] "
+                "Tile atlases map is null for terrain rendering, skipping");
+        }
+        return;
+    }
+
+    if (tile_atlases->IsEmpty()) {
+        error_spam_buffer += 1;
+        if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
+            UE_LOGFMT(
+                LogTemp,
+                Warning,
+                "[FTerrainSceneViewExtension::draw_terrain] "
+                "No tile atlases found for terrain rendering, skipping");
+        }
         return;
     }
 
@@ -112,11 +149,18 @@ void FTerrainSceneViewExtension::draw_terrain(
     }
 
     if (!has_registered_terrain) {
+        error_spam_buffer += 1;
+        if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
+            UE_LOGFMT(
+                LogTemp,
+                Warning,
+                "[FTerrainSceneViewExtension::draw_terrain] "
+                "No registered terrain actors found for terrain rendering, skipping");
+        }
         return;
     }
 
     draw_tile_tree(gb, view, render_targets);
-    FTileTree::approximate_height_readback(gb, *tile_trees);
     // picking_readback(gb, root->picking_data->buffer, root->picking_data);
 }
 
@@ -167,56 +211,71 @@ void FTerrainSceneViewExtension::draw_tile_tree(
 
     for (const auto& [terrain, tile_tree] : *tile_trees) {
         if (!terrain->IsValidLowLevel() || !terrain->IsRegistered()) {
-            UE_LOGFMT(
-                LogTemp,
-                Warning,
-                "[FTerrainSceneViewExtension::DrawTileTree] Skipping invalid terrain actor, {n}",
-                terrain->GetName()
-            );
+            error_spam_buffer += 1;
+            if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
+                UE_LOGFMT(
+                    LogTemp,
+                    Warning,
+                    "[FTerrainSceneViewExtension::DrawTileTree] Skipping invalid terrain actor, {n}",
+                    terrain->GetName()
+                );
+            }
             continue;
         }
 
         const FTileAtlas* const tile_atlas = tile_atlases->Find(terrain);
         if (tile_atlas == nullptr) {
-            UE_LOGFMT(
-                LogTemp,
-                Warning,
-                "[FTerrainSceneViewExtension::DrawTileTree] No tile atlas found for terrain {n}, skipping",
-                terrain->GetName()
-            );
+            error_spam_buffer += 1;
+            if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
+                UE_LOGFMT(
+                    LogTemp,
+                    Warning,
+                    "[FTerrainSceneViewExtension::DrawTileTree] No tile atlas found for terrain {n}, skipping",
+                    terrain->GetName()
+                );
+            }
             continue;
         }
 
         const FGpuTerrainView* const gpu_terrain_view = gpu_terrain_views->Find(terrain);
         if (gpu_terrain_view == nullptr) {
-            UE_LOGFMT(
-                LogTemp,
-                Warning,
-                "[FTerrainSceneViewExtension::DrawTileTree] No GPU terrain view found for terrain {n}, skipping",
-                terrain->GetName()
-            );
+            error_spam_buffer += 1;
+            if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
+                UE_LOGFMT(
+                    LogTemp,
+                    Warning,
+                    "[FTerrainSceneViewExtension::DrawTileTree] No GPU terrain view found for terrain {n}, skipping",
+                    terrain->GetName()
+                );
+            }
             continue;
         }
 
         FGpuTerrain* const gpu_terrain = gpu_terrains->Find(terrain);
         if (gpu_terrain == nullptr) {
+            error_spam_buffer += 1;
+            if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
             UE_LOGFMT(
                 LogTemp,
                 Warning,
                 "[FTerrainSceneViewExtension::DrawTileTree] No GPU terrain found for terrain {n}, skipping",
                 terrain->GetName()
             );
+            }
             continue;
         }
 
         FGpuTileAtlas* const gpu_tile_atlas = gpu_tile_atlases->Find(terrain);
         if (gpu_tile_atlas == nullptr) {
-            UE_LOGFMT(
-                LogTemp,
-                Warning,
-                "[FTerrainSceneViewExtension::DrawTileTree] No GPU tile atlas found for terrain {n}, skipping",
-                terrain->GetName()
-            );
+            error_spam_buffer += 1;
+            if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
+                UE_LOGFMT(
+                    LogTemp,
+                    Warning,
+                    "[FTerrainSceneViewExtension::DrawTileTree] No GPU tile atlas found for terrain {n}, skipping",
+                    terrain->GetName()
+                );
+            }
             continue;
         }
 
@@ -224,32 +283,38 @@ void FTerrainSceneViewExtension::draw_tile_tree(
         const FGpuAttachment* height_attachment_ptr = nullptr;
         const FGpuAttachment* albedo_attachment_ptr = nullptr;
         for (const auto& [label, attachment] : gpu_tile_atlas->attachments) {
-            if (height_attachment_ptr == nullptr && label.Equals(TEXT("height"), ESearchCase::IgnoreCase)) {
-                height_attachment_ptr = &attachment;
-            }
-            if (albedo_attachment_ptr == nullptr && label.Equals(TEXT("albedo"), ESearchCase::IgnoreCase)) {
-                albedo_attachment_ptr = &attachment;
-            }
+            if (height_attachment_ptr == nullptr && label.Equals(
+                TEXT("height"),
+                ESearchCase::IgnoreCase)) { height_attachment_ptr = &attachment; }
+            if (albedo_attachment_ptr == nullptr && label.Equals(
+                TEXT("albedo"),
+                ESearchCase::IgnoreCase)) { albedo_attachment_ptr = &attachment; }
         }
 
         if (height_attachment_ptr == nullptr) {
+            error_spam_buffer += 1;
+            if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
             UE_LOGFMT(
                 LogTemp,
                 Warning,
                 "[FTerrainSceneViewExtension::DrawTileTree] No height attachment found in GPU tile atlas for terrain {n}, skipping",
                 terrain->GetName()
             );
+            }
             continue;
         }
 
         FRDGTextureSRV* height_attachemnt = height_attachment_ptr->atlas_texture;
         if (height_attachemnt == nullptr) {
-            UE_LOGFMT(
-                LogTemp,
-                Warning,
-                "[FTerrainSceneViewExtension::DrawTileTree] Invalid height attachment view in GPU tile atlas for terrain {n}, skipping",
-                terrain->GetName()
-            );
+            error_spam_buffer += 1;
+            if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
+                UE_LOGFMT(
+                    LogTemp,
+                    Warning,
+                    "[FTerrainSceneViewExtension::DrawTileTree] Invalid height attachment view in GPU tile atlas for terrain {n}, skipping",
+                    terrain->GetName()
+                );
+            }
             continue;
         }
 
@@ -257,12 +322,15 @@ void FTerrainSceneViewExtension::draw_tile_tree(
             ? albedo_attachment_ptr->atlas_texture
             : nullptr;
         if (albedo_attachment == nullptr) {
+            error_spam_buffer += 1;
+            if (error_spam_buffer < MAX_ERROR_SPAM_BUFFER) {
             UE_LOGFMT(
                 LogTemp,
                 Warning,
                 "[FTerrainSceneViewExtension::DrawTileTree] Missing albedo attachment for terrain {n}; using height attachment fallback",
                 terrain->GetName()
             );
+            }
             albedo_attachment = height_attachemnt;
         }
 
@@ -274,6 +342,7 @@ void FTerrainSceneViewExtension::draw_tile_tree(
             tile_atlas->height_scale,
             terrain->GetComponentTransform()
         );
+
         gpu_terrain->terrain_buffer = TUniformBufferRef<Terrain>::CreateUniformBufferImmediate(
             terrain_uniform,
             UniformBuffer_SingleFrame
@@ -281,9 +350,12 @@ void FTerrainSceneViewExtension::draw_tile_tree(
 
         Attachments attachments;
         attachments.attachment_configs = attachment_configs;
+
         const FRDGBufferSRVRef tile_tree_buffer = gb.CreateSRV(tile_tree.tile_tree_buffer);
-        const FRDGBufferSRVRef approximate_height_srv = gb.CreateSRV(tile_tree.approximate_height_buffer);
-        const FRDGBufferUAVRef approximate_height_uav = gb.CreateUAV(tile_tree.approximate_height_buffer);
+        const FRDGBufferSRVRef approximate_height_srv = gb.CreateSRV(
+            tile_tree.approximate_height_buffer);
+        const FRDGBufferUAVRef approximate_height_uav = gb.CreateUAV(
+            tile_tree.approximate_height_buffer);
 
         gpu_terrain_view->prepass_parameters->terrain = gpu_terrain->terrain_buffer;
         gpu_terrain_view->prepass_parameters->attachments = attachments;
@@ -359,6 +431,8 @@ void FTerrainSceneViewExtension::draw_tile_tree(
         //     FIntVector{1, 1, 1}
         // );
 
+        FTileTree::approximate_height_readback(gb, *tile_trees);
+
         auto* params = gb.AllocParameters<DrawElementsIndirectParameters>();
         params->View = view.ViewUniformBuffer;
         params->terrain = gpu_terrain->terrain_buffer;
@@ -370,10 +444,10 @@ void FTerrainSceneViewExtension::draw_tile_tree(
         params->approximate_height = approximate_height_srv;
         params->tile_tree = tile_tree_buffer;
         params->geometry_tiles = gpu_terrain_view->final_tiles_srv;
-        params->tile_uv = FVector3f::ZeroVector;
-        params->tile_index = 0u;
-        params->view_distance = 0.0f;
-        params->height = 0.0f;
+        // params->tile_uv = FVector3f::ZeroVector;
+        // params->tile_index = 0u;
+        // params->view_distance = 0.0f;
+        // params->height = 0.0f;
         params->IndirectArgs = indirect_args_buffer;
         params->RenderTargets = render_targets;
 
@@ -404,22 +478,27 @@ void FTerrainSceneViewExtension::draw_tile_tree(
                 pso.RasterizerState = reverse_culling
                     ? TStaticRasterizerState<FM_Solid, CM_CCW>::GetRHI()
                     : TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI();
-                pso.DepthStencilState = TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI();
+                pso.DepthStencilState = TStaticDepthStencilState<>::GetRHI();
                 pso.PrimitiveType = PT_TriangleStrip;
-                pso.BoundShaderState.VertexDeclarationRHI = GEmptyVertexDeclaration.
-                    VertexDeclarationRHI;
+                pso.BoundShaderState.VertexDeclarationRHI =
+                    GEmptyVertexDeclaration.VertexDeclarationRHI;
                 pso.BoundShaderState.VertexShaderRHI = vertex_shader.GetVertexShader();
                 pso.BoundShaderState.PixelShaderRHI = fragment_shader.GetPixelShader();
 
                 SetGraphicsPipelineState(cmd, pso, 0);
-                SetShaderParameters(cmd, vertex_shader, vertex_shader.GetVertexShader(), *params);
+                SetShaderParameters(
+                    cmd,
+                    vertex_shader,
+                    vertex_shader.GetVertexShader(),
+                    *params);
+
                 SetShaderParameters(
                     cmd,
                     fragment_shader,
                     fragment_shader.GetPixelShader(),
                     *params);
-                cmd.SetStreamSource(0, nullptr, 0);
 
+                cmd.SetStreamSource(0, nullptr, 0);
                 cmd.DrawPrimitiveIndirect(params->IndirectArgs->GetIndirectRHICallBuffer(), 0);
             });
     }

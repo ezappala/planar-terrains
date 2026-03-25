@@ -34,7 +34,8 @@ void UTerrainWorldSubsystem::Initialize(FSubsystemCollectionBase& collection) {
     UE_LOGFMT(LogTemp, Log, "Initializing UDLOD Terrain Subsystem...");
     if (UWorld* world = GetWorld(); world != nullptr) {
         terrain_view_extension = FSceneViewExtensions::NewExtension<FTerrainSceneViewExtension>(
-            world);
+            world,
+            resolve_terrain_root(true));
     }
 }
 

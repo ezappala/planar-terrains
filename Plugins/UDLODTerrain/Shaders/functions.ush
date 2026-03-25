@@ -32,7 +32,7 @@ inline WorldCoordinate compute_world_coordinate(Coordinate coordinate) {
 }
 #endif
 
-#if VERTEX
+#if VERTEXSHADER
 inline Coordinate compute_coordinate(uint vertex_index) {
     uint tile_index = vertex_index / terrain_view[0].vertices_per_tile;
     uint column_index = vertex_index % terrain_view[0].vertices_per_tile / terrain_view[0].vertices_per_row;
@@ -55,14 +55,14 @@ inline Coordinate compute_coordinate(uint vertex_index) {
 }
 #endif
 
-#if FRAGMENT
+#if PIXELSHADER
 inline Coordinate compute_coordinate(uint tile_index, float2 tile_uv) {
     GeometryTile tile = geometry_tiles[tile_index];
     return make_coordinate(tile.face, tile.lod, tile.xy, tile_uv, ddx(tile_uv), ddy(tile_uv));
 }
 #endif
 
-#if VERTEX
+#if VERTEXSHADER
 inline WorldCoordinate compute_world_coordinate(
     Coordinate coordinate,
     uint tile_index,
@@ -77,7 +77,7 @@ inline WorldCoordinate compute_world_coordinate(
 }
 #endif
 
-#if FRAGMENT
+#if PIXELSHADER
 inline WorldCoordinate compute_world_coordinate(
     Coordinate coordinate,
     float height,
@@ -114,7 +114,7 @@ inline void coordinate_change_lod(inout Coordinate coordinate, uint new_lod) {
         /*false*/
         xy % uint(1u / scale));
 
-#if FRAGMENT
+#if PIXELSHADER
     coordinate.uv_dx *= scale;
     coordinate.uv_dy *= scale;
 #endif
@@ -149,7 +149,7 @@ inline Blend compute_blend(float view_distance) {
 
 inline Coordinate compute_view_coordinate(uint face, uint lod) {
     ViewCoordinate coordinate = terrain_view[0].coordinates[face];
-#if FRAGMENT
+#if PIXELSHADER
     Coordinate view_coordinate =
         make_coordinate(
             face,
@@ -216,7 +216,7 @@ inline AtlasTile lookup_tile(Coordinate lookup_coordinate, Blend blend) {
 #if TILE_TREE_LOD
     return lookup_best(lookup_coordinate).tile;
 #else
-    Coordinate Coordinate = lookup_coordinate;
+    Coordinate coordinate = lookup_coordinate;
     coordinate_change_lod(coordinate, blend.lod);
     TileTreeEntry tile_tree_entry = lookup_tile_tree_entry(coordinate);
     coordinate_change_lod(coordinate, tile_tree_entry.atlas_lod);
@@ -233,7 +233,7 @@ inline Coordinate compute_subdivision_coordinate(TileCoordinate tile) {
 
     if (offset.y < 0) { uv.y = 0.0f; } else if (offset.y > 0) { uv.y = 1.0f; }
 
-#if FRAGMENT
+#if PIXELSHADER
     return make_coordinate(
         tile.face,
         tile.lod,

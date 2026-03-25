@@ -394,7 +394,8 @@ void ATerrainParentActor::rebuild_terrains() {
         UE_LOGFMT(
             LogTemp,
             Log,
-            "Added tile atlas for terrain component: {n} in terrain parent actor: {parent_n}, terrain index: {i}",
+            "Added tile atlas for terrain component: {n} "
+            "in terrain parent actor: {parent_n}, terrain index: {i}",
             terrain->GetName(),
             GetName(),
             i);

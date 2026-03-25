@@ -8,13 +8,11 @@ class FTerrainSceneViewExtension final : public FWorldSceneViewExtension {
 public:
     FTerrainSceneViewExtension(
         const FAutoRegister& auto_register,
-        UWorld* in_world
+        UWorld* in_world,
+        ATerrainParentActor* in_root
     ) : FWorldSceneViewExtension{auto_register, in_world},
-        root{in_world->GetSubsystemChecked<UTerrainWorldSubsystem>()->get_terrain_root_checked()},
-        heightmap_texture{nullptr},
-        albedo_texture{nullptr}
-    // terrains_spawned{false}
-    {}
+        // root{in_world->GetSubsystemChecked<UTerrainWorldSubsystem>()->get_terrain_root_checked()} {}
+        root{in_root} {}
 
     TNotNull<ATerrainParentActor*> root;
 
@@ -41,7 +39,6 @@ public:
 
     void draw_terrain(
         FRDGBuilder& gb,
-        const FScene& scene,
         const FViewInfo& view,
         const FRenderTargetBindingSlots& render_targets
     ) const;
@@ -53,7 +50,7 @@ public:
     ) const;
 
 private:
-    mutable FRDGTextureRef heightmap_texture;
-    mutable FRDGTextureRef albedo_texture;
-    // bool terrains_spawned;
+    mutable uint32 error_spam_buffer = 0;
+    mutable bool stopped_error_spam = false;
+    uint32 MAX_ERROR_SPAM_BUFFER = 100;
 };

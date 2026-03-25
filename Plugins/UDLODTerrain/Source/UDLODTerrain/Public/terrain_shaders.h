@@ -166,10 +166,10 @@ BEGIN_SHADER_PARAMETER_STRUCT(DrawElementsIndirectParameters, UDLODTERRAIN_API)
     // Fragment (pixel) shader input: fragment.usf
     // The Fragment shader also takes an SV_Position system value, which should also be provided
     // automatically by the rasterizer.
-    SHADER_PARAMETER(FVector3f, tile_uv)
-    SHADER_PARAMETER(uint32, tile_index)
-    SHADER_PARAMETER(float, view_distance)
-    SHADER_PARAMETER(float, height)
+// SHADER_PARAMETER(FVector3f, tile_uv)
+// SHADER_PARAMETER(uint32, tile_index)
+// SHADER_PARAMETER(float, view_distance)
+// SHADER_PARAMETER(float, height)
 
     // Indirect args buffer access:
     RDG_BUFFER_ACCESS(IndirectArgs, ERHIAccess::IndirectArgs)
@@ -205,8 +205,7 @@ class UDLODTERRAIN_API FTerrainVertexShader : public FGlobalShader {
         FShaderCompilerEnvironment& out_environment
     ) {
         FGlobalShader::ModifyCompilationEnvironment(params, out_environment);
-        out_environment.SetDefine(TEXT("FRAGMENT"), 0);
-        out_environment.SetDefine(TEXT("VERTEX"), 1);
+        out_environment.SetDefine(TEXT("PREPASS"), 0);
         out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 1);
         out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
         out_environment.SetDefine(TEXT("BLEND"), 1);
@@ -215,7 +214,7 @@ class UDLODTERRAIN_API FTerrainVertexShader : public FGlobalShader {
         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
@@ -246,8 +245,6 @@ class UDLODTERRAIN_API FTerrainFragmentShader : public FGlobalShader {
         FShaderCompilerEnvironment& out_environment
     ) {
         FGlobalShader::ModifyCompilationEnvironment(params, out_environment);
-        out_environment.SetDefine(TEXT("FRAGMENT"), 1);
-        out_environment.SetDefine(TEXT("VERTEX"), 0);
         out_environment.SetDefine(TEXT("PREPASS"), 0);
         out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 1);
         out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
@@ -257,7 +254,7 @@ class UDLODTERRAIN_API FTerrainFragmentShader : public FGlobalShader {
         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
@@ -334,18 +331,16 @@ class UDLODTERRAIN_API FTerrainPrepassPrepareRootComputeShader : public FGlobalS
         FShaderCompilerEnvironment& out_environment
     ) {
         FGlobalShader::ModifyCompilationEnvironment(params, out_environment);
-        out_environment.SetDefine(TEXT("FRAGMENT"), 0);
-        out_environment.SetDefine(TEXT("VERTEX"), 0);
         out_environment.SetDefine(TEXT("PREPASS"), 1);
-        out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 1);
+        out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 0);
         out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
         out_environment.SetDefine(TEXT("BLEND"), 1);
         out_environment.SetDefine(TEXT("MORPH"), 1);
-        out_environment.SetDefine(TEXT("LIGHTING"), 1);
+        out_environment.SetDefine(TEXT("LIGHTING"), 0);
         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
@@ -370,15 +365,15 @@ class UDLODTERRAIN_API FTerrainPrepassPrepareNextComputeShader : public FGlobalS
         out_environment.SetDefine(TEXT("FRAGMENT"), 0);
         out_environment.SetDefine(TEXT("VERTEX"), 0);
         out_environment.SetDefine(TEXT("PREPASS"), 1);
-        out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 1);
+        out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 0);
         out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
         out_environment.SetDefine(TEXT("BLEND"), 1);
         out_environment.SetDefine(TEXT("MORPH"), 1);
-        out_environment.SetDefine(TEXT("LIGHTING"), 1);
+        out_environment.SetDefine(TEXT("LIGHTING"), 0);
         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
@@ -403,15 +398,15 @@ class UDLODTERRAIN_API FTerrainPrepassPrepareRenderComputeShader : public FGloba
         out_environment.SetDefine(TEXT("FRAGMENT"), 0);
         out_environment.SetDefine(TEXT("VERTEX"), 0);
         out_environment.SetDefine(TEXT("PREPASS"), 1);
-        out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 1);
+        out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 0);
         out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
         out_environment.SetDefine(TEXT("BLEND"), 1);
         out_environment.SetDefine(TEXT("MORPH"), 1);
-        out_environment.SetDefine(TEXT("LIGHTING"), 1);
+        out_environment.SetDefine(TEXT("LIGHTING"), 0);
         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
@@ -436,15 +431,15 @@ class UDLODTERRAIN_API FTerrainPrepassRefineTilesComputeShader : public FGlobalS
         out_environment.SetDefine(TEXT("FRAGMENT"), 0);
         out_environment.SetDefine(TEXT("VERTEX"), 0);
         out_environment.SetDefine(TEXT("PREPASS"), 1);
-        out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 1);
+        out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 0);
         out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
         out_environment.SetDefine(TEXT("BLEND"), 1);
         out_environment.SetDefine(TEXT("MORPH"), 1);
-        out_environment.SetDefine(TEXT("LIGHTING"), 1);
+        out_environment.SetDefine(TEXT("LIGHTING"), 0);
         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
@@ -466,18 +461,16 @@ class UDLODTERRAIN_API FTerrainPrepassRefineTilesComputeShader : public FGlobalS
 //         FShaderCompilerEnvironment& out_environment
 //     ) {
 //         FGlobalShader::ModifyCompilationEnvironment(params, out_environment);
-//         out_environment.SetDefine(TEXT("FRAGMENT"), 0);
-//         out_environment.SetDefine(TEXT("VERTEX"), 0);
 //         out_environment.SetDefine(TEXT("PREPASS"), 1);
 //         out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 0);
-//         out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 0);
+//         out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
 //         out_environment.SetDefine(TEXT("BLEND"), 0);
 //         out_environment.SetDefine(TEXT("MORPH"), 0);
 //         out_environment.SetDefine(TEXT("LIGHTING"), 0);
 //         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
 //         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
 //         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-//         out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
+//         out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
 //         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
 //         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
 //         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
