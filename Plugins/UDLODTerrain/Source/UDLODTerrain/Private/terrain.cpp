@@ -4,11 +4,11 @@
 #include "terrain_scene_proxy.h"
 
 UTerrain::UTerrain(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer) {
-    PrimaryComponentTick.bCanEverTick = true;
-    PrimaryComponentTick.bStartWithTickEnabled = true;
+    PrimaryComponentTick.bCanEverTick = false;
+    PrimaryComponentTick.bStartWithTickEnabled = false;
 
 #if WITH_EDITOR
-    bTickInEditor = true;
+    bTickInEditor = false;
 #endif
 
     Bounds = FBoxSphereBounds(FBox(FVector(-500, -500, -100), FVector(500, 500, 100)));
@@ -17,6 +17,7 @@ UTerrain::UTerrain(const FObjectInitializer& ObjectInitializer) : Super(ObjectIn
     bCastStaticShadow = false;
     bAffectDynamicIndirectLighting = true;
     bAffectDistanceFieldLighting = true;
+    render_resources = MakeShared<FTerrainRenderResources, ESPMode::ThreadSafe>();
 }
 
 FPrimitiveSceneProxy* UTerrain::CreateSceneProxy() {
@@ -53,13 +54,6 @@ int32 UTerrain::GetNumMaterials() const {
 
 UMaterialInterface* UTerrain::GetMaterial(const int32 ElementIndex) const {
     return ElementIndex == 0 ? material : nullptr;
-}
-
-void UTerrain::TickComponent(
-    float DeltaTime,
-    ELevelTick TickType,
-    FActorComponentTickFunction* ThisTickFunction) {
-    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
 void UTerrain::OnRegister() {

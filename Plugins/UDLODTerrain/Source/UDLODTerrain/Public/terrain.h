@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "terrain_config.h"
+#include "terrain_render_state.h"
 #include "terrain_settings.h"
 #include "terrain_tile_atlas.h"
 #include "Components/MeshComponent.h"
@@ -38,13 +39,6 @@ public:
     virtual UMaterialInterface* GetMaterial(int32 ElementIndex) const override;
 #pragma endregion
 
-#pragma region USceneComponent_interface
-    virtual void TickComponent(
-        float DeltaTime,
-        ELevelTick TickType,
-        FActorComponentTickFunction* ThisTickFunction) override;
-#pragma endregion
-
 #pragma region UActorComponent_interface
     virtual void OnRegister() override;
     virtual void OnUnregister() override;
@@ -76,6 +70,7 @@ public:
     FTerrainConfig config;
     FTerrainSettings settings;
     TOptional<FTileAtlas> atlas = NullOpt;
+    TSharedPtr<FTerrainRenderResources, ESPMode::ThreadSafe> render_resources;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UDLOD|Terrain")
     UMaterialInterface* material;

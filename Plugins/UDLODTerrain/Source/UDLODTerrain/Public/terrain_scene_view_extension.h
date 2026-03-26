@@ -1,8 +1,8 @@
-﻿#pragma once
+#pragma once
+
 #include "AssetDefinition.h"
 #include "SceneViewExtension.h"
 #include "terrain_parent_actor.h"
-#include "terrain_world_subsystem.h"
 
 class FTerrainSceneViewExtension final : public FWorldSceneViewExtension {
 public:
@@ -11,17 +11,14 @@ public:
         UWorld* in_world,
         ATerrainParentActor* in_root
     ) : FWorldSceneViewExtension{auto_register, in_world},
-        // root{in_world->GetSubsystemChecked<UTerrainWorldSubsystem>()->get_terrain_root_checked()} {}
         root{in_root} {}
 
-    TNotNull<ATerrainParentActor*> root;
-
-    virtual void PostRenderBasePassDeferred_RenderThread(
+    virtual void BeginRenderViewFamily(FSceneViewFamily& in_view_family) override;
+    virtual void PreRenderViewFamily_RenderThread(
         FRDGBuilder& gb,
-        FSceneView& in_view,
-        const FRenderTargetBindingSlots& render_targets,
-        TRDGUniformBufferRef<FSceneTextureUniformParameters> scene_textures
+        FSceneViewFamily& in_view_family
     ) override;
+    virtual void PreRenderView_RenderThread(FRDGBuilder& gb, FSceneView& in_view) override;
 
     static FRDGTextureSRVRef CreateRDGTextureFromUTexture(
         FRDGBuilder& gb,
@@ -39,17 +36,16 @@ public:
 
     void draw_terrain(
         FRDGBuilder& gb,
-        const FViewInfo& view,
-        const FRenderTargetBindingSlots& render_targets
+        const FViewInfo& view
     ) const;
 
     void draw_tile_tree(
         FRDGBuilder& gb,
-        const FViewInfo& view,
-        const FRenderTargetBindingSlots& render_targets
+        const FViewInfo& view
     ) const;
 
 private:
+    TWeakObjectPtr<ATerrainParentActor> root;
     mutable uint32 error_spam_buffer = 0;
     mutable bool stopped_error_spam = false;
     uint32 MAX_ERROR_SPAM_BUFFER = 100;

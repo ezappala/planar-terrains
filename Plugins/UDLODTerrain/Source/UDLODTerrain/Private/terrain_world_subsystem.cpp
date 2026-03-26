@@ -98,8 +98,6 @@ ATerrainParentActor* UTerrainWorldSubsystem::resolve_terrain_root(const bool spa
 
     TArray<ATerrainParentActor*> parent_actors = find_terrain_roots(world);
     if (parent_actors.Num() > 0) {
-        UE_LOGFMT(LogTemp, Log, "Found {n} terrain parent actors in the world.", parent_actors.Num());
-
         set_terrain_root(parent_actors[0], false);
         for (int32 i = 1; i < parent_actors.Num(); ++i) {
             if (parent_actors[i] == terrain_root) {

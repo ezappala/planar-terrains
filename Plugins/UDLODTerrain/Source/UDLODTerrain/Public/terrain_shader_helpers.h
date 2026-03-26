@@ -13,8 +13,11 @@ inline Terrain new_terrain(
     const float height_scale,
     const FTransform& tf
 ) {
-    const FMatrix3x4 world_from_local = to_world_from_local_packed(tf);
-    const auto [rows, last] = to_local_from_world_normal_packed(tf);
+    FTransform scaled_transform = tf;
+    scaled_transform.SetScale3D(tf.GetScale3D() * FVector(scale));
+
+    const FMatrix3x4 world_from_local = to_world_from_local_packed(scaled_transform);
+    const auto [rows, last] = to_local_from_world_normal_packed(scaled_transform);
     const auto local_from_world_transpose_a = rows;
     const auto local_from_world_transpose_b = last;
 

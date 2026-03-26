@@ -41,17 +41,18 @@ struct FGpuTerrain {
             attachment_config_from_gpu_tile_atlas(gpu_tile_atlas, TEXT("albedo"))
         },
         attachments_buffer{
-            gb.CreateSRV(
-                CreateStructuredBuffer(
-                    gb,
-                    TEXT("UDLOD.AttachmentsBuffer"),
-                    sizeof(Attachments),
-                    1,
-                    attachment_configs.GetData(),
-                    sizeof(attachment_configs.GetData()) * attachment_configs.Num(),
-                    ERDGInitialDataFlags::None
-                )
+            CreateStructuredBuffer(
+                gb,
+                TEXT("UDLOD.AttachmentsBuffer"),
+                sizeof(AttachmentConfig),
+                attachment_configs.Num(),
+                attachment_configs.GetData(),
+                sizeof(AttachmentConfig) * attachment_configs.Num(),
+                ERDGInitialDataFlags::None
             )
+        },
+        attachments_buffer_srv{
+            gb.CreateSRV(attachments_buffer)
         }
     // height_attachment_buffer{gb.CreateUniformBuffer(&height_attachment_config)},
     // albedo_attachment_buffer{gb.CreateUniformBuffer(&albedo_attachment_config)} {}
@@ -64,7 +65,8 @@ struct FGpuTerrain {
     TStaticArray<AttachmentConfig, 2> attachment_configs;
     // Attachments attachments;
 
-    FRDGBufferSRVRef attachments_buffer;
+    FRDGBufferRef attachments_buffer;
+    FRDGBufferSRVRef attachments_buffer_srv;
     // FRDGUniformBufferRef height_attachment_buffer;
     // FRDGUniformBufferRef albedo_attachment_buffer;
 
@@ -73,7 +75,8 @@ struct FGpuTerrain {
             && a.atlas_sampler == b.atlas_sampler
             && a.height_attachment_texture == b.height_attachment_texture
             && a.albedo_attachment_texture == b.albedo_attachment_texture
-            && a.attachments_buffer == b.attachments_buffer;
+            && a.attachments_buffer == b.attachments_buffer
+            && a.attachments_buffer_srv == b.attachments_buffer_srv;
     }
 
     friend bool operator !=(const FGpuTerrain& a, const FGpuTerrain& b) { return !(a == b); }
@@ -233,7 +236,10 @@ FORCEINLINE uint32 GetTypeHash(const FGpuTerrain& gpu_terrain) {
         ),
         HashCombine(
             GetTypeHash(gpu_terrain.albedo_attachment_texture),
-            GetTypeHash(gpu_terrain.attachments_buffer)
+            HashCombine(
+                GetTypeHash(gpu_terrain.attachments_buffer),
+                GetTypeHash(gpu_terrain.attachments_buffer_srv)
+            )
         )
     );
 }
