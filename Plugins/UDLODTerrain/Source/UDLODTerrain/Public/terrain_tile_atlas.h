@@ -192,6 +192,45 @@ struct FTileAtlas {
         //     tile_state->atlas_index);
     }
 
+    FString to_string() {
+        FString attachments_str;
+        for (const auto& [key, value] : attachments) {
+            attachments_str += FString::Printf(
+                TEXT(
+                    "%s: {texture_size: %d, border_size: %d, mip_level_count: %d, mask: %s, format: %ls}, "),
+                *key,
+                value.texture_size,
+                value.border_size,
+                value.mip_level_count,
+                value.mask ? TEXT("true") : TEXT("false"),
+                *UEnum::GetValueAsString(value.attachment_format)
+            );
+        }
+
+        FString tiles_str;
+        for (const auto& tile : existing_tiles) {
+            tiles_str += FString::Printf(
+                TEXT("{face: %d, lod: %d, xy: (%d, %d)}, "),
+                tile.face,
+                tile.lod,
+                tile.xy.X,
+                tile.xy.Y
+            );
+        }
+
+        return FString::Printf(
+            TEXT(
+                "FTileAtlas{lod_count: %d, max_height: %f, min_height: %f, height_scale: %f, side_length: %f, attachments: {%s}, existing_tiles: [%s]}"),
+            lod_count,
+            max_height,
+            min_height,
+            height_scale,
+            side_length,
+            *attachments_str,
+            *tiles_str
+        );
+    }
+
     static void update_terrain_buffer(
         FRDGBuilder& gb,
         TArray<TPair<FTileAtlas, FTransform>>& tile_atlases
