@@ -29,17 +29,12 @@ inline FMatrix44d get_camera_projection_matrix(const UCameraComponent* camera_co
 inline void tile_tree_compute_requests(
     FTileTree* tile_tree,
     const FTransform& terrain_tf,
-    const FSceneView& view
+    const FVector3d& view_world_position,
+    const FMatrix44d& view_from_world,
+    const FMatrix44d& clip_from_view
 ) {
-    const FVector3d view_world_position(view.ViewMatrices.GetViewOrigin());
-
-    const FMatrix44d view_from_world(view.ViewMatrices.GetViewMatrix());
-    const FMatrix44d clip_from_view(view.ViewMatrices.GetProjectionNoAAMatrix());
-
     const FMatrix44d clip_from_world = clip_from_view * view_from_world;
-
     const FMatrix44d world_from_local(terrain_tf.ToMatrixWithScale());
-
     const FMatrix44d clip_from_local = clip_from_world * world_from_local;
 
     const auto hs = ext::iter::map<
@@ -63,6 +58,20 @@ inline void tile_tree_compute_requests(
 
     tile_tree->half_spaces = hs;
     tile_tree->update();
+}
+
+inline void tile_tree_compute_requests(
+    FTileTree* tile_tree,
+    const FTransform& terrain_tf,
+    const FSceneView& view
+) {
+    tile_tree_compute_requests(
+        tile_tree,
+        terrain_tf,
+        FVector3d(view.ViewMatrices.GetViewOrigin()),
+        FMatrix44d(view.ViewMatrices.GetViewMatrix()),
+        FMatrix44d(view.ViewMatrices.GetProjectionNoAAMatrix())
+    );
 }
 
 inline void tile_tree_adjust_to_tile_atlas(

@@ -11,14 +11,20 @@ PreprocessResult<FPreprocessRunSummary> run_preprocess(
 ) {
     FTerrainPreprocessSettings normalized_settings = settings;
     if (!normalized_settings.heightmap_lod_count.IsSet()) {
-        normalized_settings.heightmap_lod_count = normalized_settings.albedo_lod_count.Get(7);
+        normalized_settings.heightmap_lod_count = normalized_settings.use_albedo
+            ? normalized_settings.albedo_lod_count.Get(7)
+            : 7;
+    }
+    if (normalized_settings.use_albedo && !normalized_settings.albedo_lod_count.IsSet()) {
+        normalized_settings.albedo_lod_count = normalized_settings.heightmap_lod_count.Get(7);
     }
 
     const FDateTime started_at = FDateTime::UtcNow();
-    auto progress = create_progress(options.progress_mode);
+    const auto progress = create_progress(options.progress_mode);
+    const bool bPreprocessAlbedo = normalized_settings.use_albedo;
     FScopedPreprocessProgress _(
         progress.Get(),
-        3.0f,
+        bPreprocessAlbedo ? 3.0f : 2.0f,
         LOCTEXT("PreprocessTerrain", "Preprocessing terrain"));
 
     progress->make_dialog_delayed(options.dialog_delay_seconds);
@@ -46,13 +52,13 @@ PreprocessResult<FPreprocessRunSummary> run_preprocess(
         return std::unexpected{heightmap_result.error()};
     }
 
-    progress->enter_progress_frame(1.0f, LOCTEXT("Albedo", "Preprocessing albedo"));
-    const auto albedo_result = preprocess(
-        MoveTemp(albedo_dataset),
-        albedo_context,
-        progress.Get());
-    if (!albedo_result.has_value()) {
-        return std::unexpected{albedo_result.error()};
+    if (bPreprocessAlbedo) {
+        progress->enter_progress_frame(1.0f, LOCTEXT("Albedo", "Preprocessing albedo"));
+        const auto albedo_result = preprocess(
+            MoveTemp(albedo_dataset),
+            albedo_context,
+            progress.Get());
+        if (!albedo_result.has_value()) { return std::unexpected{albedo_result.error()}; }
     }
 
     return FPreprocessRunSummary{
