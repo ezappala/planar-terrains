@@ -1,8 +1,8 @@
 ﻿#pragma once
 
 #include "preprocess_attachment_config.h"
-#include "Math/Vector.h"
 #include "Misc/Paths.h"
+#include "UObject/SoftObjectPath.h"
 
 #include "terrain_settings.generated.h"
 
@@ -82,31 +82,42 @@ struct FTerrainPreprocessSettings {
 
     UPROPERTY(
         EditAnywhere,
-        BlueprintReadWrite,
         Category="Terrain Preprocess",
-        DisplayName="Base Heightmap Source")
-    FString heightmap_src_path = FPaths::ProjectContentDir() / "source_data/gebco-sq.tif";
+        DisplayName="Use Albedo")
+    bool use_albedo = true;
 
     UPROPERTY(
         EditAnywhere,
         BlueprintReadWrite,
         Category="Terrain Preprocess",
-        DisplayName="Base Albedo Source")
-    FString albedo_src_path = FPaths::ProjectContentDir() / "source_data/earth-sq.tif";
+        DisplayName="Base Heightmap Source",
+        meta=(FilePathFilter = "tif")
+    )
+    FFilePath heightmap_src_path{FPaths::ProjectContentDir() / "source_data/gebco-sq.tif"};
 
     UPROPERTY(
         EditAnywhere,
         BlueprintReadWrite,
         Category="Terrain Preprocess",
-        DisplayName="Terrain Output Path")
-    FString terrain_path = FPaths::ProjectContentDir() / "terrains/earth";
+        DisplayName="Base Albedo Source",
+        meta=(EditCondition="use_albedo", EditConditionHides, FilePathFilter = "tif|tiff")
+    )
+    FFilePath albedo_src_path{FPaths::ProjectContentDir() / "source_data/earth-sq.tif"};
+
+    UPROPERTY(
+        EditAnywhere,
+        BlueprintReadWrite,
+        Category="Terrain Preprocess",
+        DisplayName="Terrain Output Path"
+    )
+    FDirectoryPath terrain_path{FPaths::ProjectContentDir() / "terrains/earth"};
 
     UPROPERTY(
         EditAnywhere,
         BlueprintReadWrite,
         Category="Terrain Preprocess",
         DisplayName="Temp Output Path")
-    FString temp_path = FPaths::ProjectUserDir() / "tmp";
+    FDirectoryPath temp_path{FPaths::ProjectUserDir() / "tmp"};
 
     UPROPERTY(
         EditAnywhere,
@@ -126,7 +137,9 @@ struct FTerrainPreprocessSettings {
         EditAnywhere,
         BlueprintReadWrite,
         Category="Terrain Preprocess",
-        DisplayName="Albedo 'NoData' Value")
+        DisplayName="Albedo 'NoData' Value",
+        meta=(EditCondition="use_albedo", EditConditionHides)
+    )
     FPreprocessNoData albedo_no_data = FPreprocessNoData::NoData(0.0);
 
     UPROPERTY(
@@ -141,7 +154,9 @@ struct FTerrainPreprocessSettings {
         EditAnywhere,
         BlueprintReadWrite,
         Category="Terrain Preprocess",
-        DisplayName="Albedo Geographic Data Type")
+        DisplayName="Albedo Geographic Data Type",
+        meta=(EditCondition="use_albedo", EditConditionHides)
+    )
     FPreprocessDataType albedo_data_type = FPreprocessDataType::DataType(
         static_cast<EGDALDataType>(GDT_Byte));
 
@@ -163,7 +178,9 @@ struct FTerrainPreprocessSettings {
         EditAnywhere,
         BlueprintReadWrite,
         Category="Terrain Preprocess",
-        DisplayName="Albedo Mask")
+        DisplayName="Albedo Mask",
+        meta=(EditCondition="use_albedo", EditConditionHides)
+    )
     bool albedo_create_mask = false;
 
     UPROPERTY(
@@ -179,7 +196,9 @@ struct FTerrainPreprocessSettings {
         BlueprintReadWrite,
         Category="Terrain Preprocess",
         DisplayName="Albedo LOD Count",
-        meta=(ClampMin="0"))
+        meta=(ClampMin="0"),
+        meta=(EditCondition="use_albedo", EditConditionHides)
+    )
     TOptional<int32> albedo_lod_count{7};
 
     UPROPERTY(
@@ -193,7 +212,9 @@ struct FTerrainPreprocessSettings {
         EditAnywhere,
         BlueprintReadWrite,
         Category="Terrain Preprocess",
-        DisplayName="Albedo Attachment Label")
+        DisplayName="Albedo Attachment Label",
+        meta=(EditCondition="use_albedo", EditConditionHides)
+    )
     FString albedo_attachment_label = "albedo";
 
     UPROPERTY(
@@ -231,16 +252,65 @@ struct FTerrainPreprocessSettings {
         EditAnywhere,
         BlueprintReadWrite,
         Category="Terrain Preprocess",
-        DisplayName="Heightmap Attachemnt Format")
+        DisplayName="Heightmap Attachemnt Format",
+        meta=(EditCondition="use_albedo", EditConditionHides)
+    )
     EAttachmentFormat albedo_attachment_format = EAttachmentFormat::Rgba8U;
+
+    FString to_string() {
+        return FString::Printf(
+            TEXT(
+                "use_albedo=%s, heightmap_src_path=%s, albedo_src_path=%s, terrain_path=%s, "
+                "temp_path=%s, overwrite=%s, heightmap_no_data={type: %ls, value: %f}, "
+                "albedo_no_data={type: %ls, value: %f}, "
+                "heightmap_data_type={type: %ls, data_type_value: %ls}, "
+                "albedo_data_type={type: %ls, data_type_value: %ls}, "
+                "fill_radius=%f, heightmap_create_mask=%s, albedo_create_mask=%s, "
+                "heightmap_lod_count=%s, albedo_lod_count=%s, heightmap_attachment_label=%s, "
+                "albedo_attachment_label=%s, texture_size=%d, border_size=%d, "
+                "mip_level_count=%d, heightmap_attachment_format=%ls, albedo_attachment_format=%ls"),
+            use_albedo ? TEXT("true") : TEXT("false"),
+            *heightmap_src_path.FilePath,
+            *albedo_src_path.FilePath,
+            *terrain_path.Path,
+            *temp_path.Path,
+            overwrite ? TEXT("true") : TEXT("false"),
+            *UEnum::GetValueAsString(heightmap_no_data.Type),
+            heightmap_no_data.NoDataValue,
+            *UEnum::GetValueAsString(albedo_no_data.Type),
+            albedo_no_data.NoDataValue,
+            *UEnum::GetValueAsString(heightmap_data_type.Type),
+            *UEnum::GetValueAsString(heightmap_data_type.DataTypeValue),
+            *UEnum::GetValueAsString(albedo_data_type.Type),
+            *UEnum::GetValueAsString(albedo_data_type.DataTypeValue),
+            fill_radius,
+            heightmap_create_mask ? TEXT("true") : TEXT("false"),
+            albedo_create_mask ? TEXT("true") : TEXT("false"),
+            heightmap_lod_count.IsSet()
+            ? *FString::FromInt(heightmap_lod_count.GetValue())
+            : TEXT("null"),
+            albedo_lod_count.IsSet()
+            ? *FString::FromInt(albedo_lod_count.GetValue())
+            : TEXT("null"),
+            *heightmap_attachment_label,
+            *albedo_attachment_label,
+            texture_size,
+            border_size,
+            mip_level_count,
+            *UEnum::GetValueAsString(heightmap_attachment_format),
+            *UEnum::GetValueAsString(albedo_attachment_format)
+        );
+    }
 };
 
+USTRUCT(BlueprintType)
 struct FTerrainSettings {
-    FTerrainSettings() : attachments{"height", "albedo"},
-        atlas_size{1028} {}
+    GENERATED_BODY()
 
-    TArray<FString> attachments;
-    uint32 atlas_size;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain", DisplayName="Attachments")
+    TArray<FString> attachments = {"height", "albedo"};
+
+    uint32 atlas_size = 1028;
 
     FString ToString() const {
         return FString::Printf(
@@ -248,213 +318,4 @@ struct FTerrainSettings {
             *FString::Join(attachments, TEXT(", ")),
             atlas_size);
     }
-};
-
-USTRUCT(BlueprintType)
-struct FPrimaryTerrainSettings {
-    GENERATED_BODY()
-
-    // UPROPERTY(EditAnywhere, AdvancedDisplay,
-    //     DisplayName="Enable Advanced Mode")
-    // bool advanced_mode_enabled = false;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="LOD Count")
-    int32 lod_count = 7;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Scale")
-    FVector3f scale = FVector3f{1.0f, 1.0f, 1.0f};
-
-    UPROPERTY(
-        VisibleAnywhere,
-        BlueprintReadOnly,
-        Category="Terrain",
-        DisplayName="Min Height")
-    /**
-     * Comes from the heightmap texutre
-     */
-    float min_height = 0.;
-
-    UPROPERTY(
-        VisibleAnywhere,
-        BlueprintReadOnly,
-        Category="Terrain",
-        DisplayName="Max Height")
-    /**
-     * Comes from the heightmap texutre
-     */
-    float max_height = 0.;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Height Scale")
-    float height_scale = 1.0;
-
-    UPROPERTY(
-        VisibleAnywhere,
-        BlueprintReadOnly,
-        Category="Terrain",
-        DisplayName="Heightmap Texture Size")
-    /**
-     * Comes from the heightmap texutre, but should be 512 for best results
-     */
-    float heightmap_texture_size = 512.0f;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadOnly,
-        Category="Terrain",
-        DisplayName="Heightmap Border Size")
-    float heightmap_border_size = 2.0f;
-
-    float heightmap_center_size() const {
-        return heightmap_texture_size - 2 * heightmap_border_size;
-    }
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Heightmap Scale")
-    float heightmap_scale = 1.0f;
-
-    float heightmap_offset() const { return heightmap_texture_size - heightmap_border_size; }
-
-    UPROPERTY(
-        VisibleAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Heightmap Mask")
-    /**
-     * Heightmaps should be a mask
-     */
-    bool heightmap_mask = true;
-
-    UPROPERTY(
-        VisibleAnywhere,
-        BlueprintReadOnly,
-        Category="Terrain",
-        DisplayName="Albedo Texture Size")
-    /**
-     * Comes from the heightmap texutre
-     */
-    float albedo_texture_size = 512.0f;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadOnly,
-        Category="Terrain",
-        DisplayName="Albedo Border Size")
-    float albedo_border_size = 2.0f;
-
-    float albedo_center_size() const { return albedo_texture_size - 2 * albedo_border_size; }
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Albedo Scale")
-    float albedo_scale = 1.0f;
-
-    float albedo_offset() const { return albedo_texture_size - albedo_border_size; }
-
-    UPROPERTY(
-        VisibleAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Albedo Mask")
-    /**
-     * Albedo maps should not be masks
-     */
-    bool albedo_mask = false;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Tree size")
-    int32 tree_size = 16;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Geometry tile count")
-    int32 geometry_tile_count = 1000000;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Grid Size")
-    int32 grid_size = 16;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Tile Size")
-    int32 tile_size;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Morph Distance")
-    float morph_distance = 40.0;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Blend Distance")
-    float blend_distance = 5.0;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Load Distance")
-    float load_distance = 0.2;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Subdivision Distance")
-    float subdivision_distance = 0.1;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Morph Range")
-    float morph_range = 0.2;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Blend Range")
-    float blend_range = 0.2;
-
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category="Terrain",
-        DisplayName="Precision Distance")
-    float precision_distance = 0.001;
-
-    uint32 vertices_per_row() const { return tile_size + 1; }
-    uint32 vertices_per_tile() const { return (tile_size + 1) * (tile_size + 1); }
-    FPrimaryTerrainSettings() : tile_size{0} {}
 };
