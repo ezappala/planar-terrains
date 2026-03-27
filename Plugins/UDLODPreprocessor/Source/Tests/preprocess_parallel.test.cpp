@@ -36,15 +36,11 @@ bool FPreprocessParallelMapFilterMapPreservesInputOrderTest::RunTest(const FStri
         });
 
     TestTrue(TEXT("Map/filter/map succeeds"), result.has_value());
-    if (!result.has_value()) {
-        return false;
-    }
+    if (!result.has_value()) { return false; }
 
     const TArray<int32>& output = result.value();
     TestEqual(TEXT("Only even values are emitted"), output.Num(), 3);
-    if (output.Num() != 3) {
-        return false;
-    }
+    if (output.Num() != 3) { return false; }
 
     TestEqual(TEXT("First emitted value preserves input order"), output[0], 0);
     TestEqual(TEXT("Second emitted value preserves input order"), output[1], 2);
@@ -79,9 +75,7 @@ bool FPreprocessParallelMapFilterMapPropagatesErrorsTest::RunTest(const FString&
         });
 
     TestFalse(TEXT("Map/filter/map surfaces errors"), result.has_value());
-    if (result.has_value()) {
-        return false;
-    }
+    if (result.has_value()) { return false; }
 
     TestEqual(TEXT("The first error is preserved"), result.error(), FString(TEXT("boom")));
     return true;

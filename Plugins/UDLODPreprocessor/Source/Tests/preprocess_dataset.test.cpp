@@ -46,9 +46,7 @@ bool FPreprocessDatasetCreateEmptyDatasetTest::RunTest(const FString& Parameters
         context);
 
     TestTrue(TEXT("Dataset should be created"), result.has_value());
-    if (!result.has_value()) {
-        return false;
-    }
+    if (!result.has_value()) { return false; }
 
     GDALDatasetRef& dataset = result.value();
     dataset->FlushCache();
@@ -67,9 +65,7 @@ bool FPreprocessDatasetCreateEmptyDatasetTest::RunTest(const FString& Parameters
     for (int32 index = 0; index < context.rasterbands.Num(); ++index) {
         GDALRasterBand* band = dataset->GetRasterBand(index + 1);
         TestNotNull(TEXT("Band exists"), band);
-        if (band == nullptr) {
-            return false;
-        }
+        if (band == nullptr) { return false; }
 
         int has_no_data = 0;
         const double no_data = band->GetNoDataValue(&has_no_data);
@@ -102,38 +98,32 @@ bool FPreprocessDatasetTileLifecycleTest::RunTest(const FString& Parameters) {
 
     auto create_result = create_tile_dataset<float>(tile, context);
     TestTrue(TEXT("Tile dataset should be created"), create_result.has_value());
-    if (!create_result.has_value()) {
-        return false;
-    }
+    if (!create_result.has_value()) { return false; }
 
     GDALDatasetRef create_dataset = MoveTemp(create_result.value());
     create_dataset->FlushCache();
     create_dataset.Reset();
     FPlatformProcess::Sleep(1.0f);
 
-    TestTrue(TEXT("Tile directory exists"), IFileManager::Get().DirectoryExists(*FPaths::GetPath(tile_path)));
+    TestTrue(
+        TEXT("Tile directory exists"),
+        IFileManager::Get().DirectoryExists(*FPaths::GetPath(tile_path)));
     TestTrue(TEXT("Tile file exists"), FPaths::FileExists(tile_path));
 
     auto update_result = update_tile_dataset(tile, context);
     TestTrue(TEXT("Existing tile can be reopened for update"), update_result.has_value());
-    if (!update_result.has_value()) {
-        return false;
-    }
+    if (!update_result.has_value()) { return false; }
     TestEqual(TEXT("Updated dataset access"), update_result.value()->GetAccess(), GA_Update);
 
     auto load_existing_result = load_tile_dataset_if_exists(tile, context);
     TestTrue(TEXT("Existing tile can be loaded"), load_existing_result.has_value());
-    if (!load_existing_result.has_value()) {
-        return false;
-    }
+    if (!load_existing_result.has_value()) { return false; }
     TestTrue(TEXT("Existing tile returns a dataset"), load_existing_result.value().IsSet());
 
     const FTileCoordinate missing_tile{1u, 3u, FIntPoint{10, 11}};
     auto load_missing_result = load_tile_dataset_if_exists(missing_tile, context);
     TestTrue(TEXT("Missing tile query succeeds"), load_missing_result.has_value());
-    if (!load_missing_result.has_value()) {
-        return false;
-    }
+    if (!load_missing_result.has_value()) { return false; }
     TestFalse(TEXT("Missing tile returns NullOpt"), load_missing_result.value().IsSet());
 
     auto update_missing_result = update_tile_dataset(missing_tile, context);

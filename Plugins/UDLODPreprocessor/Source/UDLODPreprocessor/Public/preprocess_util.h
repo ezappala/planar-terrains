@@ -28,13 +28,14 @@ inline void save_terrain_config(
     }
     config.side_length = 86400;
     config.path = context.terrain_path;
-    config.add_attachment(context.attachment_label, context.attachment);
     if (context.attachment_label.ToLower() == "height") {
-        config.min_height = context.min_height;
-        config.max_height = context.max_height;
+        config.attachments.Reset();
         config.tiles = tiles;
         config.lod_count = context.lod_count.GetValue();
+        config.min_height = context.min_height;
+        config.max_height = context.max_height;
     }
+    config.add_attachment(context.attachment_label, context.attachment);
 
     config.save_file(file_path);
 }

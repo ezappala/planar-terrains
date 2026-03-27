@@ -1,3 +1,4 @@
+// NOLINTBEGIN(readability-magic-numbers)
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "tests_shared.h"
@@ -89,7 +90,7 @@ bool FPreprocessExecInitializeTest::RunTest(const FString& Parameters) {
     const FString albedo_path = FPaths::Combine(root, TEXT("albedo.tif"));
 
     {
-        GDALDatasetRef heightmap = create_tiff_dataset<float>(heightmap_path, 4, 4, 1);
+        const GDALDatasetRef heightmap = create_tiff_dataset<float>(heightmap_path, 4, 4, 1);
         GDALRasterBand* band = heightmap->GetRasterBand(1);
         TestEqual(TEXT("Heightmap no-data set"), band->SetNoDataValue(-7.5), CE_None);
         TestEqual(
@@ -100,7 +101,7 @@ bool FPreprocessExecInitializeTest::RunTest(const FString& Parameters) {
     }
 
     {
-        GDALDatasetRef albedo = create_tiff_dataset<uint8>(albedo_path, 4, 4, 3);
+        const GDALDatasetRef albedo = create_tiff_dataset<uint8>(albedo_path, 4, 4, 3);
         TestEqual(
             TEXT("Albedo band 1 interp"),
             albedo->GetRasterBand(1)->SetColorInterpretation(GCI_RedBand),
@@ -117,10 +118,10 @@ bool FPreprocessExecInitializeTest::RunTest(const FString& Parameters) {
     }
 
     FTerrainPreprocessSettings settings{};
-    settings.heightmap_src_path = heightmap_path;
-    settings.albedo_src_path = albedo_path;
-    settings.terrain_path = FPaths::Combine(root, TEXT("terrain"));
-    settings.temp_path = FPaths::Combine(root, TEXT("temp"));
+    settings.heightmap_src_path = FFilePath{heightmap_path};
+    settings.albedo_src_path = FFilePath{albedo_path};
+    settings.terrain_path = FDirectoryPath{FPaths::Combine(root, TEXT("terrain"))};
+    settings.temp_path = FDirectoryPath{FPaths::Combine(root, TEXT("temp"))};
     settings.overwrite = true;
     settings.fill_radius = 3.0f;
     settings.heightmap_no_data = FPreprocessNoData::Source();
@@ -146,13 +147,13 @@ bool FPreprocessExecInitializeTest::RunTest(const FString& Parameters) {
         return false;
     }
 
-    auto& initialize_value = initialize_result.value();
-    auto& heightmap_init = initialize_value.Get<0>();
-    auto& albedo_init = initialize_value.Get<1>();
-    auto& heightmap_dataset = heightmap_init.Get<0>();
-    auto& heightmap_context = heightmap_init.Get<1>();
-    auto& albedo_dataset = albedo_init.Get<0>();
-    auto& albedo_context = albedo_init.Get<1>();
+    const auto& initialize_value = initialize_result.value();
+    const auto& heightmap_init = initialize_value.Get<0>();
+    const auto& albedo_init = initialize_value.Get<1>();
+    const auto& heightmap_dataset = heightmap_init.Get<0>();
+    const auto& heightmap_context = heightmap_init.Get<1>();
+    const auto& albedo_dataset = albedo_init.Get<0>();
+    const auto& albedo_context = albedo_init.Get<1>();
 
     TestNotNull(TEXT("Heightmap dataset opens"), heightmap_dataset.Get());
     TestNotNull(TEXT("Albedo dataset opens"), albedo_dataset.Get());
@@ -195,7 +196,7 @@ bool FPreprocessExecInitializeUsesSourceDataTypesAndAttachmentTempDirsTest::RunT
     const FString albedo_path = FPaths::Combine(root, TEXT("albedo_u8.tif"));
 
     {
-        GDALDatasetRef heightmap = create_tiff_dataset<uint16>(heightmap_path, 4, 4, 1);
+        const GDALDatasetRef heightmap = create_tiff_dataset<uint16>(heightmap_path, 4, 4, 1);
         TestEqual(
             TEXT("Heightmap band color interpretation set"),
             heightmap->GetRasterBand(1)->SetColorInterpretation(GCI_GrayIndex),
@@ -204,7 +205,7 @@ bool FPreprocessExecInitializeUsesSourceDataTypesAndAttachmentTempDirsTest::RunT
     }
 
     {
-        GDALDatasetRef albedo = create_tiff_dataset<uint8>(albedo_path, 4, 4, 3);
+        const GDALDatasetRef albedo = create_tiff_dataset<uint8>(albedo_path, 4, 4, 3);
         TestEqual(TEXT("Albedo band 1 interp"), albedo->GetRasterBand(1)->SetColorInterpretation(GCI_RedBand), CE_None);
         TestEqual(TEXT("Albedo band 2 interp"), albedo->GetRasterBand(2)->SetColorInterpretation(GCI_GreenBand), CE_None);
         TestEqual(TEXT("Albedo band 3 interp"), albedo->GetRasterBand(3)->SetColorInterpretation(GCI_BlueBand), CE_None);
@@ -212,10 +213,10 @@ bool FPreprocessExecInitializeUsesSourceDataTypesAndAttachmentTempDirsTest::RunT
     }
 
     FTerrainPreprocessSettings settings{};
-    settings.heightmap_src_path = heightmap_path;
-    settings.albedo_src_path = albedo_path;
-    settings.terrain_path = FPaths::Combine(root, TEXT("terrain"));
-    settings.temp_path = FPaths::Combine(root, TEXT("tmp"));
+    settings.heightmap_src_path = FFilePath{heightmap_path};
+    settings.albedo_src_path = FFilePath{albedo_path};
+    settings.terrain_path = FDirectoryPath{FPaths::Combine(root, TEXT("terrain"))};
+    settings.temp_path = FDirectoryPath{FPaths::Combine(root, TEXT("tmp"))};
     settings.heightmap_data_type = FPreprocessDataType::Source();
     settings.albedo_data_type = FPreprocessDataType::Source();
     settings.heightmap_attachment_label = TEXT("height");
@@ -225,26 +226,26 @@ bool FPreprocessExecInitializeUsesSourceDataTypesAndAttachmentTempDirsTest::RunT
     TestTrue(TEXT("Initialization succeeds"), initialize_result.has_value());
     if (!initialize_result.has_value()) { return false; }
 
-    auto& initialize_value = initialize_result.value();
-    auto& heightmap_context = initialize_value.Get<0>().Get<1>();
-    auto& albedo_context = initialize_value.Get<1>().Get<1>();
+    const auto& initialize_value = initialize_result.value();
+    const auto& heightmap_context = initialize_value.Get<0>().Get<1>();
+    const auto& albedo_context = initialize_value.Get<1>().Get<1>();
 
     TestEqual(
         TEXT("Heightmap source datatype is preserved"),
         static_cast<int32>(heightmap_context.data_type),
-        static_cast<int32>(GDT_UInt16));
+        GDT_UInt16);
     TestEqual(
         TEXT("Albedo source datatype is preserved"),
         static_cast<int32>(albedo_context.data_type),
-        static_cast<int32>(GDT_Byte));
+        GDT_Byte);
     TestEqual(
         TEXT("Heightmap temp dir is attachment-specific"),
         heightmap_context.temp_dir,
-        FPaths::Combine(settings.temp_path, settings.heightmap_attachment_label));
+        FPaths::Combine(settings.temp_path.Path, settings.heightmap_attachment_label));
     TestEqual(
         TEXT("Albedo temp dir is attachment-specific"),
         albedo_context.temp_dir,
-        FPaths::Combine(settings.temp_path, settings.albedo_attachment_label));
+        FPaths::Combine(settings.temp_path.Path, settings.albedo_attachment_label));
 
     return true;
 }
@@ -256,8 +257,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FPreprocessExecInitializeRejectsMissingSourcesTest::RunTest(const FString& Parameters) {
     FTerrainPreprocessSettings settings{};
-    settings.heightmap_src_path = TEXT("Z:/definitely-missing-heightmap.tif");
-    settings.albedo_src_path = TEXT("Z:/definitely-missing-albedo.tif");
+    settings.heightmap_src_path = FFilePath{TEXT("Z:/definitely-missing-heightmap.tif")};
+    settings.albedo_src_path = FFilePath{TEXT("Z:/definitely-missing-albedo.tif")};
 
     const auto result = initialize(settings);
     TestFalse(TEXT("Initialization rejects missing datasets"), result.has_value());
@@ -269,6 +270,55 @@ bool FPreprocessExecInitializeRejectsMissingSourcesTest::RunTest(const FString& 
         TEXT("Initialization reports parse error for missing sources"),
         result.error().Type,
         EPreprocessError::Parse);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FPreprocessExecInitializeAllowsMissingAlbedoWhenDisabledTest,
+    "UDLODPreprocessor.Preprocess.Exec.InitializeAllowsMissingAlbedoWhenDisabled",
+    TestFlags)
+
+bool FPreprocessExecInitializeAllowsMissingAlbedoWhenDisabledTest::RunTest(
+    const FString& Parameters) {
+    GDALAllRegister();
+
+    const FString root = make_unique_test_root(TEXT("ExecInitializeNoAlbedo"));
+    ON_SCOPE_EXIT { delete_tree(root); };
+
+    const FString heightmap_path = FPaths::Combine(root, TEXT("height.tif"));
+    {
+        const GDALDatasetRef heightmap = create_tiff_dataset<float>(heightmap_path, 4, 4, 1);
+        TestEqual(
+            TEXT("Height-only dataset color interpretation set"),
+            heightmap->GetRasterBand(1)->SetColorInterpretation(GCI_GrayIndex),
+            CE_None);
+        heightmap->FlushCache();
+    }
+
+    FTerrainPreprocessSettings settings{};
+    settings.use_albedo = false;
+    settings.heightmap_src_path = FFilePath{heightmap_path};
+    settings.albedo_src_path = FFilePath{TEXT("Z:/definitely-missing-albedo.tif")};
+    settings.terrain_path = FDirectoryPath{FPaths::Combine(root, TEXT("terrain"))};
+    settings.temp_path = FDirectoryPath{FPaths::Combine(root, TEXT("tmp"))};
+    settings.heightmap_attachment_label = TEXT("height");
+
+    const auto initialize_result = initialize(settings);
+    TestTrue(TEXT("Initialization succeeds without albedo"), initialize_result.has_value());
+    if (!initialize_result.has_value()) { return false; }
+
+    const auto& initialize_value = initialize_result.value();
+    const auto& heightmap_dataset = initialize_value.Get<0>().Get<0>();
+    const auto& albedo_dataset = initialize_value.Get<1>().Get<0>();
+    const auto& albedo_context = initialize_value.Get<1>().Get<1>();
+
+    TestNotNull(TEXT("Heightmap dataset opens"), heightmap_dataset.Get());
+    TestNull(TEXT("Albedo dataset is intentionally absent"), albedo_dataset.Get());
+    TestEqual(
+        TEXT("Disabled albedo keeps its attachment label"),
+        albedo_context.attachment_label,
+        settings.albedo_attachment_label);
+
     return true;
 }
 
@@ -378,11 +428,11 @@ bool FPreprocessSplitCopiesRgbaTileDataTest::RunTest(const FString& Parameters) 
     const FString source_path = FPaths::Combine(root, TEXT("source_rgba.tif"));
     {
         GDALDatasetRef source = create_tiff_dataset<uint8>(source_path, 6, 6, 4);
-        const TArray<int32> band_values{11, 22, 33, 44};
+        const TArray band_values{11, 22, 33, 44};
         for (int32 band_index = 0; band_index < band_values.Num(); ++band_index) {
             TArray<uint8> values;
             values.Init(static_cast<uint8>(band_values[band_index]), 36);
-            ext::Buffer<uint8> buffer{MoveTemp(values), usize_c{6, 6}};
+            ext::Buffer buffer{MoveTemp(values), usize_c{6, 6}};
             auto* band = source->GetRasterBand(band_index + 1);
             TestTrue(
                 *FString::Printf(TEXT("Band %d write succeeds"), band_index + 1),
@@ -418,7 +468,7 @@ bool FPreprocessSplitCopiesRgbaTileDataTest::RunTest(const FString& Parameters) 
     if (!tile_result.has_value() || !tile_result.value().IsSet()) { return false; }
 
     const GDALDatasetRef& tile_dataset = tile_result.value().GetValue();
-    const TArray<int32> expected_band_values{11, 22, 33, 44};
+    const TArray expected_band_values{11, 22, 33, 44};
     for (int32 band_index = 0; band_index < expected_band_values.Num(); ++band_index) {
         auto read_result = read_as<uint8>(
             tile_dataset->GetRasterBand(band_index + 1),
@@ -433,7 +483,7 @@ bool FPreprocessSplitCopiesRgbaTileDataTest::RunTest(const FString& Parameters) 
         for (uint8 value : read_result.value().data()) {
             TestEqual(
                 *FString::Printf(TEXT("Band %d copied value"), band_index + 1),
-                static_cast<int32>(value),
+                value,
                 expected_band_values[band_index]);
         }
     }
@@ -474,11 +524,11 @@ bool FPreprocessFillNoDataPreservesRgbaCenterTest::RunTest(const FString& Parame
     if (!create_result.has_value()) { return false; }
 
     GDALDatasetRef dataset = MoveTemp(create_result.value());
-    const TArray<int32> band_values{11, 22, 33, 44};
+    const TArray band_values{11, 22, 33, 44};
     for (int32 band_index = 0; band_index < band_values.Num(); ++band_index) {
         TArray<uint8> values;
         values.Init(static_cast<uint8>(band_values[band_index]), 36);
-        ext::Buffer<uint8> buffer{MoveTemp(values), usize_c{6, 6}};
+        ext::Buffer buffer{MoveTemp(values), usize_c{6, 6}};
         TestTrue(
             *FString::Printf(TEXT("Band %d center write succeeds"), band_index + 1),
             write<uint8>(dataset->GetRasterBand(band_index + 1), {1, 1}, {6, 6}, buffer).has_value());
@@ -494,7 +544,7 @@ bool FPreprocessFillNoDataPreservesRgbaCenterTest::RunTest(const FString& Parame
     if (!tile_result.has_value() || !tile_result.value().IsSet()) { return false; }
 
     const GDALDatasetRef& filled_dataset = tile_result.value().GetValue();
-    const TArray<int32> expected_band_values{11, 22, 33, 44};
+    const TArray expected_band_values{11, 22, 33, 44};
     for (int32 band_index = 0; band_index < expected_band_values.Num(); ++band_index) {
         auto read_result = read_as<uint8>(
             filled_dataset->GetRasterBand(band_index + 1),
@@ -509,7 +559,7 @@ bool FPreprocessFillNoDataPreservesRgbaCenterTest::RunTest(const FString& Parame
         for (uint8 value : read_result.value().data()) {
             TestEqual(
                 *FString::Printf(TEXT("Band %d center value preserved"), band_index + 1),
-                static_cast<int32>(value),
+                value,
                 expected_band_values[band_index]);
         }
     }
@@ -550,3 +600,4 @@ bool FPreprocessReprojectPlanarUpdatesLodCountTest::RunTest(const FString& Param
 }
 
 #endif
+// NOLINTEND(readability-magic-numbers)

@@ -289,12 +289,11 @@ inline PreprocessResult<TTuple<
     albedo_attachment.mask = settings.albedo_create_mask;
     albedo_attachment.format = settings.albedo_attachment_format;
 
+    const bool bUseAlbedo = settings.use_albedo;
     GDALDatasetRef heightmap_src_dataset{
-        GDALDataset::Open(TCHAR_TO_UTF8(*settings.heightmap_src_path), GA_ReadOnly)
+        GDALDataset::Open(TCHAR_TO_UTF8(*settings.heightmap_src_path.FilePath), GA_ReadOnly)
     };
-    GDALDatasetRef albedo_src_dataset{
-        GDALDataset::Open(TCHAR_TO_UTF8(*settings.albedo_src_path), GA_ReadOnly)
-    };
+    GDALDatasetRef albedo_src_dataset{};
     if (!heightmap_src_dataset) {
         return make_parse_error_result<TTuple<
             TTuple<GDALDatasetRef, FPreprocessContext>,
@@ -302,22 +301,32 @@ inline PreprocessResult<TTuple<
         >>(
             FString::Printf(
                 TEXT("Could not open heightmap source: %s"),
-                *settings.heightmap_src_path));
+                *settings.heightmap_src_path.FilePath));
     }
-    if (!albedo_src_dataset) {
+
+    if (bUseAlbedo) {
+        albedo_src_dataset = GDALDatasetRef{
+            GDALDataset::Open(TCHAR_TO_UTF8(*settings.albedo_src_path.FilePath), GA_ReadOnly)
+        };
+    }
+    if (bUseAlbedo && !albedo_src_dataset) {
         return make_parse_error_result<TTuple<
             TTuple<GDALDatasetRef, FPreprocessContext>,
             TTuple<GDALDatasetRef, FPreprocessContext>
         >>(
-            FString::Printf(TEXT("Could not open albedo source: %s"), *settings.albedo_src_path));
+            FString::Printf(
+                TEXT("Could not open albedo source: %s"),
+                *settings.albedo_src_path.FilePath));
     }
 
     const auto heightmap_data_type = resolve_data_type(
         heightmap_src_dataset,
         settings.heightmap_data_type);
-    const auto albedo_data_type = resolve_data_type(
-        albedo_src_dataset,
-        settings.albedo_data_type);
+    const auto albedo_data_type = bUseAlbedo
+        ? resolve_data_type(
+            albedo_src_dataset,
+            settings.albedo_data_type)
+        : static_cast<EGDALDataType>(GDT_Unknown);
 
     auto heightmap_rasterbands_arr = rasterbands(heightmap_src_dataset);
     auto heightmap_rasterbands = ext::iter::map<std::expected<GDALRasterBand*, CPLErrorNum>>(
@@ -329,31 +338,37 @@ inline PreprocessResult<TTuple<
             return band;
         });
 
-    auto albedo_rasterbands_arr = rasterbands(albedo_src_dataset);
-    auto albedo_rasterbands = ext::iter::map<std::expected<GDALRasterBand*, CPLErrorNum>>(
-        albedo_rasterbands_arr,
-        [](const std::expected<GDALRasterBand*, CPLErrorNum>& rb) -> FRasterbandConfig {
-            FRasterbandConfig band;
-            band.color_interp = static_cast<EGDALColorInterp>(
-                rb.value()->GetColorInterpretation());
-            return band;
-        });
+    TArray<FRasterbandConfig> albedo_rasterbands;
+    if (bUseAlbedo) {
+        auto albedo_rasterbands_arr = rasterbands(albedo_src_dataset);
+        albedo_rasterbands = ext::iter::map<std::expected<GDALRasterBand*, CPLErrorNum>>(
+            albedo_rasterbands_arr,
+            [](const std::expected<GDALRasterBand*, CPLErrorNum>& rb) -> FRasterbandConfig {
+                FRasterbandConfig band;
+                band.color_interp = static_cast<EGDALColorInterp>(
+                    rb.value()->GetColorInterpretation());
+                return band;
+            });
+    }
 
     TOptional<double> heightmap_no_data_value = resolve_no_data_value(
         heightmap_src_dataset,
         heightmap_rasterbands,
         settings.heightmap_no_data);
 
-    TOptional<double> albedo_no_data_value = resolve_no_data_value(
-        albedo_src_dataset,
-        albedo_rasterbands,
-        settings.albedo_no_data);
+    TOptional<double> albedo_no_data_value = bUseAlbedo
+        ? resolve_no_data_value(
+            albedo_src_dataset,
+            albedo_rasterbands,
+            settings.albedo_no_data)
+        : NullOpt;
 
-    const auto heightmap_tile_dir = settings.terrain_path / settings.heightmap_attachment_label;
-    const auto albedo_tile_dir = settings.terrain_path / settings.albedo_attachment_label;
+    const auto heightmap_tile_dir = settings.terrain_path.Path / settings.
+        heightmap_attachment_label;
+    const auto albedo_tile_dir = settings.terrain_path.Path / settings.albedo_attachment_label;
 
-    const auto heightmap_temp_dir = settings.temp_path / settings.heightmap_attachment_label;
-    const auto albedo_temp_dir = settings.temp_path / settings.albedo_attachment_label;
+    const auto heightmap_temp_dir = settings.temp_path.Path / settings.heightmap_attachment_label;
+    const auto albedo_temp_dir = settings.temp_path.Path / settings.albedo_attachment_label;
 
     FPreprocessContext heightmap_context{};
     heightmap_context.data_type = heightmap_data_type;
@@ -368,7 +383,7 @@ inline PreprocessResult<TTuple<
     heightmap_context.create_mask = settings.heightmap_create_mask;
     heightmap_context.attachment_label = settings.heightmap_attachment_label;
     heightmap_context.attachment = heightmap_attachment;
-    heightmap_context.terrain_path = settings.terrain_path;
+    heightmap_context.terrain_path = settings.terrain_path.Path;
     heightmap_context.lod_count = settings.heightmap_lod_count;
 
     FPreprocessContext albedo_context{};
@@ -384,7 +399,7 @@ inline PreprocessResult<TTuple<
     albedo_context.create_mask = settings.albedo_create_mask;
     albedo_context.attachment_label = settings.albedo_attachment_label;
     albedo_context.attachment = albedo_attachment;
-    albedo_context.terrain_path = settings.terrain_path;
+    albedo_context.terrain_path = settings.terrain_path.Path;
     albedo_context.lod_count = settings.albedo_lod_count;
 
     return MakeTuple(

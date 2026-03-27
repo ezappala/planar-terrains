@@ -23,6 +23,25 @@ bool parse_value<float>(const FString& params, const TCHAR* key, float& out_valu
     return FParse::Value(*params, key, out_value);
 }
 
+template <>
+bool parse_value<FDirectoryPath>(
+    const FString& params,
+    const TCHAR* key,
+    FDirectoryPath& out_value) {
+    FString path_str;
+    if (!FParse::Value(*params, key, path_str)) { return false; }
+    out_value.Path = path_str;
+    return true;
+}
+
+template <>
+bool parse_value<FFilePath>(const FString& params, const TCHAR* key, FFilePath& out_value) {
+    FString path_str;
+    if (!FParse::Value(*params, key, path_str)) { return false; }
+    out_value.FilePath = path_str;
+    return true;
+}
+
 bool parse_bool_value(const FString& params, const TCHAR* key, bool& out_value) {
     FString parsed_value;
     if (!FParse::Value(*params, key, parsed_value)) {
@@ -83,7 +102,7 @@ TOptional<EAttachmentFormat> parse_attachment_format(const FString& value) {
     return NullOpt;
 }
 
-bool apply_no_data_mod3e(
+bool apply_no_data_mode(
     const FString& params,
     const TCHAR* mode_key,
     const TCHAR* value_key,
@@ -141,7 +160,7 @@ bool apply_data_type_override(
     return true;
 }
 
-bool ApplyAttachmentFormatOverride(
+bool apply_attachment_format_override(
     const FString& params,
     const TCHAR* key,
     EAttachmentFormat& out_format
@@ -160,10 +179,10 @@ bool ApplyAttachmentFormatOverride(
     return true;
 }
 
-FString Usage() {
+FString usage() {
     return TEXT(
         "Usage: UnrealEditor-Cmd.exe <Project.uproject> -run=UDLODPreprocessor "
-        "-HeightmapSrc=<path> -AlbedoSrc=<path> -TerrainPath=<path> [-TempPath=<path>] "
+        "-HeightmapSrc=<path> [-UseAlbedo=true|false] [-AlbedoSrc=<path>] -TerrainPath=<path> [-TempPath=<path>] "
         "[-HeightmapLodCount=<n>] [-AlbedoLodCount=<n>] [-Overwrite=true|false]");
 }
 } // namespace
@@ -178,12 +197,13 @@ UUDLODPreprocessorCommandlet::UUDLODPreprocessorCommandlet() {
 
 int32 UUDLODPreprocessorCommandlet::Main(const FString& params) {
     if (FParse::Param(*params, TEXT("Help"))) {
-        UE_LOGFMT(LogTemp, Display, "{usage}", Usage());
+        UE_LOGFMT(LogTemp, Display, "{usage}", usage());
         return 0;
     }
 
     FTerrainPreprocessSettings settings{};
 
+    parse_bool_value(params, TEXT("UseAlbedo="), settings.use_albedo);
     parse_value(params, TEXT("HeightmapSrc="), settings.heightmap_src_path);
     parse_value(params, TEXT("AlbedoSrc="), settings.albedo_src_path);
     parse_value(params, TEXT("TerrainPath="), settings.terrain_path);
@@ -206,27 +226,27 @@ int32 UUDLODPreprocessorCommandlet::Main(const FString& params) {
         settings.albedo_lod_count = LodCount;
     }
 
-    if (!apply_no_data_mod3e(
+    if (!apply_no_data_mode(
             params,
             TEXT("HeightmapNoDataMode="),
             TEXT("HeightmapNoDataValue="),
             settings.heightmap_no_data) ||
-        !apply_no_data_mod3e(
+        !apply_no_data_mode(
             params,
             TEXT("AlbedoNoDataMode="),
             TEXT("AlbedoNoDataValue="),
             settings.albedo_no_data) ||
         !apply_data_type_override(params, TEXT("HeightmapDataType="), settings.heightmap_data_type) ||
         !apply_data_type_override(params, TEXT("AlbedoDataType="), settings.albedo_data_type) ||
-        !ApplyAttachmentFormatOverride(
+        !apply_attachment_format_override(
             params,
             TEXT("HeightmapAttachmentFormat="),
             settings.heightmap_attachment_format) ||
-        !ApplyAttachmentFormatOverride(
+        !apply_attachment_format_override(
             params,
             TEXT("AlbedoAttachmentFormat="),
             settings.albedo_attachment_format)) {
-        UE_LOGFMT(LogTemp, Error, "{usage}", Usage());
+        UE_LOGFMT(LogTemp, Error, "{usage}", usage());
         return 1;
     }
 

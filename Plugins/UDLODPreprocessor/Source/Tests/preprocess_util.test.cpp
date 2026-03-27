@@ -71,7 +71,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     "UDLODPreprocessor.Preprocess.Util.SaveTerrainConfigWritesInsideTerrainPath",
     TestFlags)
 
-bool FPreprocessUtilSaveTerrainConfigWritesInsideTerrainPathTest::RunTest(const FString& Parameters) {
+bool FPreprocessUtilSaveTerrainConfigWritesInsideTerrainPathTest::RunTest(
+    const FString& Parameters) {
     const FString root = make_unique_test_root(TEXT("UtilSaveTerrainConfig"));
     ON_SCOPE_EXIT { delete_tree(root); };
 
@@ -88,10 +89,51 @@ bool FPreprocessUtilSaveTerrainConfigWritesInsideTerrainPathTest::RunTest(const 
 
     util::save_terrain_config(tiles, context);
 
-    TestTrue(TEXT("Config is written inside the terrain directory"), FPaths::FileExists(expected_path));
+    TestTrue(
+        TEXT("Config is written inside the terrain directory"),
+        FPaths::FileExists(expected_path));
     TestFalse(
         TEXT("Config is not written by raw string concatenation"),
         expected_path != unexpected_path && FPaths::FileExists(unexpected_path));
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FPreprocessUtilSaveTerrainConfigHeightResetRemovesStaleAttachmentsTest,
+    "UDLODPreprocessor.Preprocess.Util.SaveTerrainConfigHeightResetRemovesStaleAttachments",
+    TestFlags)
+
+bool FPreprocessUtilSaveTerrainConfigHeightResetRemovesStaleAttachmentsTest::RunTest(
+    const FString& Parameters) {
+    const FString root = make_unique_test_root(TEXT("UtilSaveTerrainConfigReset"));
+    ON_SCOPE_EXIT { delete_tree(root); };
+
+    const FString terrain_path = FPaths::Combine(root, TEXT("terrain"));
+    IFileManager::Get().MakeDirectory(*terrain_path, true);
+
+    FPreprocessContext albedo_context = make_context(root, EAttachmentFormat::Rgba8U);
+    albedo_context.terrain_path = terrain_path;
+    albedo_context.attachment_label = TEXT("albedo");
+    util::save_terrain_config({}, albedo_context);
+
+    FPreprocessContext height_context = make_context(root);
+    height_context.terrain_path = terrain_path;
+    height_context.attachment_label = TEXT("height");
+    height_context.lod_count = 2;
+    const TArray tiles{FTileCoordinate{0u, 0u, FIntPoint{0, 0}}};
+    util::save_terrain_config(tiles, height_context);
+
+    const auto config = FTerrainConfig::from_file(
+        FPaths::Combine(terrain_path, TEXT("config.json")));
+    TestTrue(TEXT("Config reload succeeds"), config.IsSet());
+    if (!config.IsSet()) { return false; }
+
+    TestEqual(TEXT("Height-only config has one attachment"), config->attachments.Num(), 1);
+    TestTrue(TEXT("Height attachment remains"), config->attachments.Contains(TEXT("height")));
+    TestFalse(
+        TEXT("Stale albedo attachment is removed"),
+        config->attachments.Contains(TEXT("albedo")));
 
     return true;
 }

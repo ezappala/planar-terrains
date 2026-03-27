@@ -60,7 +60,7 @@ bool FPreprocessDownsamplePreservesChildQuadrantsTest::RunTest(const FString& Pa
     const isize_c border_offset{1, 1};
     const usize_c tile_size{6, 6};
 
-    const TArray<TPair<FTileCoordinate, float>> children{
+    const TArray children{
         TPair<FTileCoordinate, float>{FTileCoordinate{0u, 1u, FIntPoint{0, 0}}, 10.0f},
         TPair<FTileCoordinate, float>{FTileCoordinate{0u, 1u, FIntPoint{1, 0}}, 20.0f},
         TPair<FTileCoordinate, float>{FTileCoordinate{0u, 1u, FIntPoint{0, 1}}, 30.0f},
@@ -112,7 +112,9 @@ bool FPreprocessDownsamplePreservesChildQuadrantsTest::RunTest(const FString& Pa
             const float expected =
                 y < 3
                 ? (x < 3 ? 10.0f : 20.0f)
-                : (x < 3 ? 30.0f : 40.0f);
+                : x < 3
+                ? 30.0f
+                : 40.0f;
             TestEqual(
                 *FString::Printf(TEXT("Parent value at (%d,%d)"), x, y),
                 values[y * 6 + x],
@@ -156,7 +158,7 @@ bool FPreprocessDownsamplePreservesChildOrientationTest::RunTest(const FString& 
             }
         }
     }
-    ext::Buffer<float> child_buffer{MoveTemp(child_values), child_tile_size};
+    ext::Buffer child_buffer{MoveTemp(child_values), child_tile_size};
     TestTrue(
         TEXT("Child orientation pattern write succeeds"),
         write<float>(child_dataset->GetRasterBand(1), border_offset, child_tile_size, child_buffer).has_value());

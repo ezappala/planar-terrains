@@ -34,13 +34,19 @@ bool FPreprocessSharedDatasetReopensRecreatedPathTest::RunTest(const FString& Pa
 
     {
         const SharedDatasetRO shared_dataset{dataset_path};
-        auto read_result = read_as<uint8>(shared_dataset.get()->GetRasterBand(1), {0, 0}, {1, 1}, {1, 1});
+        auto read_result = read_as<uint8>(
+            shared_dataset.get()->GetRasterBand(1),
+            {0, 0},
+            {1, 1},
+            {1, 1});
         TestTrue(TEXT("Initial shared dataset read succeeds"), read_result.has_value());
         if (!read_result.has_value()) { return false; }
         TestEqual(TEXT("Initial value"), read_result.value().data()[0], static_cast<uint8>(7));
     }
 
-    TestTrue(TEXT("Dataset can be deleted after shared reader scope"), IFileManager::Get().Delete(*dataset_path));
+    TestTrue(
+        TEXT("Dataset can be deleted after shared reader scope"),
+        IFileManager::Get().Delete(*dataset_path));
     FPlatformProcess::Sleep(0.1f);
 
     {
@@ -54,7 +60,11 @@ bool FPreprocessSharedDatasetReopensRecreatedPathTest::RunTest(const FString& Pa
 
     {
         const SharedDatasetRO shared_dataset{dataset_path};
-        auto read_result = read_as<uint8>(shared_dataset.get()->GetRasterBand(1), {0, 0}, {1, 1}, {1, 1});
+        auto read_result = read_as<uint8>(
+            shared_dataset.get()->GetRasterBand(1),
+            {0, 0},
+            {1, 1},
+            {1, 1});
         TestTrue(TEXT("Replacement shared dataset read succeeds"), read_result.has_value());
         if (!read_result.has_value()) { return false; }
         TestEqual(TEXT("Replacement value"), read_result.value().data()[0], static_cast<uint8>(42));
