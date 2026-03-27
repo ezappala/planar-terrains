@@ -1,11 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "terrain_mesh_vertex_factory.h"
-#include "terrain_render_state.h"
 #include "PrimitiveSceneProxy.h"
 #include "PrimitiveViewRelevance.h"
 #include "terrain.h"
+#include "terrain_mesh_vertex_factory.h"
+#include "terrain_render_state.h"
 
 struct FTerrainDynamicData {
     FVector camera_position;
@@ -36,7 +36,7 @@ public:
 private:
     const FMaterialRenderProxy* material_proxy = nullptr;
     FMaterialRelevance material_relevance;
-    TSharedPtr<FTerrainRenderResources, ESPMode::ThreadSafe> render_resources;
+    TSharedPtr<FTerrainRenderResources> render_resources;
     FTerrainMeshVertexFactory vertex_factory;
 
     friend class UTerrain;

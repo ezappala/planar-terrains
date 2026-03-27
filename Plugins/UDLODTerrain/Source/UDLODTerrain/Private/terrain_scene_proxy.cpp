@@ -1,24 +1,25 @@
 #include "terrain_scene_proxy.h"
 
 #include "MaterialDomain.h"
-#include "Materials/Material.h"
-#include "Materials/MaterialRenderProxy.h"
 #include "MeshBatch.h"
 #include "MeshElementCollector.h"
 #include "SceneManagement.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialRenderProxy.h"
 
-FTerrainSceneProxy::FTerrainSceneProxy(const UTerrain* component)
-    : FPrimitiveSceneProxy(component),
-      render_resources(component->render_resources),
-      vertex_factory(GMaxRHIFeatureLevel) {
-    UMaterialInterface* material_interface = component->material;
+FTerrainSceneProxy::FTerrainSceneProxy(const UTerrain* component) : FPrimitiveSceneProxy(component),
+    render_resources(component->render_resources),
+    vertex_factory(GMaxRHIFeatureLevel) {
+    const UMaterialInterface* material_interface = component->material;
     if (material_interface == nullptr) {
         material_interface = UMaterial::GetDefaultMaterial(MD_Surface);
     }
 
+    const EShaderPlatform platform = GShaderPlatformForFeatureLevel[GMaxRHIFeatureLevel];
+
     if (material_interface != nullptr) {
         material_proxy = material_interface->GetRenderProxy();
-        material_relevance = material_interface->GetRelevance(GMaxRHIFeatureLevel);
+        material_relevance = material_interface->GetRelevance(platform);
     }
 
     bWillEverBeLit = true;
@@ -43,24 +44,17 @@ void FTerrainSceneProxy::GetDynamicMeshElements(
 ) const {
     (void)view_family;
 
-    if (material_proxy == nullptr || !vertex_factory.IsInitialized() || !render_resources.IsValid()) {
-        return;
-    }
+    if (material_proxy == nullptr || !vertex_factory.IsInitialized() || !render_resources.
+        IsValid()) { return; }
 
     for (int32 view_index = 0; view_index < views.Num(); ++view_index) {
-        if ((visibility_map & (1u << view_index)) == 0) {
-            continue;
-        }
+        if ((visibility_map & 1u << view_index) == 0) { continue; }
 
         const FSceneView* view = views[view_index];
-        if (view == nullptr) {
-            continue;
-        }
+        if (view == nullptr) { continue; }
 
         FTerrainMeshViewState view_state;
-        if (!render_resources->TryGetViewState(view->GetViewKey(), view_state)) {
-            continue;
-        }
+        if (!render_resources->TryGetViewState(view->GetViewKey(), view_state)) { continue; }
 
         FMeshBatch& mesh = collector.AllocateMesh();
         FMeshBatchElement& batch_element = mesh.Elements[0];
