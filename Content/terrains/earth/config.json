@@ -1,7 +1,10 @@
 {
+	"path": "C:\\Users\\ellie\\dev\\PlanarTerrains\\Content\\terrains\\earth",
 	"lod_count": 9,
-	"min_height": -6837,
-	"max_height": 5725,
+	"min_height": 0.22247768938541412,
+	"max_height": 0.85384643077850342,
+	"side_length": 86400,
+	"face_count": 1,
 	"attachments":
 	{
 		"height":
