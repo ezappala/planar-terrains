@@ -6,16 +6,30 @@
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonSerializer.h"
 
+#include "terrain_config.generated.h"
+
+USTRUCT(BlueprintType)
 struct FTerrainConfig {
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
     FString path = "";
-    uint32 lod_count = 1;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+    int32 lod_count = 1;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
     float min_height = 0.;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
     float max_height = 1.;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
     TMap<FString, FAttachmentConfig> attachments{};
     TArray<FTileCoordinate> tiles{};
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
     double side_length = 86400.0;
-    uint32 face_count = 1;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+    int32 face_count = 1;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
     double scale_scalar = side_length / 2.;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
     double face_size = 2. * PI / 4. * scale_scalar;
 
     void refresh_derived_fields() {
@@ -31,7 +45,7 @@ struct FTerrainConfig {
         return *this;
     }
 
-    FString ToString(const bool truncated = true) const {
+    FString to_string(const bool truncated = true) const {
         FString attachments_str;
         for (const auto& [label, config] : attachments) {
             attachments_str += FString::Printf(
