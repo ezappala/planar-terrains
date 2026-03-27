@@ -2,31 +2,33 @@
 
 #include "ext_logging.h"
 #include "GPUTessellationComponent.h"
+#include "terrain_debug_bridge.h"
 #include "terrain_preprocess_runner.h"
 #include "terrain_tile_loader.h"
 #include "terrain_world_subsystem.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 
-namespace {
+namespace terrain {
+bool has_pending_load_flags(const UObject* object) {
+    return IsValid(object) && object->HasAnyFlags(RF_NeedLoad | RF_NeedPostLoad);
+}
+
 TOptional<FTerrains> load_default_terrain_descriptor(
-    const FTerrainPreprocessSettings& terrain_preprocess_settings
+    const FFilePath& terrain_config
 ) {
-    const FString config_path = FPaths::Combine(
-        terrain_preprocess_settings.terrain_path,
-        TEXT("config.json")
-    );
-    const TOptional<FTerrainConfig> config = FTerrainConfig::from_file(config_path);
-    if (!config.IsSet()) {
-        return NullOpt;
-    }
+    const TOptional<FTerrainConfig> config = FTerrainConfig::from_file(terrain_config.FilePath);
+    if (!config.IsSet()) { return NullOpt; }
 
     return FTerrains{
         config.GetValue(),
         FTerrainViewConfig{},
-        nullptr,
-        FView{}
     };
+}
+
+TOptional<FTerrains> load_default_terrain_descriptor(const FDirectoryPath& terrain_config_path) {
+    const auto path = FFilePath{FPaths::Combine(terrain_config_path.Path, TEXT("config.json"))};
+    return load_default_terrain_descriptor(path);
 }
 
 TOptional<FString> find_attachment_label(
@@ -77,6 +79,7 @@ void normalize_height_samples(
     }
 }
 
+template <>
 void normalize_height_samples(
     const TArray<TStaticArray<uint8, 4>>& source,
     const FTerrainConfig& config,
@@ -91,6 +94,7 @@ void normalize_height_samples(
     normalize_height_samples(scalar_values, config, normalized_pixels);
 }
 
+template <>
 void normalize_height_samples(
     const TArray<TStaticArray<uint16, 2>>& source,
     const FTerrainConfig& config,
@@ -150,7 +154,7 @@ UTexture2D* create_fallback_height_texture(
         height_label.GetValue()
     };
     const FAttachmentTileData data =
-        terrain::tile_loader::detail::load_tile_data(*attachment, tile);
+        tile_loader::detail::load_tile_data(*attachment, tile);
 
     TArray<uint8> normalized_pixels;
     if (const auto* rgba_data = data.TryGet<TArray<TStaticArray<uint8,
@@ -202,7 +206,6 @@ UTexture2D* create_fallback_height_texture(
 UGPUTessellationComponent* spawn_tessellation_fallback(
     ATerrainParentActor& owner,
     const FTerrainConfig& config,
-    const FView& view,
     UMaterialInterface* material,
     UTexture2D* height_texture
 ) {
@@ -240,7 +243,6 @@ UGPUTessellationComponent* spawn_tessellation_fallback(
     fallback_component->AttachToComponent(
         owner.root,
         FAttachmentTransformRules::KeepRelativeTransform);
-    fallback_component->SetRelativeTransform(view.tile_world_transform);
     fallback_component->RegisterComponent();
     fallback_component->UpdateBounds();
     fallback_component->UpdateTessellatedMesh();
@@ -254,16 +256,60 @@ ATerrainParentActor::ATerrainParentActor() {
     check(IsValid(root));
 }
 
+void ATerrainParentActor::PostLoad() {
+    Super::PostLoad();
+    root = Cast<USceneComponent>(GetRootComponent());
+}
+
+void ATerrainParentActor::PostRegisterAllComponents() {
+    Super::PostRegisterAllComponents();
+    ReloadTerrainConfig();
+    VerifyInitializationState(false);
+}
+
 void ATerrainParentActor::OnConstruction(const FTransform& tf) {
     Super::OnConstruction(tf);
     UE_LOGFMT(LogTemp, Log, "Constructing terrain parent actor: {n}", GetName());
-    rebuild_terrains();
+    VerifyInitializationState(true);
 }
 
 void ATerrainParentActor::BeginPlay() {
     Super::BeginPlay();
-    rebuild_terrains();
+    VerifyInitializationState(false);
 }
+
+void ATerrainParentActor::ReloadTerrainConfig() {
+    terrain = terrain::load_default_terrain_descriptor(terrain_config_path);
+    VerifyInitializationState(true);
+}
+
+// Opens a dialog to display debug information about all the members of this actor.
+void ATerrainParentActor::ViewComponentDebugData() {
+#if WITH_EDITOR
+    GTerrainDebugWindowRequested.Broadcast(this);
+#endif
+}
+
+void ATerrainParentActor::ViewComponentDebugDraw() const {
+    if (IsValid(spawned_terrain)) { spawned_terrain->bDrawDebug = !spawned_terrain->bDrawDebug; }
+}
+
+// #if WITH_EDITOR
+// void ATerrainParentActor::
+// PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) {
+//     if (PropertyChangedEvent.Property != nullptr) {
+//         const FName PropertyName = PropertyChangedEvent.Property->GetFName();
+//         if (
+//             PropertyName == GET_MEMBER_NAME_STRING_CHECKED(
+//                 ATerrainParentActor,
+//                 terrain_config_path) ||
+//             PropertyName == GET_MEMBER_NAME_STRING_CHECKED(ATerrainParentActor, terrain) ||
+//             PropertyName == GET_MEMBER_NAME_STRING_CHECKED(ATerrainParentActor, settings) ||
+//             PropertyName == GET_MEMBER_NAME_STRING_CHECKED(ATerrainParentActor, material)
+//         ) { VerifyInitializationState(true); }
+//     }
+// }
+// #endif
 
 void ATerrainParentActor::PreprocessTerrain() {
     using ext::logging::log_time;
@@ -277,7 +323,11 @@ void ATerrainParentActor::PreprocessTerrain() {
             0.25f
         });
     if (!result.has_value()) {
-        UE_LOGFMT(LogTemp, Error, "Terrain preprocessing failed: {error}", result.error().ToString());
+        UE_LOGFMT(
+            LogTemp,
+            Error,
+            "Terrain preprocessing failed: {error}",
+            result.error().ToString());
         return;
     }
 
@@ -285,14 +335,116 @@ void ATerrainParentActor::PreprocessTerrain() {
 
     terrain = FTerrains{
         FTerrainConfig::from_file(
-            FPaths::Combine(terrain_preprocess_settings.terrain_path, TEXT("config.json"))).
+            FPaths::Combine(terrain_preprocess_settings.terrain_path.Path, TEXT("config.json"))).
         Get(FTerrainConfig{}),
         FTerrainViewConfig{},
-        nullptr,
-        FView{}
     };
 
-    rebuild_terrains();
+    VerifyInitializationState(true);
+}
+
+void ATerrainParentActor::VerifyInitializationState(const bool bForceRebuild) {
+    if (IsTemplate() || HasAnyFlags(RF_NeedLoad | RF_NeedPostLoad)) { return; }
+
+    const UWorld* world = GetWorld();
+    if (world == nullptr) { return; }
+
+    if (!IsValid(root)) { root = Cast<USceneComponent>(GetRootComponent()); }
+
+    if (has_pending_runtime_load()) { return; }
+
+    if (UTerrainWorldSubsystem* subsystem = world->GetSubsystem<UTerrainWorldSubsystem>()) {
+        subsystem->set_terrain_root(this, auto_spawned_by_world_subsystem);
+    }
+
+    if (!terrain.IsSet()) {
+        terrain = terrain::load_default_terrain_descriptor(terrain_config_path);
+    }
+
+    if (bForceRebuild || needs_runtime_rebuild()) {
+        rebuild_terrains();
+        return;
+    }
+
+    sync_runtime_state_from_spawned_terrain();
+}
+
+void ATerrainParentActor::RespawnFromSelectedBlueprint() {
+    if (replacement_actor_class == nullptr) {
+        UE_LOGFMT(
+            LogTemp,
+            Warning,
+            "[UDLODTerrain] No replacement actor class is selected for terrain parent actor: {n}",
+            GetName()
+        );
+        return;
+    }
+
+    const UWorld* world = GetWorld();
+    if (world == nullptr) { return; }
+
+    if (UTerrainWorldSubsystem* subsystem = world->GetSubsystem<UTerrainWorldSubsystem>()) {
+        subsystem->respawn_terrain_root(this, replacement_actor_class, false);
+    }
+}
+
+void ATerrainParentActor::RespawnAsAutoSpawnedInstance() {
+    const UWorld* world = GetWorld();
+    if (world == nullptr) { return; }
+
+    if (UTerrainWorldSubsystem* subsystem = world->GetSubsystem<UTerrainWorldSubsystem>()) {
+        subsystem->respawn_terrain_root(this, StaticClass(), true);
+    }
+}
+
+void ATerrainParentActor::set_auto_spawned_by_world_subsystem(const bool bInAutoSpawned) {
+    auto_spawned_by_world_subsystem = bInAutoSpawned;
+}
+
+bool ATerrainParentActor::is_auto_spawned_by_world_subsystem() const {
+    return auto_spawned_by_world_subsystem;
+}
+
+bool ATerrainParentActor::has_pending_runtime_load() const {
+    if (terrain::has_pending_load_flags(this) || terrain::has_pending_load_flags(root)) {
+        return true;
+    }
+
+    if (spawned_terrain != nullptr && terrain::has_pending_load_flags(spawned_terrain)) {
+        return true;
+    }
+
+    if (spawned_fallback_component != nullptr &&
+        terrain::has_pending_load_flags(spawned_fallback_component)) { return true; }
+
+    return false;
+}
+
+bool ATerrainParentActor::needs_runtime_rebuild() const {
+    if (!terrain.IsSet()) { return false; }
+
+    if (!IsValid(spawned_terrain)) { return true; }
+
+    if (!config.IsSet() || !view_component.IsSet() || !tile_atlas.IsSet()) { return true; }
+
+    if (!spawned_terrain->IsRegistered()) { return true; }
+
+    return spawned_terrain->GetAttachParent() != root;
+}
+
+void ATerrainParentActor::sync_runtime_state_from_spawned_terrain() {
+    if (!IsValid(spawned_terrain) || !terrain.IsSet()) { return; }
+
+    const auto& [terrain_config, terrain_view_config] = terrain.GetValue();
+
+    config = spawned_terrain->config;
+    tile_atlas = spawned_terrain->atlas;
+    if (!view_component.IsSet()) {
+        view_component = FTileTree{terrain_config, terrain_view_config};
+    }
+
+    spawned_terrain->UpdateBounds();
+    spawned_terrain->MarkRenderStateDirty();
 }
 
 void ATerrainParentActor::rebuild_terrains() {
@@ -314,18 +466,27 @@ void ATerrainParentActor::rebuild_terrains() {
     }
 
     if (UTerrainWorldSubsystem* Subsystem = world->GetSubsystem<UTerrainWorldSubsystem>()) {
-        Subsystem->set_terrain_root(this);
+        Subsystem->set_terrain_root(this, auto_spawned_by_world_subsystem);
     }
 
     clear_spawned_terrains();
 
     if (!terrain.IsSet()) {
-        terrain = load_default_terrain_descriptor(terrain_preprocess_settings);
+        terrain = terrain::load_default_terrain_descriptor(terrain_config_path);
+    }
+
+    if (!terrain.IsSet()) {
+        UE_LOGFMT(
+            LogTemp,
+            Warning,
+            "[UDLODTerrain] No terrain descriptor could be resolved for terrain parent actor: {n}",
+            GetName()
+        );
+        return;
     }
 
     UE_LOGFMT(LogTemp, Log, "Spawning terrain actors for terrain parent actor: {n}", GetName());
-    const auto& [terrain_config, terrain_view_config, material_interface, view] = terrain.
-        GetValue();
+    const auto& [terrain_config, terrain_view_config] = terrain.GetValue();
     UTerrain* new_terrain = NewObject<UTerrain>(this, TEXT("TerrainComp_0"));
     new_terrain->RegisterComponent();
     if (!new_terrain->AttachToComponent(root, FAttachmentTransformRules::KeepRelativeTransform)) {
@@ -349,18 +510,17 @@ void ATerrainParentActor::rebuild_terrains() {
         return;
     }
 
-    new_terrain->set_object_data(terrain_config, settings, material_interface);
+    new_terrain->set_object_data(terrain_config, settings, material);
     new_terrain->UpdateBounds();
     new_terrain->MarkRenderStateDirty();
 
     spawned_terrain = new_terrain;
-    material = material_interface;
     config = terrain_config;
     view_component = FTileTree{terrain_config, terrain_view_config};
 
     tile_atlas = new_terrain->atlas;
     if (bEnableTessellationFallback) {
-        UTexture2D* const height_texture = create_fallback_height_texture(
+        UTexture2D* const height_texture = terrain::create_fallback_height_texture(
             this,
             terrain_config,
             new_terrain->atlas);
@@ -368,10 +528,9 @@ void ATerrainParentActor::rebuild_terrains() {
             fallback_height_texture = height_texture;
 
             if (UGPUTessellationComponent* const fallback_component =
-                spawn_tessellation_fallback(
+                terrain::spawn_tessellation_fallback(
                     *this,
                     terrain_config,
-                    view,
                     material,
                     height_texture
                 )) { spawned_fallback_component = fallback_component; }
@@ -424,7 +583,6 @@ void ATerrainParentActor::clear_spawned_terrains() {
     spawned_terrain = nullptr;
     spawned_fallback_component = nullptr;
     fallback_height_texture = nullptr;
-    material = nullptr;
     config.Reset();
     view_component.Reset();
     tile_atlas.Reset();
