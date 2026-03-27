@@ -20,9 +20,7 @@ UTerrain::UTerrain(const FObjectInitializer& ObjectInitializer) : Super(ObjectIn
     render_resources = MakeShared<FTerrainRenderResources, ESPMode::ThreadSafe>();
 }
 
-FPrimitiveSceneProxy* UTerrain::CreateSceneProxy() {
-    return new FTerrainSceneProxy(this);
-}
+FPrimitiveSceneProxy* UTerrain::CreateSceneProxy() { return new FTerrainSceneProxy(this); }
 
 FBoxSphereBounds UTerrain::CalcBounds(const FTransform& LocalToWorld) const {
     const double half_side = config.side_length > 0.0 ? config.side_length * 0.5 : 500.0;
@@ -42,15 +40,9 @@ FBoxSphereBounds UTerrain::CalcBounds(const FTransform& LocalToWorld) const {
 void UTerrain::GetUsedMaterials(
     TArray<UMaterialInterface*>& OutMaterials,
     const bool bGetDebugMaterials
-) const {
-    if (material != nullptr) {
-        OutMaterials.AddUnique(material);
-    }
-}
+) const { if (material != nullptr) { OutMaterials.AddUnique(material); } }
 
-int32 UTerrain::GetNumMaterials() const {
-    return material != nullptr ? 1 : 0;
-}
+int32 UTerrain::GetNumMaterials() const { return material != nullptr ? 1 : 0; }
 
 UMaterialInterface* UTerrain::GetMaterial(const int32 ElementIndex) const {
     return ElementIndex == 0 ? material : nullptr;
@@ -86,3 +78,25 @@ void UTerrain::SetMaterial(const int32 ElementIndex, UMaterialInterface* Materia
     }
 }
 
+void UTerrain::UpdateBounds() { Super::UpdateBounds(); }
+
+void UTerrain::MarkRenderStateDirty() { Super::MarkRenderStateDirty(); }
+
+void UTerrain::set_object_data(
+    const FTerrainConfig& in_config,
+    const FTerrainSettings& in_settings,
+    UMaterialInterface* mat) {
+    UE_LOGFMT(
+        LogTemp,
+        Log,
+        "Setting terrain data: config={c}, settings={s}",
+        *in_config.to_string(),
+        *in_settings.ToString());
+    this->config = in_config;
+    this->settings = in_settings;
+    this->atlas = FTileAtlas(in_config, in_settings);
+    this->material = mat;
+    this->SetMaterial(0, material);
+    this->UpdateBounds();
+    this->MarkRenderStateDirty();
+}

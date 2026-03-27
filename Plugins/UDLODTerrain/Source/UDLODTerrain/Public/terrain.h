@@ -1,4 +1,5 @@
 ﻿#pragma once
+
 #include "terrain_config.h"
 #include "terrain_render_state.h"
 #include "terrain_settings.h"
@@ -6,16 +7,8 @@
 #include "Components/MeshComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SceneComponent.h"
-#include "Logging/StructuredLog.h"
-#include "Math/Transform.h"
 
 #include "terrain.generated.h"
-
-using CellCoord = FIntVector3;
-struct FView {
-    FTransform tile_world_transform = FTransform::Identity;
-    // CellCoord cell_coord;
-};
 
 UCLASS(
     ClassGroup = (Rendering),
@@ -51,29 +44,28 @@ public:
 #endif
 
     virtual void SetMaterial(int32 ElementIndex, UMaterialInterface* Material) override;
+    virtual void UpdateBounds() override;
+    // ReSharper disable once CppHidingFunction
+    void MarkRenderStateDirty();
 
     void set_object_data(
         const FTerrainConfig& in_config,
         const FTerrainSettings& in_settings,
         UMaterialInterface* mat
-    ) {
-        UE_LOGFMT(LogTemp, Log, "Setting terrain data: config={c}, settings={s}", *in_config.ToString(), *in_settings.ToString());
-        this->config = in_config;
-        this->settings = in_settings;
-        atlas = FTileAtlas(in_config, in_settings);
-        material = mat;
-        SetMaterial(0, material);
-        UpdateBounds();
-        MarkRenderStateDirty();
-    }
+    );
 
     FTerrainConfig config;
-    FTerrainSettings settings;
-    TOptional<FTileAtlas> atlas = NullOpt;
-    TSharedPtr<FTerrainRenderResources, ESPMode::ThreadSafe> render_resources;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UDLOD|Terrain")
+    UPROPERTY()
+    FTerrainSettings settings;
+
+    TOptional<FTileAtlas> atlas = NullOpt;
+    TSharedPtr<FTerrainRenderResources> render_resources;
+
+    UPROPERTY()
     UMaterialInterface* material;
+
+    bool bDrawDebug;
 
     friend class FTerrainSceneProxy;
 };
