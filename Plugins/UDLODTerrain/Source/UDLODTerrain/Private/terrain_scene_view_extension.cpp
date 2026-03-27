@@ -107,10 +107,48 @@ FTerrainMeshViewState build_mesh_view_state(
 }
 
 void FTerrainSceneViewExtension::BeginRenderViewFamily(FSceneViewFamily& in_view_family) {
-    if (UWorld* world = GetWorld()) {
+    if (const UWorld* world = GetWorld()) {
         if (UTerrainWorldSubsystem* subsystem = world->GetSubsystem<UTerrainWorldSubsystem>()) {
             root = subsystem->resolve_terrain_root(true);
         }
+    }
+
+    TArray<FTerrainViewSnapshot> new_cached_views;
+    new_cached_views.Reserve(in_view_family.Views.Num());
+    for (const FSceneView* view : in_view_family.Views) {
+        if (view == nullptr) {
+            continue;
+        }
+
+        FTerrainViewSnapshot snapshot;
+        snapshot.view_key = view->GetViewKey();
+        snapshot.view_world_position = FVector3d(view->ViewMatrices.GetViewOrigin());
+        snapshot.view_from_world = FMatrix44d(view->ViewMatrices.GetViewMatrix());
+        snapshot.clip_from_view = FMatrix44d(view->ViewMatrices.GetProjectionNoAAMatrix());
+        new_cached_views.Add(snapshot);
+    }
+
+    FWriteScopeLock _(cached_views_guard);
+    cached_views = MoveTemp(new_cached_views);
+}
+
+void FTerrainSceneViewExtension::PreInitViews_RenderThread(FRDGBuilder& gb) {
+    TArray<FTerrainViewSnapshot> render_views;
+    {
+        FReadScopeLock _(cached_views_guard);
+        render_views = cached_views;
+    }
+
+    if (const ATerrainParentActor* root_actor = root.Get()) {
+        if (const UTerrain* terrain_component = root_actor->spawned_terrain) {
+            if (terrain_component->render_resources.IsValid()) {
+                terrain_component->render_resources->ResetViewStates();
+            }
+        }
+    }
+
+    for (const FTerrainViewSnapshot& render_view : render_views) {
+        draw_terrain(gb, render_view);
     }
 }
 
@@ -120,36 +158,11 @@ void FTerrainSceneViewExtension::PreRenderViewFamily_RenderThread(
 ) {
     (void)gb;
     (void)in_view_family;
-
-    if (const ATerrainParentActor* root_actor = root.Get()) {
-        if (const UTerrain* terrain_component = root_actor->spawned_terrain) {
-            if (terrain_component->render_resources.IsValid()) {
-                terrain_component->render_resources->ResetViewStates();
-            }
-        }
-    }
 }
 
 void FTerrainSceneViewExtension::PreRenderView_RenderThread(FRDGBuilder& gb, FSceneView& in_view) {
-    if (in_view.Family == nullptr || in_view.Family->Scene == nullptr) {
-        return;
-    }
-    if (!in_view.bIsViewInfo) {
-        return;
-    }
-
-    if (!stopped_error_spam && error_spam_buffer >= MAX_ERROR_SPAM_BUFFER) {
-        UE_LOGFMT(
-            LogTemp,
-            Error,
-            "[FTerrainSceneViewExtension::PreRenderView_RenderThread] "
-            "Reached max error spam buffer, stopping further warnings."
-        );
-        stopped_error_spam = true;
-    }
-
-    const FViewInfo& view_info = reinterpret_cast<FViewInfo&>(in_view);
-    draw_terrain(gb, view_info);
+    (void)gb;
+    (void)in_view;
 }
 
 FRDGTextureSRVRef FTerrainSceneViewExtension::CreateRDGTextureFromUTexture(
@@ -184,7 +197,7 @@ FRDGTextureSRVRef FTerrainSceneViewExtension::GetDefaultWhiteTexture(FRDGBuilder
 
 void FTerrainSceneViewExtension::draw_terrain(
     FRDGBuilder& gb,
-    const FViewInfo& view
+    const FTerrainViewSnapshot& view
 ) const {
     RDG_EVENT_SCOPE(gb, "UDLOD.DrawTerrain");
 
@@ -214,7 +227,13 @@ void FTerrainSceneViewExtension::draw_terrain(
         return;
     }
 
-    tile_tree_compute_requests(tile_tree, root_actor->spawned_terrain->GetComponentTransform(), view);
+    tile_tree_compute_requests(
+        tile_tree,
+        root_actor->spawned_terrain->GetComponentTransform(),
+        view.view_world_position,
+        view.view_from_world,
+        view.clip_from_view
+    );
     tile_atlas_update(tile_tree, tile_atlas);
     terrain::tile_loader::drain_tile_loads(tile_atlas);
     tile_tree_adjust_to_tile_atlas(tile_tree, tile_atlas);
@@ -238,7 +257,7 @@ void FTerrainSceneViewExtension::draw_terrain(
 
 void FTerrainSceneViewExtension::draw_tile_tree(
     FRDGBuilder& gb,
-    const FViewInfo& view
+    const FTerrainViewSnapshot& view
 ) const {
     RDG_EVENT_SCOPE(gb, "UDLOD.DrawTileTree");
 
@@ -365,7 +384,7 @@ void FTerrainSceneViewExtension::draw_tile_tree(
     attachments.attachment_configs = attachment_configs;
 
     const FRDGBufferSRVRef tile_tree_buffer = gb.CreateSRV(tile_tree->tile_tree_buffer);
-    const FRDGBufferSRVRef approximate_height_srv = gb.CreateSRV(tile_tree->approximate_height_buffer);
+    const FRDGBufferSRVRef _ = gb.CreateSRV(tile_tree->approximate_height_buffer);
     const FRDGBufferUAVRef approximate_height_uav = gb.CreateUAV(tile_tree->approximate_height_buffer);
 
     (*gpu_terrain_view)->prepass_parameters->terrain = (*gpu_terrain)->terrain_buffer;
@@ -434,10 +453,10 @@ void FTerrainSceneViewExtension::draw_tile_tree(
 
     if (root_actor->spawned_terrain->render_resources.IsValid()) {
         root_actor->spawned_terrain->render_resources->UpdateViewState(
-            view.GetViewKey(),
+            view.view_key,
             build_mesh_view_state(
                 gb,
-                view.GetViewKey(),
+                view.view_key,
                 *tile_tree,
                 gpu_terrain->GetValue(),
                 gpu_terrain_view->GetValue(),
