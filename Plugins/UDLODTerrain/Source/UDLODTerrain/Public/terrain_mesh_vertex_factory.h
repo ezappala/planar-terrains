@@ -6,7 +6,6 @@
 class FTerrainMeshVertexFactory final : public FVertexFactory {
     DECLARE_VERTEX_FACTORY_TYPE(FTerrainMeshVertexFactory);
 
-public:
     explicit FTerrainMeshVertexFactory(ERHIFeatureLevel::Type in_feature_level);
 
     virtual void InitRHI(FRHICommandListBase& RHICmdList) override;

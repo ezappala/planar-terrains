@@ -6,11 +6,11 @@
 #include "MeshMaterialShader.h"
 #include "ShaderParameterUtils.h"
 #include "terrain_render_state.h"
+#include "Logging/StructuredLog.h"
 
 class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactoryShaderParameters {
     DECLARE_TYPE_LAYOUT(FTerrainMeshVertexFactoryShaderParameters, NonVirtual);
 
-public:
     void Bind(const FShaderParameterMap& parameter_map) {
         attachments_buffer_parameter.Bind(parameter_map, TEXT("attachment_configs"));
         terrain_sampler_parameter.Bind(parameter_map, TEXT("terrain_sampler"));
@@ -27,28 +27,108 @@ public:
         const FSceneView* view,
         const FMeshMaterialShader* shader,
         const EVertexInputStreamType input_stream_type,
-        ERHIFeatureLevel::Type feature_level,
+        const ERHIFeatureLevel::Type feature_level,
         const FVertexFactory* vertex_factory,
         const FMeshBatchElement& batch_element,
         FMeshDrawSingleShaderBindings& shader_bindings,
-        FVertexInputStreamArray& vertex_streams
+        const FVertexInputStreamArray& vertex_streams
     ) const {
-        (void)scene;
-        (void)view;
-        (void)input_stream_type;
-        (void)feature_level;
-        (void)vertex_factory;
-        (void)vertex_streams;
-
         const auto* user_data = static_cast<const FTerrainMeshBatchElementUserData*>(
             batch_element.VertexFactoryUserData
         );
-        if (user_data == nullptr || !user_data->IsReady()) {
+        if (user_data == nullptr || !user_data->IsReady()) { return; }
+
+        if (attachments_buffer_parameter.IsBound() && !user_data->attachments_buffer_srv.
+            IsValid()) {
+            UE_LOGFMT(
+                LogTemp,
+                Error,
+                "Attachments buffer parameter is bound but the buffer SRV is invalid for view key {vk}",
+                view->GetViewKey());
+            return;
+        }
+
+        if (terrain_sampler_parameter.IsBound() && !user_data->terrain_sampler.IsValid()) {
+            UE_LOGFMT(
+                LogTemp,
+                Error,
+                "Terrain sampler parameter is bound but the sampler state is invalid for view key {vk}",
+                view->GetViewKey());
+            return;
+        }
+
+        if (height_attachment_parameter.IsBound() && !user_data->height_attachment_texture.
+            IsValid()) {
+            UE_LOGFMT(
+                LogTemp,
+                Error,
+                "Height attachment parameter is bound but the texture is invalid for view key {vk}",
+                view->GetViewKey());
+            return;
+        }
+
+        if (albedo_attachment_parameter.IsBound() && !user_data->albedo_attachment_texture.
+            IsValid()) {
+            UE_LOGFMT(
+                LogTemp,
+                Error,
+                "Albedo attachment parameter is bound but the texture is invalid for view key {vk}",
+                view->GetViewKey());
+            return;
+        }
+
+        if (terrain_view_buffer_parameter.IsBound() && !user_data->terrain_view_buffer_srv.
+            IsValid()) {
+            UE_LOGFMT(
+                LogTemp,
+                Error,
+                "Terrain view buffer parameter is bound but the buffer SRV is invalid for view key {vk}",
+                view->GetViewKey());
+            return;
+        }
+
+        if (approximate_height_buffer_parameter.IsBound() &&
+            !user_data->approximate_height_buffer_srv.IsValid()) {
+            UE_LOGFMT(
+                LogTemp,
+                Error,
+                "Approximate height buffer parameter is bound but the buffer SRV is invalid for view key {vk}",
+                view->GetViewKey());
+            return;
+        }
+
+        if (tile_tree_buffer_parameter.IsBound() && !user_data->tile_tree_buffer_srv.IsValid()) {
+            UE_LOGFMT(
+                LogTemp,
+                Error,
+                "Tile tree buffer parameter is bound but the buffer SRV is invalid for view key {vk}",
+                view->GetViewKey());
+            return;
+        }
+
+        if (geometry_tiles_buffer_parameter.IsBound() &&
+            !user_data->geometry_tiles_buffer_srv.IsValid()) {
+            UE_LOGFMT(
+                LogTemp,
+                Error,
+                "Geometry tiles buffer parameter is bound but the buffer SRV is invalid for view key {vk}",
+                view->GetViewKey());
+            return;
+        }
+
+        const auto terrain_uniform_buffer_parameter = shader->GetUniformBufferParameter<Terrain>();
+        if (terrain_uniform_buffer_parameter.IsBound() && !user_data->terrain_uniform_buffer.
+            IsValid()) {
+            UE_LOGFMT(
+                LogTemp,
+                Error,
+                "Terrain uniform buffer parameter is bound but the uniform buffer is invalid for view key {vk}",
+                view->GetViewKey());
             return;
         }
 
         shader_bindings.Add(
-            shader->GetUniformBufferParameter<Terrain>(),
+            terrain_uniform_buffer_parameter,
             user_data->terrain_uniform_buffer
         );
         shader_bindings.Add(attachments_buffer_parameter, user_data->attachments_buffer_srv);
@@ -82,6 +162,12 @@ IMPLEMENT_VERTEX_FACTORY_PARAMETER_TYPE(
     FTerrainMeshVertexFactoryShaderParameters
 );
 
+IMPLEMENT_VERTEX_FACTORY_PARAMETER_TYPE(
+    FTerrainMeshVertexFactory,
+    SF_Pixel,
+    FTerrainMeshVertexFactoryShaderParameters
+);
+
 IMPLEMENT_VERTEX_FACTORY_TYPE(
     FTerrainMeshVertexFactory,
     "/Plugins/UDLODTerrain/terrain_mesh_vertex_factory.ush",
@@ -91,12 +177,12 @@ IMPLEMENT_VERTEX_FACTORY_TYPE(
     EVertexFactoryFlags::SupportsPSOPrecaching
 );
 
-FTerrainMeshVertexFactory::FTerrainMeshVertexFactory(const ERHIFeatureLevel::Type in_feature_level)
-    : FVertexFactory(in_feature_level) {}
+FTerrainMeshVertexFactory::FTerrainMeshVertexFactory(
+    const ERHIFeatureLevel::Type in_feature_level) : FVertexFactory(in_feature_level) {}
 
 void FTerrainMeshVertexFactory::InitRHI(FRHICommandListBase& RHICmdList) {
-    (void)RHICmdList;
     FVertexDeclarationElementList elements;
+    elements.Add(FVertexElement(0, 0, VET_Float3, 0, 0, false));
     InitDeclaration(elements);
 }
 
@@ -106,7 +192,10 @@ bool FTerrainMeshVertexFactory::ShouldCompilePermutation(
     const FVertexFactoryShaderPermutationParameters& parameters
 ) {
     return IsFeatureLevelSupported(parameters.Platform, ERHIFeatureLevel::SM5) &&
-        parameters.MaterialParameters.MaterialDomain == MD_Surface;
+    (parameters.MaterialParameters.MaterialDomain == MD_Surface ||
+        parameters.MaterialParameters.bIsUsedWithSkeletalMesh ||
+        parameters.MaterialParameters.bIsUsedWithStaticLighting ||
+        parameters.MaterialParameters.bIsDefaultMaterial);
 }
 
 void FTerrainMeshVertexFactory::ModifyCompilationEnvironment(
