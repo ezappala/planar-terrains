@@ -19,44 +19,49 @@
 			"Name": "UDLODTerrain",
 			"Type": "Runtime",
 			"LoadingPhase": "PostConfigInit"
-		}
-	],
-    "Plugins": [
-      {
-        "Name": "UDLODPreprocessor",
-        "Enabled": true
-      },
-        {
-            "Name": "UDLODExt",
-            "Enabled": true
         },
       {
-        "Name": "UnrealGDAL",
-        "Enabled": true
-      },
-      {
-        "Name": "RiderLink",
-        "Enabled": true
-      },
-      {
-        "Name": "RiderSourceCodeAccess",
-        "Enabled": true
-      },
-      {
-        "Name": "ExtendedGraphicsProgramming",
-        "Enabled": true
-      },
-      {
-        "Name": "GeometryProcessing",
-        "Enabled": true
-      },
-      {
-        "Name": "CustomMeshComponent",
-        "Enabled": true
-      },
-      {
-        "Name": "GPURuntimeTessellation",
-        "Enabled": true
-      }
-    ]
+        "Name": "DebugViewer",
+        "Type": "Editor",
+        "LoadingPhase": "Default"
+		}
+	],
+  "Plugins": [
+    {
+      "Name": "UDLODPreprocessor",
+      "Enabled": true
+    },
+    {
+      "Name": "UDLODExt",
+      "Enabled": true
+    },
+    {
+      "Name": "UnrealGDAL",
+      "Enabled": true
+    },
+    {
+      "Name": "RiderLink",
+      "Enabled": true
+    },
+    {
+      "Name": "RiderSourceCodeAccess",
+      "Enabled": true
+    },
+    {
+      "Name": "ExtendedGraphicsProgramming",
+      "Enabled": true
+    },
+    {
+      "Name": "GeometryProcessing",
+      "Enabled": true
+    },
+    {
+      "Name": "CustomMeshComponent",
+      "Enabled": true
+    },
+    {
+      "Name": "GPURuntimeTessellation",
+      "Enabled": true
+    }
+  ]
 }
