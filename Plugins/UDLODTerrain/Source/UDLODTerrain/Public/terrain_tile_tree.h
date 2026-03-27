@@ -8,8 +8,11 @@
 #include "terrain_view_config.h"
 #include "Async/Async.h"
 
+#include "terrain_tile_tree.generated.h"
+
 class UTerrain;
 
+UENUM(BlueprintType)
 enum class ERequestState : uint8 {
     Requested,
     Released
@@ -43,7 +46,7 @@ FORCEINLINE uint32 GetTypeHash(const FTileState& tile_state) {
 
 inline TArray<FIntPoint> build_lod_tile_counts(const FTerrainConfig& config) {
     TArray<FIntPoint> result;
-    result.Init(FIntPoint::ZeroValue, static_cast<int32>(config.lod_count));
+    result.Init(FIntPoint::ZeroValue, config.lod_count);
 
     for (const FTileCoordinate& tile : config.tiles) {
         if (!result.IsValidIndex(tile.lod)) { continue; }
@@ -62,12 +65,12 @@ struct FTileTree {
     FTileTree(
         const FTerrainConfig& config,
         const FTerrainViewConfig& view_config
-    ) : tree_size{view_config.tree_size},
-        lod_count{config.lod_count},
+    ) : tree_size{static_cast<uint32>(view_config.tree_size)},
+        lod_count{static_cast<uint32>(config.lod_count)},
         side_length{config.side_length},
-        geometry_tile_count{view_config.geometry_tile_count},
-        refinement_count{view_config.refinement_count},
-        grid_size{view_config.grid_size},
+        geometry_tile_count{static_cast<uint32>(view_config.geometry_tile_count)},
+        refinement_count{static_cast<uint32>(view_config.refinement_count)},
+        grid_size{static_cast<uint32>(view_config.grid_size)},
         morph_distance{view_config.morph_distance * config.face_size},
         blend_distance{view_config.blend_distance * config.face_size},
         load_distance{
@@ -81,7 +84,7 @@ struct FTileTree {
         precision_distance{view_config.precision_distance * config.scale_scalar},
         lod_tile_counts{build_lod_tile_counts(config)},
         view_face{0},
-        view_lod{view_config.view_lod},
+        view_lod{static_cast<uint32>(view_config.view_lod)},
         data{
             static_cast<ext::types::usize>(config.face_count),
             static_cast<ext::types::usize>(config.lod_count),
@@ -95,7 +98,7 @@ struct FTileTree {
             static_cast<ext::types::usize>(view_config.tree_size)
         },
         approximate_height{0.},
-        order{view_config.order},
+        order{static_cast<uint32>(view_config.order)},
         tile_tree_buffer{nullptr},
         terrain_view_buffer{nullptr},
         // terrain_view_buffer{nullptr},
