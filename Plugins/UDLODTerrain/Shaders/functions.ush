@@ -4,9 +4,12 @@
 #include "/Engine/Private/Common.ush"
 
 #include "bindings.ush"
-
 #include "common.ush"
 #include "math.ush"
+
+#if defined(__RESHARPER__) || defined(__INTELLISENSE__)
+Terrain terrain;
+#endif
 
 inline WorldCoordinate compute_world_coordinate(Coordinate coordinate, float height) {
     float2 uv = (float2(coordinate.xy) + coordinate.uv) / exp2(float(coordinate.lod));

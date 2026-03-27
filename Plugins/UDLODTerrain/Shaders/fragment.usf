@@ -96,18 +96,6 @@ struct GradientInfo {
 // SamplerState gradient_sampler : register(s1);
 // GradientInfo gradient_info;
 
-float4 sample_albedo(AtlasTile tile) {
-    SampleUV uv = compute_sample_uv(tile, attachment_configs[1]);
-
-#if SAMPLE_GRAD && PIXELSHADER
-    float3 coord = float3(uv.uv, tile.index);
-    return albedo_attachment.SampleGrad(terrain_sampler, coord, uv.dx, uv.dy);
-#else
-    float3 coord = float3(uv.uv, tile.index);
-    return albedo_attachment.SampleLevel(terrain_sampler, coord, tile.blend_ratio);
-#endif
-}
-
 float4 color_earth(AtlasTile tile) {
     float height = sample_height(tile);
     if (height < 0.0f) {

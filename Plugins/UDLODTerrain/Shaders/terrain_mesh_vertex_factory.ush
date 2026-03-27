@@ -1,6 +1,7 @@
 #pragma once
 
 #include "/Engine/Private/Common.ush"
+
 // ReSharper disable once CppUnusedIncludeDirective
 #include "/Engine/Private/VertexFactoryCommon.ush"
 
@@ -25,6 +26,7 @@ struct FTerrainVertexInfo {
 };
 
 struct FVertexFactoryIntermediates {
+    uint tile_index;
     float3 world_position;
     float3 world_normal;
     float3 world_tangent_x;
@@ -32,6 +34,7 @@ struct FVertexFactoryIntermediates {
     float2 tile_uv;
     float2 debug_uv;
     float4 vertex_color;
+    float height;
 };
 
 struct FVertexFactoryInterpolantsVSToPS {
@@ -44,6 +47,9 @@ struct FVertexFactoryInterpolantsVSToPS {
 #if INTERPOLATE_VERTEX_COLOR
     float4 Color : COLOR0;
 #endif
+
+    float2 TerrainTileUV : TEXCOORD12;
+    float4 TerrainData : TEXCOORD13;
 
 #if INSTANCED_STEREO
     nointerpolation uint EyeIndex : PACKED_EYE_INDEX;
@@ -75,6 +81,7 @@ FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput in
     float height = sample_height(tile);
 
     FVertexFactoryIntermediates intermediates = (FVertexFactoryIntermediates)0;
+    intermediates.tile_index = terrain_info.tile_index;
     intermediates.world_position = apply_height(terrain_info.world_coordinate, height);
     intermediates.world_normal = terrain_info.world_coordinate.normal;
     intermediates.world_tangent_x = BuildWorldTangent(intermediates.world_normal);
@@ -96,6 +103,7 @@ FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput in
         terrain_info.blend.ratio,
         normalized_height,
         1.0f);
+    intermediates.height = height;
     return intermediates;
 }
 
@@ -200,6 +208,8 @@ FVertexFactoryInterpolantsVSToPS VertexFactoryGetInterpolantsVSToPS(
 #if INTERPOLATE_VERTEX_COLOR
     interpolants.Color = intermediates.vertex_color;
 #endif
+    interpolants.TerrainTileUV = intermediates.tile_uv;
+    interpolants.TerrainData = float4((float)intermediates.tile_index, intermediates.height, 0.0f, 0.0f);
 
     return interpolants;
 }
@@ -262,10 +272,18 @@ FMaterialPixelParameters GetMaterialPixelParameters(
         interpolants.TangentToWorld0.xyz,
         interpolants.TangentToWorld2
     );
+
+    uint tile_index = (uint)round(interpolants.TerrainData.x);
+    float height = interpolants.TerrainData.y;
+    Coordinate coordinate = compute_coordinate(tile_index, interpolants.TerrainTileUV);
+    WorldCoordinate world_coordinate = compute_world_coordinate(coordinate, height);
+    Blend blend = compute_blend(world_coordinate.view_distance);
+    AtlasTile tile = lookup_tile(coordinate, blend);
+    float4 albedo = sample_albedo(tile);
 #if INTERPOLATE_VERTEX_COLOR
-    result.VertexColor = interpolants.Color;
+    result.VertexColor = albedo;
 #else
-    result.VertexColor = float4(1.0f, 1.0f, 1.0f, 1.0f);
+    result.VertexColor = albedo;
 #endif
     result.UnMirrored = 1.0f;
     result.TwoSidedSign = 1.0f;
