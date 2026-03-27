@@ -1,8 +1,6 @@
 #pragma once
 
-#include "MeshBatch.h"
 #include "RenderGraphResources.h"
-#include "RHIResources.h"
 #include "terrain_shaders.h"
 #include "Containers/Map.h"
 #include "Misc/ScopeRWLock.h"
@@ -40,24 +38,31 @@ using FTerrainMeshBatchElementUserData = FTerrainMeshViewState;
 class FTerrainRenderResources {
 public:
     void ResetViewStates() {
-        FWriteScopeLock lock(view_states_guard);
+        FWriteScopeLock _(view_states_guard);
         view_states.Reset();
     }
 
     void UpdateViewState(const uint32 view_key, const FTerrainMeshViewState& view_state) {
-        FWriteScopeLock lock(view_states_guard);
+        FWriteScopeLock _(view_states_guard);
         view_states.FindOrAdd(view_key) = view_state;
     }
 
     bool TryGetViewState(const uint32 view_key, FTerrainMeshViewState& out_view_state) const {
-        FReadScopeLock lock(view_states_guard);
+        FReadScopeLock _(view_states_guard);
         const FTerrainMeshViewState* view_state = view_states.Find(view_key);
-        if (view_state == nullptr) {
-            return false;
+        if (view_state != nullptr) {
+            out_view_state = *view_state;
+            if (out_view_state.IsReady()) { return true; }
         }
 
-        out_view_state = *view_state;
-        return out_view_state.IsReady();
+        for (const TPair<uint32, FTerrainMeshViewState>& pair : view_states) {
+            if (!pair.Value.IsReady()) { continue; }
+
+            out_view_state = pair.Value;
+            return true;
+        }
+
+        return false;
     }
 
 private:
