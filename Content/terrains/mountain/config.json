@@ -1,0 +1,105 @@
+{
+	"path": "../../../../../../Users/ellie/dev/PlanarTerrains/Content/terrains/mountain",
+	"lod_count": 3,
+	"min_height": 0,
+	"max_height": 1,
+	"side_length": 86400,
+	"face_count": 1,
+	"attachments":
+	{
+		"height":
+		{
+			"texture_size": 512,
+			"border_size": 2,
+			"mip_level_count": 1,
+			"mask": true,
+			"format": 5
+		}
+	},
+	"tiles": [
+		{
+			"face": 0,
+			"lod": 2,
+			"xy_x": 0,
+			"xy_y": 0
+		},
+		{
+			"face": 0,
+			"lod": 2,
+			"xy_x": 0,
+			"xy_y": 1
+		},
+		{
+			"face": 0,
+			"lod": 2,
+			"xy_x": 0,
+			"xy_y": 2
+		},
+		{
+			"face": 0,
+			"lod": 2,
+			"xy_x": 1,
+			"xy_y": 0
+		},
+		{
+			"face": 0,
+			"lod": 2,
+			"xy_x": 1,
+			"xy_y": 1
+		},
+		{
+			"face": 0,
+			"lod": 2,
+			"xy_x": 1,
+			"xy_y": 2
+		},
+		{
+			"face": 0,
+			"lod": 2,
+			"xy_x": 2,
+			"xy_y": 0
+		},
+		{
+			"face": 0,
+			"lod": 2,
+			"xy_x": 2,
+			"xy_y": 1
+		},
+		{
+			"face": 0,
+			"lod": 2,
+			"xy_x": 2,
+			"xy_y": 2
+		},
+		{
+			"face": 0,
+			"lod": 1,
+			"xy_x": 0,
+			"xy_y": 0
+		},
+		{
+			"face": 0,
+			"lod": 1,
+			"xy_x": 0,
+			"xy_y": 1
+		},
+		{
+			"face": 0,
+			"lod": 1,
+			"xy_x": 1,
+			"xy_y": 0
+		},
+		{
+			"face": 0,
+			"lod": 1,
+			"xy_x": 1,
+			"xy_y": 1
+		},
+		{
+			"face": 0,
+			"lod": 0,
+			"xy_x": 0,
+			"xy_y": 0
+		}
+	]
+}
