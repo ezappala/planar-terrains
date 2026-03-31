@@ -135,6 +135,9 @@ struct FTileTree {
     FRDGBufferRef terrain_view_buffer;
     // FRDGUniformBufferRef terrain_view_buffer;
     FRDGBufferRef approximate_height_buffer;
+    TRefCountPtr<FRDGPooledBuffer> tile_tree_buffer_pooled;
+    TRefCountPtr<FRDGPooledBuffer> terrain_view_buffer_pooled;
+    TRefCountPtr<FRDGPooledBuffer> approximate_height_buffer_pooled;
 
     friend bool operator==(const FTileTree& a, const FTileTree& b) {
         return a.tree_size == b.tree_size

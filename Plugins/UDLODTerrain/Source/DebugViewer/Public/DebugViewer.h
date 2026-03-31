@@ -10,47 +10,59 @@ public:
     virtual void StartupModule() override;
     virtual void ShutdownModule() override;
 
-private:
-    TWeakPtr<SWindow> Window;
-    TSharedPtr<STerrainDebugTable> TableWidget;
+    TWeakPtr<SWindow> window;
+    TSharedPtr<STerrainDebugTable> table_widget;
 
-    void HandleWindowRequested(ATerrainParentActor* Actor) {
-        if (!Actor) { return; }
+    void handle_window_requested(ATerrainParentActor* actor) {
+        UE_LOGFMT(
+            LogTemp,
+            Log,
+            "[FDebugViewerModule::HandleWindowRequested] Received request to open terrain debug window for actor: {n}",
+            actor != nullptr ? actor->GetName() : TEXT("null")
+        );
+        if (actor == nullptr) {
+            UE_LOGFMT(
+                LogTemp,
+                Error,
+                "[FDebugViewerModule::HandleWindowRequested] Received request to open terrain debug window with null actor"
+            );
+            return;
+        }
 
-        if (!Window.IsValid()) {
-            SAssignNew(TableWidget, STerrainDebugTable);
-            TableWidget->RefreshFromActor(Actor);
+        if (!window.IsValid()) {
+            SAssignNew(table_widget, STerrainDebugTable);
+            table_widget->Refresh(actor);
 
-            const TSharedRef<SWindow> NewWindow = SNew(SWindow)
+            const TSharedRef<SWindow> new_window = SNew(SWindow)
                 .Title(FText::FromString(TEXT("Terrain Debug Table")))
                 .ClientSize(FVector2D(1200.0f, 800.0f))
                 .SupportsMaximize(true)
                 .SupportsMinimize(true)
                 [
-                    TableWidget.ToSharedRef()
+                    table_widget.ToSharedRef()
                 ];
 
-            Window = NewWindow;
+            window = new_window;
 
-            NewWindow->SetOnWindowClosed(
-                FOnWindowClosed::CreateRaw(this, &FDebugViewerModule::HandleWindowClosed)
+            new_window->SetOnWindowClosed(
+                FOnWindowClosed::CreateRaw(this, &FDebugViewerModule::handle_window_closed)
             );
 
-            FSlateApplication::Get().AddWindow(NewWindow);
+            FSlateApplication::Get().AddWindow(new_window);
             return;
         }
 
-        if (TableWidget.IsValid()) { TableWidget->RefreshFromActor(Actor); }
+        if (table_widget.IsValid()) { table_widget->Refresh(actor); }
 
-        const TSharedPtr<SWindow> ExistingWindow = Window.Pin();
-        if (ExistingWindow.IsValid()) {
-            ExistingWindow->BringToFront(true);
-            ExistingWindow->FlashWindow();
+        const TSharedPtr<SWindow> existing_window = window.Pin();
+        if (existing_window.IsValid()) {
+            existing_window->BringToFront(true);
+            existing_window->FlashWindow();
         }
     }
 
-    void HandleWindowClosed([[maybe_unused]] const TSharedRef<SWindow>& ClosedWindow) {
-        TableWidget.Reset();
-        Window.Reset();
+    void handle_window_closed(const TSharedRef<SWindow>& closed_window) {
+        table_widget.Reset();
+        window.Reset();
     }
 };

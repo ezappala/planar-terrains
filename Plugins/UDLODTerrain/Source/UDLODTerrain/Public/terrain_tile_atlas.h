@@ -35,7 +35,7 @@ struct FTileAtlas {
         lod_count{static_cast<uint32>(config.lod_count)},
         max_height{config.max_height},
         min_height{config.min_height},
-        height_scale{128.0},
+        height_scale{1280.},
         side_length{config.side_length},
         terrain_buffer{nullptr} {}
 

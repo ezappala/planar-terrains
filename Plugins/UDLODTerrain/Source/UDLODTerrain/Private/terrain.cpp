@@ -10,13 +10,13 @@ UTerrain::UTerrain(const FObjectInitializer& ObjectInitializer) : Super(ObjectIn
 #if WITH_EDITOR
     bTickInEditor = false;
 #endif
+    bEnableAutoLODGeneration = false;
+    bAutoActivate = true;
 
-    Bounds = FBoxSphereBounds(FBox(FVector(-500, -500, -100), FVector(500, 500, 100)));
-
-    bCastDynamicShadow = true;
+    bCastDynamicShadow = false;
     bCastStaticShadow = false;
-    bAffectDynamicIndirectLighting = true;
-    bAffectDistanceFieldLighting = true;
+    bAffectDynamicIndirectLighting = false;
+    bAffectDistanceFieldLighting = false;
     render_resources = MakeShared<FTerrainRenderResources, ESPMode::ThreadSafe>();
 }
 

@@ -7,9 +7,9 @@
 #include "Widgets/Views/SListView.h"
 
 struct FTerrainDebugRow {
-    FString Section;
-    FString Field;
-    FString Value;
+    FString section;
+    FString field;
+    FString value;
 };
 
 class STerrainDebugTable final : public SCompoundWidget {
@@ -17,57 +17,57 @@ public:
     SLATE_BEGIN_ARGS(STerrainDebugTable) {}
     SLATE_END_ARGS()
 
-    void Construct(const FArguments& InArgs);
-    void RefreshFromActor(ATerrainParentActor* InActor);
+    void Construct(const FArguments& in_args);
+    void Refresh(ATerrainParentActor* in_actor);
 
 private:
     using FRowPtr = TSharedPtr<FTerrainDebugRow>;
 
-    TWeakObjectPtr<ATerrainParentActor> Actor;
-    TArray<FRowPtr> Rows;
-    TSharedPtr<SListView<FRowPtr>> ListView;
+    TWeakObjectPtr<ATerrainParentActor> actor;
+    TArray<FRowPtr> rows;
+    TSharedPtr<SListView<FRowPtr>> list_view;
 
-    void RebuildRows();
-    void AddRow(const FString& Section, const FString& Field, const FString& Value);
+    void Refresh();
+    void add(const FString& section, const FString& field, const FString& value);
 
-    TSharedRef<ITableRow> OnGenerateRow(
-        FRowPtr InItem,
-        const TSharedRef<STableViewBase>& OwnerTable);
+    TSharedRef<ITableRow> on_generate_row(
+        FRowPtr in_item,
+        const TSharedRef<STableViewBase>& owner_table);
 
     // formatting helpers
-    static FString BoolToString(bool b);
-    static FString PtrToString(const void* Ptr);
-    static FString IntPointToString(const FIntPoint& P);
-    static FString Vec2dToString(const FVector2d& V);
-    static FString Vec3dToString(const FVector3d& V);
-    static FString Vec3fToString(const FVector3f& V);
-    static FString Vec4fToString(const FVector4f& V);
-    static FString TileCoordinateToString(const FTileCoordinate& V);
-    static FString CoordinateToString(const FCoordinate& V);
-    static FString Matrix3x4ToString(const FMatrix3x4& M);
-    static FString Matrix2x4ToString(const FMatrix2x4& M);
-    static FString DescribeArray4D(const TArray4D<TileTreeEntry>& V);
-    static FString DescribeArray4D(const TArray4D<FTileState>& V);
-    static FString DescribeAttachmentTileData(const FAttachmentTileData& Data);
+    static FString to_string(bool v);
+    static FString to_string(const void* v);
+    static FString to_string(const FIntPoint& v);
+    static FString to_string(const FVector2d& v);
+    static FString to_string(const FVector3d& v);
+    static FString to_string(const FVector3f& v);
+    static FString to_string(const FVector4f& v);
+    static FString to_string(const FTileCoordinate& v);
+    static FString to_string(const FCoordinate& v);
+    static FString to_string(const FMatrix3x4& v);
+    static FString to_string(const FMatrix2x4& v);
+    static FString to_string(const TArray4D<TileTreeEntry>& v);
+    static FString to_string(const TArray4D<FTileState>& v);
+    static FString to_string(const FAttachmentTileData& v);
 
     // flatteners
-    void AddTileAtlas(const FString& Section, const FTileAtlas* V);
-    void AddAttachmentConfig(const FString& Section, const FAttachmentConfig& V);
-    void AddTerrain(const FString& Section, const FTerrains* V);
-    void AddTerrainConfig(const FString& Section, const FTerrainConfig& V);
-    void AddTerrainViewConfig(const FString& Section, const FTerrainViewConfig& V);
-    void AddTileTree(const FString& Section, const FTileTree* V);
-    void AddTileState(const FString& Section, const FTileState* V);
-    void AddTileTreeEntry(const FString& Section, const TileTreeEntry* V);
-    void AddAtlasBufferInfo(const FString& Section, const FAtlasBufferInfo& V);
-    void AddGpuAttachment(const FString& Section, const FGpuAttachment& V);
-    void AddAttachmentTileWithData(const FString& Section, const FAttachmentTileWithData& V);
-    void AddGpuTileAtlas(const FString& Section, const FGpuTileAtlas* V);
-    void AddGpuTerrainAttachmentConfig(const FString& Section, const AttachmentConfig& V);
-    void AddGpuTerrainBlock(const FString& Section, const Terrain* V);
-    void AddGpuAttachmentsBlock(const FString& Section, const Attachments& V);
-    void AddGpuTerrain(const FString& Section, const FGpuTerrain* V);
-    void AddPrepass(const FString& Section, const Prepass* V);
-    void AddRefineTiles(const FString& Section, const RefineTiles* V);
-    void AddGpuTerrainView(const FString& Section, const FGpuTerrainView* V);
+    void add(const FString& section, const FTileAtlas* v);
+    void add(const FString& section, const FAttachmentConfig& v);
+    void add(const FString& section, const FTerrains* v);
+    void add(const FString& section, const FTerrainConfig& v);
+    void add(const FString& section, const FTerrainViewConfig& v);
+    void add(const FString& section, const FTileTree* v);
+    void add(const FString& section, const FTileState* v);
+    void add(const FString& section, const TileTreeEntry* v);
+    void add(const FString& section, const FAtlasBufferInfo& v);
+    void add(const FString& section, const FGpuAttachment& v);
+    void add(const FString& section, const FAttachmentTileWithData& v);
+    void add(const FString& section, const FGpuTileAtlas* v);
+    void add(const FString& section, const AttachmentConfig& v);
+    void add(const FString& section, const Terrain* v);
+    void add(const FString& section, const Attachments& v);
+    void add(const FString& section, const FGpuTerrain* v);
+    void add(const FString& section, const Prepass* v);
+    void add(const FString& section, const RefineTiles* v);
+    void add(const FString& section, const FGpuTerrainView* v);
 };

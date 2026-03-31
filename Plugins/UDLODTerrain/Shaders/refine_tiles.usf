@@ -1,4 +1,10 @@
-﻿// ReSharper disable once CppUnusedIncludeDirective
+﻿// ReSharper disable CppInconsistentNaming
+#if defined(__RESHARPER__) || defined(__INTELLISENSE__)
+#define PREPASS 1
+#define COMPUTESHADER 1
+#endif
+
+// ReSharper disable once CppUnusedIncludeDirective
 #include "/Engine/Private/Common.ush"
 
 // Must come first after Common
@@ -87,26 +93,51 @@ bool frustum_cull_aabb(Coordinate coordinate) {
     return false;
 }
 
-bool horizon_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
-    if (coordinate.lod < 3) {
-        return false;
+bool frustum_cull_sphere(Coordinate coordinate) {
+    Coordinate center_coordinate = make_coordinate(
+        coordinate.face,
+        coordinate.lod,
+        coordinate.xy,
+        float2(0.5f, 0.5f)
+    );
+    float3 center_position = compute_world_coordinate(center_coordinate).position;
+
+    float radius = 0.0f;
+
+    [unroll]
+    for (uint i = 0u; i < 4u; i = i + 1u) {
+        float2 corner_uv = float2(asfloat(i & 1u), asfloat(i >> 1u & 1u));
+        Coordinate corner_coordinate = make_coordinate(
+            coordinate.face,
+            coordinate.lod,
+            coordinate.xy,
+            corner_uv
+        );
+        WorldCoordinate corner_world_coordinate = compute_world_coordinate(corner_coordinate);
+        float3 corner_low = apply_height(corner_world_coordinate, terrain.min_height);
+        float3 corner_high = apply_height(corner_world_coordinate, terrain.max_height);
+
+        radius = max(
+            radius,
+            max(distance(center_position, corner_low), distance(center_position, corner_high))
+        );
     }
 
-    float3 ellipsoid_to_sphere = 1.0f / terrain.scale;
-    float radius = 1.0f + terrain.min_height / terrain.scale.y;
+    [unroll]
+    for (uint i = 0u; i < 6u; i = i + 1u) {
+        float4 half_space = terrain_view[0].half_spaces[i];
+        if (dot(half_space, float4(center_position, 1.0f)) + radius < 0.0f) { return true; }
+    }
 
-    float3 view_position = ellipsoid_to_sphere * terrain_view[0].world_position;
-    float3 tile_position = ellipsoid_to_sphere * apply_height(world_coordinate, terrain.max_height);
-    float3 origin_position = ellipsoid_to_sphere *
-        mul(affine3_to_square(terrain.world_from_unit), float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;
-    float3 view_tile = tile_position - view_position;
-    float3 view_origin = origin_position - view_position;
+    return false;
+}
 
-    float vh_vh = dot(view_origin, view_origin) - radius * radius;
-    float vo_vt = dot(view_origin, view_tile);
-    float vt_vt = dot(view_tile, view_tile);
-
-    return (vo_vt > vh_vh) && (vo_vt * vo_vt > vh_vh * vt_vt);
+bool horizon_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
+    // The Bevy reference uses horizon culling for curved/ellipsoidal terrain.
+    // PlanarTerrains runs single-face planar terrain configs, so this test becomes
+    // over-aggressive once the terrain basis is remapped to Unreal's Z-up space.
+    // Keep the planar path conservative until the procedural draw is stable again.
+    return false;
 }
 
 bool no_data_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
@@ -118,7 +149,7 @@ bool no_data_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
 }
 
 bool cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
-    if (frustum_cull_aabb(coordinate)) {
+    if (frustum_cull_sphere(coordinate)) {
         return true;
     }
 
@@ -172,7 +203,7 @@ void refine_tiles(uint3 id : SV_DispatchThreadID) {
         return;
     }
 
-    if (should_be_divided(coordinate, world_coordinate) && !frustum_cull_aabb(coordinate)) {
+    if (should_be_divided(coordinate, world_coordinate) && !frustum_cull_sphere(coordinate)) {
         subdivide(tile);
     } else {
         final_tiles[final_index()] = prepare_tile(tile);

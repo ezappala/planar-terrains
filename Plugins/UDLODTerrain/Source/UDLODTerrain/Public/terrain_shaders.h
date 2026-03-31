@@ -1,4 +1,5 @@
 ﻿#pragma once
+
 #include "ext_matrix2x4.h"
 #include "GlobalShader.h"
 #include "HLSLTypeAliases.h"
@@ -92,7 +93,8 @@ BEGIN_SHADER_PARAMETER_STRUCT(TerrainView, UDLODTERRAIN_API)
     SHADER_PARAMETER(float, precision_distance)
     SHADER_PARAMETER(uint32, face)
     SHADER_PARAMETER(uint32, lod)
-// TODO: FUCK Unreal engine. StructArrays are not yet supported as uniform buffer structs
+// BUG: StructArrays are not yet supported as uniform buffer structs
+// As a workaround we've implemented this as a normal shader parameter struct
     SHADER_PARAMETER_STRUCT_ARRAY(ViewCoordinate, coordinates, [6])
     SHADER_PARAMETER(float, height_scale)
     SHADER_PARAMETER(FVector3f, world_position)
@@ -144,15 +146,14 @@ BEGIN_SHADER_PARAMETER_STRUCT(DrawElementsIndirectParameters, UDLODTERRAIN_API)
     SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
     // General bindings: bindings.ush
     SHADER_PARAMETER_STRUCT_REF(Terrain, terrain)
-    SHADER_PARAMETER_STRUCT(Attachments, attachments)
-    SHADER_PARAMETER_SAMPLER(SamplerState, terrain_sampler)
-    SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, height_attachment)
-    SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, albedo_attachment)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<AttachmentConfig>, attachment_configs)
+SHADER_PARAMETER_SAMPLER(SamplerState, terrain_sampler)
+SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, height_attachment)
+SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, albedo_attachment)
     SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TerrainView>, terrain_view)
     SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float>, approximate_height)
     SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TileTreeEntry>, tile_tree)
 
-    // TODO: should this be a buffer access.
     // RDG_BUFFER_ACCESS(geometry_tiles, ERHIAccess::ReadOnlyMask) ?? or ERHIAccess::CopyDest
     SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<GeometryTile>, geometry_tiles)
 
@@ -276,10 +277,10 @@ END_SHADER_PARAMETER_STRUCT()
 
 BEGIN_SHADER_PARAMETER_STRUCT(Prepass, UDLODTERRAIN_API)
     SHADER_PARAMETER_STRUCT_REF(Terrain, terrain)
-    SHADER_PARAMETER_STRUCT(Attachments, attachments)
-    SHADER_PARAMETER_SAMPLER(SamplerState, terrain_sampler)
-    SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, height_attachment)
-    SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, albedo_attachment)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<AttachmentConfig>, attachment_configs)
+SHADER_PARAMETER_SAMPLER(SamplerState, terrain_sampler)
+SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, height_attachment)
+SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, albedo_attachment)
     SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TerrainView>, terrain_view)
     SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float>, approximate_height)
     SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TileTreeEntry>, tile_tree)
@@ -290,9 +291,9 @@ END_SHADER_PARAMETER_STRUCT()
 
 BEGIN_SHADER_PARAMETER_STRUCT(RefineTiles, UDLODTERRAIN_API)
     SHADER_PARAMETER_STRUCT_REF(Terrain, terrain)
-    SHADER_PARAMETER_STRUCT(Attachments, attachments)
-    SHADER_PARAMETER_SAMPLER(SamplerState, terrain_sampler)
-    SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, height_attachment)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<AttachmentConfig>, attachment_configs)
+SHADER_PARAMETER_SAMPLER(SamplerState, terrain_sampler)
+SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, height_attachment)
     SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, albedo_attachment)
     SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TerrainView>, terrain_view)
     SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float>, approximate_height)

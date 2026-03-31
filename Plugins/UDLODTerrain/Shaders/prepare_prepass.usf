@@ -1,4 +1,10 @@
-﻿// ReSharper disable once CppUnusedIncludeDirective
+﻿#if defined(__RESHARPER__) || defined(__INTELLISENSE__)
+#define PREPASS 1
+#define COMPUTESHADER 1
+#endif
+
+// ReSharper disable CppInconsistentNaming
+// ReSharper disable once CppUnusedIncludeDirective
 #include "/Engine/Private/Common.ush"
 
 #include "common.ush"
@@ -23,6 +29,7 @@ void prepare_root() {
     indirect_buffer[3] = 0u;
 
     temporary_tiles[0] = tile_coordinate(0u, 0u, uint2(0u, 0u));
+    state[0].tile_count = 1u;
 
     Coordinate coordinate = compute_view_coordinate(terrain_view[0].face, terrain_view[0].lod);
     WorldCoordinate world_coordinate = compute_world_coordinate(coordinate);
@@ -37,19 +44,15 @@ void prepare_root() {
 [numthreads(1, 1, 1)]
 void prepare_next() {
     if (state[0].counter == 1) {
-        InterlockedExchange(
-            state[0].child_index,
-            asint(terrain_view[0].geometry_tile_count - 1u),
-            state[0].tile_count
+        state[0].tile_count = uint(
+            exchange<int>(
+                state[0].child_index,
+                int(terrain_view[0].geometry_tile_count - 1u)
+            )
         );
     } else {
-        InterlockedExchange(
-            state[0].child_index,
-            0,
-            state[0].tile_count
-        );
-
-        state[0].tile_count = terrain_view[0].geometry_tile_count - 1u - state[0].tile_count;
+        state[0].tile_count = terrain_view[0].geometry_tile_count - 1u -
+            uint(exchange<int>(state[0].child_index, 0));
     }
 
     state[0].counter = -state[0].counter;
@@ -61,7 +64,7 @@ void prepare_next() {
 
 [numthreads(1, 1, 1)]
 void prepare_render() {
-    uint tile_count = asuint(state[0].final_index);
+    uint tile_count = uint(state[0].final_index);
     uint vertex_count = terrain_view[0].vertices_per_tile * tile_count;
 
     indirect_buffer[0] = vertex_count;

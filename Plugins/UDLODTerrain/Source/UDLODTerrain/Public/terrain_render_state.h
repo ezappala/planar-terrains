@@ -5,6 +5,22 @@
 #include "Containers/Map.h"
 #include "Misc/ScopeRWLock.h"
 
+struct FTerrainCpuMeshVertex {
+    FVector3f position = FVector3f::ZeroVector;
+    FVector2f uv = FVector2f::ZeroVector;
+    FVector3f tangent_x = FVector3f(1.0f, 0.0f, 0.0f);
+    FVector3f tangent_y = FVector3f(0.0f, 1.0f, 0.0f);
+    FVector3f tangent_z = FVector3f(0.0f, 0.0f, 1.0f);
+    FColor color = FColor::White;
+};
+
+struct FTerrainCpuMeshViewState {
+    TArray<FTerrainCpuMeshVertex> vertices;
+    TArray<uint32> indices;
+
+    bool IsReady() const { return vertices.Num() > 0 && indices.Num() >= 3; }
+};
+
 struct FTerrainMeshViewState {
     TUniformBufferRef<Terrain> terrain_uniform_buffer;
     FShaderResourceViewRHIRef attachments_buffer_srv;
@@ -37,25 +53,32 @@ using FTerrainMeshBatchElementUserData = FTerrainMeshViewState;
 
 class FTerrainRenderResources {
 public:
-    void ResetViewStates() {
+    void reset_view_states() {
         FWriteScopeLock _(view_states_guard);
-        view_states.Reset();
+        published_view_states.Reset();
+        staged_view_states.Reset();
     }
 
-    void UpdateViewState(const uint32 view_key, const FTerrainMeshViewState& view_state) {
+    void advance_view_states() {
         FWriteScopeLock _(view_states_guard);
-        view_states.FindOrAdd(view_key) = view_state;
+        published_view_states = MoveTemp(staged_view_states);
+        staged_view_states.Reset();
     }
 
-    bool TryGetViewState(const uint32 view_key, FTerrainMeshViewState& out_view_state) const {
+    void stage_view_state(const uint32 view_key, const FTerrainMeshViewState& view_state) {
+        FWriteScopeLock _(view_states_guard);
+        staged_view_states.FindOrAdd(view_key) = view_state;
+    }
+
+    bool try_get_view_state(const uint32 view_key, FTerrainMeshViewState& out_view_state) const {
         FReadScopeLock _(view_states_guard);
-        const FTerrainMeshViewState* view_state = view_states.Find(view_key);
+        const FTerrainMeshViewState* view_state = published_view_states.Find(view_key);
         if (view_state != nullptr) {
             out_view_state = *view_state;
             if (out_view_state.IsReady()) { return true; }
         }
 
-        for (const TPair<uint32, FTerrainMeshViewState>& pair : view_states) {
+        for (const TPair<uint32, FTerrainMeshViewState>& pair : published_view_states) {
             if (!pair.Value.IsReady()) { continue; }
 
             out_view_state = pair.Value;
@@ -67,5 +90,41 @@ public:
 
 private:
     mutable FRWLock view_states_guard;
-    TMap<uint32, FTerrainMeshViewState> view_states;
+    TMap<uint32, FTerrainMeshViewState> published_view_states;
+    TMap<uint32, FTerrainMeshViewState> staged_view_states;
+
+public:
+    void reset_cpu_view_states() {
+        FWriteScopeLock _(cpu_view_states_guard);
+        cpu_view_states.Reset();
+    }
+
+    void update_cpu_view_state(const uint32 view_key, const FTerrainCpuMeshViewState& view_state) {
+        FWriteScopeLock _(cpu_view_states_guard);
+        cpu_view_states.FindOrAdd(view_key) = view_state;
+    }
+
+    bool try_get_cpu_view_state(
+        const uint32 view_key,
+        FTerrainCpuMeshViewState& out_view_state) const {
+        FReadScopeLock _(cpu_view_states_guard);
+        const FTerrainCpuMeshViewState* view_state = cpu_view_states.Find(view_key);
+        if (view_state != nullptr) {
+            out_view_state = *view_state;
+            if (out_view_state.IsReady()) { return true; }
+        }
+
+        for (const TPair<uint32, FTerrainCpuMeshViewState>& pair : cpu_view_states) {
+            if (!pair.Value.IsReady()) { continue; }
+
+            out_view_state = pair.Value;
+            return true;
+        }
+
+        return false;
+    }
+
+private:
+    mutable FRWLock cpu_view_states_guard;
+    TMap<uint32, FTerrainCpuMeshViewState> cpu_view_states;
 };

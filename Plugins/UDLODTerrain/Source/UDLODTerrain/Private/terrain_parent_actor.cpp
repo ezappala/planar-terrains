@@ -6,6 +6,7 @@
 #include "terrain_preprocess_runner.h"
 #include "terrain_tile_loader.h"
 #include "terrain_world_subsystem.h"
+#include "DebugViewer/Public/DebugViewer.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 
@@ -254,6 +255,8 @@ ATerrainParentActor::ATerrainParentActor() {
     root = CreateDefaultSubobject<USceneComponent>(TEXT("RootComp"));
     SetRootComponent(root);
     check(IsValid(root));
+    bEnableAutoLODGeneration = false;
+    SetActorEnableCollision(false);
 }
 
 void ATerrainParentActor::PostLoad() {
@@ -285,9 +288,7 @@ void ATerrainParentActor::ReloadTerrainConfig() {
 
 // Opens a dialog to display debug information about all the members of this actor.
 void ATerrainParentActor::ViewComponentDebugData() {
-#if WITH_EDITOR
-    GTerrainDebugWindowRequested.Broadcast(this);
-#endif
+    TERRAIN_DEBUG_WINDOW_REQUESTED.Broadcast(this);
 }
 
 void ATerrainParentActor::ViewComponentDebugDraw() const {

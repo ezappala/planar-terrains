@@ -11,516 +11,526 @@ public:
         SLATE_ARGUMENT(TSharedPtr<FTerrainDebugRow>, Item)
     SLATE_END_ARGS()
 
-    void Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& OwnerTableView) {
-        Item = InArgs._Item;
+    void Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& owner_table_view) {
+        item = InArgs._Item;
         SMultiColumnTableRow::Construct(
             FSuperRowType::FArguments().Padding(2.0f),
-            OwnerTableView
+            owner_table_view
         );
     }
 
-    virtual TSharedRef<SWidget> GenerateWidgetForColumn(const FName& ColumnName) override {
-        FString Text;
-        if (ColumnName == "Section") { Text = Item->Section; } else if (ColumnName == "Field") {
-            Text = Item->Field;
-        } else { Text = Item->Value; }
+    virtual TSharedRef<SWidget> GenerateWidgetForColumn(const FName& column_name) override {
+        FString text;
+        if (column_name == "Section") { text = item->section; } else if (column_name == "Field") {
+            text = item->field;
+        } else { text = item->value; }
 
         return SNew(STextBlock)
-            .Text(FText::FromString(Text));
+            .Text(FText::FromString(text));
     }
 
 private:
-    TSharedPtr<FTerrainDebugRow> Item;
+    TSharedPtr<FTerrainDebugRow> item;
 };
 
 // ReSharper disable once CppParameterNeverUsed
-void STerrainDebugTable::Construct(const FArguments& InArgs) {
+void STerrainDebugTable::Construct(const FArguments& in_args) {
     ChildSlot
     [
         SNew(SBorder)
         .Padding(8.0f)
         [
-            SAssignNew(ListView, SListView<FRowPtr>)
-            .ListItemsSource(&Rows)
-            .OnGenerateRow(this, &STerrainDebugTable::OnGenerateRow)
+            SAssignNew(list_view, SListView<FRowPtr>)
+            .ListItemsSource(&rows)
+            .OnGenerateRow(this, &STerrainDebugTable::on_generate_row)
             .SelectionMode(ESelectionMode::None)
             .HeaderRow(
                 SNew(SHeaderRow)
                 + SHeaderRow::Column("Section")
                 .DefaultLabel(FText::FromString("Section"))
                 .FillWidth(0.28f)
-                + SHeaderRow::Column("Field").DefaultLabel(FText::FromString("Field")).FillWidth(
-                    0.28f)
-                + SHeaderRow::Column("Value").DefaultLabel(FText::FromString("Value")).FillWidth(
-                    0.44f)
+                + SHeaderRow::Column("Field")
+                .DefaultLabel(FText::FromString("Field"))
+                .FillWidth(0.28f)
+                + SHeaderRow::Column("Value")
+                .DefaultLabel(FText::FromString("Value"))
+                .FillWidth(0.44f)
             )
         ]
     ];
 }
 
-void STerrainDebugTable::RefreshFromActor(ATerrainParentActor* InActor) {
-    Actor = InActor;
-    RebuildRows();
+void STerrainDebugTable::Refresh(ATerrainParentActor* in_actor) {
+    actor = in_actor;
+    Refresh();
 }
 
-void STerrainDebugTable::RebuildRows() {
-    Rows.Reset();
+void STerrainDebugTable::Refresh() {
+    rows.Reset();
 
-    if (!Actor.IsValid()) {
-        AddRow(TEXT("System"), TEXT("Status"), TEXT("No actor"));
-        ListView->RequestListRefresh();
+    if (!actor.IsValid()) {
+        add(TEXT("System"), TEXT("Status"), TEXT("No actor"));
+        list_view->RequestListRefresh();
         return;
     }
 
-    auto* A = Actor.Get();
-    AddRow(TEXT("Actor"), TEXT("Name"), A->GetName());
+    auto* a = actor.Get();
+    add(TEXT("Actor"), TEXT("Name"), a->GetName());
 
-    AddTileAtlas(TEXT("TileAtlas"), A->tile_atlas.GetPtrOrNull());
-    AddTerrain(TEXT("TerrainConfig"), A->terrain.GetPtrOrNull());
-    AddTileTree(TEXT("TileTree"), A->view_component.GetPtrOrNull());
-    AddGpuTileAtlas(TEXT("GpuTileAtlas"), A->gpu_tile_atlas.GetPtrOrNull());
-    AddGpuTerrain(TEXT("GpuTerrain"), A->gpu_terrain.GetPtrOrNull());
-    AddGpuTerrainView(TEXT("GpuTerrainView"), A->gpu_terrain_view.GetPtrOrNull());
+    add(TEXT("TileAtlas"), a->tile_atlas.GetPtrOrNull());
+    add(TEXT("TerrainConfig"), a->terrain.GetPtrOrNull());
+    add(TEXT("TileTree"), a->view_component.GetPtrOrNull());
+    add(TEXT("GpuTileAtlas"), a->gpu_tile_atlas.GetPtrOrNull());
+    add(TEXT("GpuTerrain"), a->gpu_terrain.GetPtrOrNull());
+    add(TEXT("GpuTerrainView"), a->gpu_terrain_view.GetPtrOrNull());
 
-    ListView->RequestListRefresh();
+    list_view->RequestListRefresh();
 }
 
-void STerrainDebugTable::AddRow(
-    const FString& Section,
-    const FString& Field,
-    const FString& Value) {
-    const TSharedPtr<FTerrainDebugRow> Row = MakeShared<FTerrainDebugRow>();
-    Row->Section = Section;
-    Row->Field = Field;
-    Row->Value = Value;
-    Rows.Add(Row);
+void STerrainDebugTable::add(
+    const FString& section,
+    const FString& field,
+    const FString& value) {
+    const TSharedPtr<FTerrainDebugRow> row = MakeShared<FTerrainDebugRow>();
+    row->section = section;
+    row->field = field;
+    row->value = value;
+    rows.Add(row);
 }
 
 // ReSharper disable once CppMemberFunctionMayBeStatic
-TSharedRef<ITableRow> STerrainDebugTable::OnGenerateRow(
+TSharedRef<ITableRow> STerrainDebugTable::on_generate_row(
     // ReSharper disable once CppPassValueParameterByConstReference
-    FRowPtr InItem,
-    const TSharedRef<STableViewBase>& OwnerTable) {
-    return SNew(STerrainDebugTableRow, OwnerTable).Item(InItem);
+    FRowPtr in_item,
+    const TSharedRef<STableViewBase>& owner_table) {
+    return SNew(STerrainDebugTableRow, owner_table).Item(in_item);
 }
 
-FString STerrainDebugTable::BoolToString(const bool b) { return b ? TEXT("true") : TEXT("false"); }
+FString STerrainDebugTable::to_string(const bool v) { return v ? TEXT("true") : TEXT("false"); }
 
-FString STerrainDebugTable::PtrToString(const void* Ptr) {
-    return Ptr != nullptr ? FString::Printf(TEXT("%p"), Ptr) : TEXT("null");
+FString STerrainDebugTable::to_string(const void* v) {
+    return v != nullptr ? FString::Printf(TEXT("%p"), v) : TEXT("null");
 }
 
-FString STerrainDebugTable::IntPointToString(const FIntPoint& P) {
-    return FString::Printf(TEXT("(%d, %d)"), P.X, P.Y);
+FString STerrainDebugTable::to_string(const FIntPoint& v) {
+    return FString::Printf(TEXT("(%d, %d)"), v.X, v.Y);
 }
 
-FString STerrainDebugTable::Vec2dToString(const FVector2d& V) {
-    return FString::Printf(TEXT("(%.6f, %.6f)"), V.X, V.Y);
+FString STerrainDebugTable::to_string(const FVector2d& v) {
+    return FString::Printf(TEXT("(%.6f, %.6f)"), v.X, v.Y);
 }
 
-FString STerrainDebugTable::Vec3dToString(const FVector3d& V) {
-    return FString::Printf(TEXT("(%.6f, %.6f, %.6f)"), V.X, V.Y, V.Z);
+FString STerrainDebugTable::to_string(const FVector3d& v) {
+    return FString::Printf(TEXT("(%.6f, %.6f, %.6f)"), v.X, v.Y, v.Z);
 }
 
-FString STerrainDebugTable::Vec3fToString(const FVector3f& V) {
-    return FString::Printf(TEXT("(%.6f, %.6f, %.6f)"), V.X, V.Y, V.Z);
+FString STerrainDebugTable::to_string(const FVector3f& v) {
+    return FString::Printf(TEXT("(%.6f, %.6f, %.6f)"), v.X, v.Y, v.Z);
 }
 
-FString STerrainDebugTable::Vec4fToString(const FVector4f& V) {
-    return FString::Printf(TEXT("(%.6f, %.6f, %.6f, %.6f)"), V.X, V.Y, V.Z, V.W);
+FString STerrainDebugTable::to_string(const FVector4f& v) {
+    return FString::Printf(TEXT("(%.6f, %.6f, %.6f, %.6f)"), v.X, v.Y, v.Z, v.W);
 }
 
-FString STerrainDebugTable::TileCoordinateToString(const FTileCoordinate& V) {
+FString STerrainDebugTable::to_string(const FTileCoordinate& v) {
     return FString::Printf(
         TEXT("{ face=%d, lod=%d, xy=%s }"),
-        V.face,
-        V.lod,
-        *IntPointToString(V.xy)
+        v.face,
+        v.lod,
+        *to_string(v.xy)
     );
 }
 
-FString STerrainDebugTable::CoordinateToString(const FCoordinate& V) {
+FString STerrainDebugTable::to_string(const FCoordinate& v) {
     return FString::Printf(
         TEXT("{ face=%u, uv=%s }"),
-        V.face,
-        *Vec2dToString(V.uv)
+        v.face,
+        *to_string(v.uv)
     );
 }
 
-FString STerrainDebugTable::Matrix3x4ToString(const FMatrix3x4& M) {
+FString STerrainDebugTable::to_string(const FMatrix3x4& v) {
     return FString::Printf(
         TEXT("[%.6f, %.6f, %.6f, %.6f]\n[%.6f, %.6f, %.6f, %.6f]\n[%.6f, %.6f, %.6f, %.6f]"),
-        M.M[0][0],
-        M.M[0][1],
-        M.M[0][2],
-        M.M[0][3],
-        M.M[1][0],
-        M.M[1][1],
-        M.M[1][2],
-        M.M[1][3],
-        M.M[2][0],
-        M.M[2][1],
-        M.M[2][2],
-        M.M[2][3]
+        v.M[0][0],
+        v.M[0][1],
+        v.M[0][2],
+        v.M[0][3],
+        v.M[1][0],
+        v.M[1][1],
+        v.M[1][2],
+        v.M[1][3],
+        v.M[2][0],
+        v.M[2][1],
+        v.M[2][2],
+        v.M[2][3]
     );
 }
 
-FString STerrainDebugTable::Matrix2x4ToString(const FMatrix2x4& M) {
+FString STerrainDebugTable::to_string(const FMatrix2x4& v) {
     return FString::Printf(
         TEXT("[%.6f, %.6f, %.6f, %.6f]\n[%.6f, %.6f, %.6f, %.6f]"),
-        M.M[0][0],
-        M.M[0][1],
-        M.M[0][2],
-        M.M[0][3],
-        M.M[1][0],
-        M.M[1][1],
-        M.M[1][2],
-        M.M[1][3]
+        v.M[0][0],
+        v.M[0][1],
+        v.M[0][2],
+        v.M[0][3],
+        v.M[1][0],
+        v.M[1][1],
+        v.M[1][2],
+        v.M[1][3]
     );
 }
 
-FString STerrainDebugTable::DescribeArray4D(const TArray4D<TileTreeEntry>& V) {
+FString STerrainDebugTable::to_string(const TArray4D<TileTreeEntry>& v) {
     return FString::Printf(
         TEXT("TArray4D<TileTreeEntry> Size=[%llu, %llu, %llu, %llu]"),
-        V.get_dim0(),
-        V.get_dim1(),
-        V.get_dim2(),
-        V.get_dim3()
+        v.get_dim0(),
+        v.get_dim1(),
+        v.get_dim2(),
+        v.get_dim3()
     );
 }
 
-FString STerrainDebugTable::DescribeArray4D(const TArray4D<FTileState>& V) {
+FString STerrainDebugTable::to_string(const TArray4D<FTileState>& v) {
     return FString::Printf(
         TEXT("TArray4D<FTileState> Size=[%llu, %llu, %llu, %llu]"),
-        V.get_dim0(),
-        V.get_dim1(),
-        V.get_dim2(),
-        V.get_dim3()
+        v.get_dim0(),
+        v.get_dim1(),
+        v.get_dim2(),
+        v.get_dim3()
     );
 }
 
-FString STerrainDebugTable::DescribeAttachmentTileData(const FAttachmentTileData& Data) {
-    if (Data.IsType<TArray<TStaticArray<uint8, 4>>>()) {
-        const auto& V = Data.Get<TArray<TStaticArray<uint8, 4>>>();
+FString STerrainDebugTable::to_string(const FAttachmentTileData& v) {
+    if (v.IsType<TArray<TStaticArray<uint8, 4>>>()) {
+        const auto& V = v.Get<TArray<TStaticArray<uint8, 4>>>();
         return FString::Printf(TEXT("TArray<TStaticArray<uint8,4>> Num=%d"), V.Num());
     }
-    if (Data.IsType<TArray<uint16>>()) {
-        const auto& V = Data.Get<TArray<uint16>>();
+    if (v.IsType<TArray<uint16>>()) {
+        const auto& V = v.Get<TArray<uint16>>();
         return FString::Printf(TEXT("TArray<uint16> Num=%d"), V.Num());
     }
-    if (Data.IsType<TArray<int16>>()) {
-        const auto& V = Data.Get<TArray<int16>>();
+    if (v.IsType<TArray<int16>>()) {
+        const auto& V = v.Get<TArray<int16>>();
         return FString::Printf(TEXT("TArray<int16> Num=%d"), V.Num());
     }
-    if (Data.IsType<TArray<TStaticArray<uint16, 2>>>()) {
-        const auto& V = Data.Get<TArray<TStaticArray<uint16, 2>>>();
+    if (v.IsType<TArray<TStaticArray<uint16, 2>>>()) {
+        const auto& V = v.Get<TArray<TStaticArray<uint16, 2>>>();
         return FString::Printf(TEXT("TArray<TStaticArray<uint16,2>> Num=%d"), V.Num());
     }
-    if (Data.IsType<TArray<float>>()) {
-        const auto& V = Data.Get<TArray<float>>();
+    if (v.IsType<TArray<float>>()) {
+        const auto& V = v.Get<TArray<float>>();
         return FString::Printf(TEXT("TArray<float> Num=%d"), V.Num());
     }
 
     return TEXT("<unknown variant>");
 }
 
-void STerrainDebugTable::AddTileAtlas(const FString& Section, const FTileAtlas* V) {
-    if (V == nullptr) {
-        AddRow(Section, TEXT("Status"), TEXT("No tile atlas"));
+void STerrainDebugTable::add(const FString& section, const FTileAtlas* v) {
+    if (v == nullptr) {
+        add(section, TEXT("Status"), TEXT("No tile atlas"));
         return;
     }
-    AddRow(Section, TEXT("lod_count"), LexToString(V->lod_count));
-    AddRow(Section, TEXT("max_height"), LexToString(V->max_height));
-    AddRow(Section, TEXT("min_height"), LexToString(V->min_height));
-    AddRow(Section, TEXT("height_scale"), LexToString(V->height_scale));
-    AddRow(Section, TEXT("side_length"), LexToString(V->side_length));
+    add(section, TEXT("lod_count"), LexToString(v->lod_count));
+    add(section, TEXT("max_height"), LexToString(v->max_height));
+    add(section, TEXT("min_height"), LexToString(v->min_height));
+    add(section, TEXT("height_scale"), LexToString(v->height_scale));
+    add(section, TEXT("side_length"), LexToString(v->side_length));
 }
 
-void STerrainDebugTable::AddAttachmentConfig(const FString& Section, const FAttachmentConfig& V) {
-    AddRow(Section, TEXT("texture_size"), LexToString(V.texture_size));
-    AddRow(Section, TEXT("border_size"), LexToString(V.border_size));
-    AddRow(Section, TEXT("mip_level_count"), LexToString(V.mip_level_count));
-    AddRow(Section, TEXT("mask"), BoolToString(V.mask));
-    AddRow(Section, TEXT("format"), StaticEnum<EAttachmentFormat>()->GetValueAsString(V.format));
+void STerrainDebugTable::add(const FString& section, const FAttachmentConfig& v) {
+    add(section, TEXT("texture_size"), LexToString(v.texture_size));
+    add(section, TEXT("border_size"), LexToString(v.border_size));
+    add(section, TEXT("mip_level_count"), LexToString(v.mip_level_count));
+    add(section, TEXT("mask"), to_string(v.mask));
+    add(section, TEXT("format"), StaticEnum<EAttachmentFormat>()->GetValueAsString(v.format));
 }
 
-void STerrainDebugTable::AddTerrain(const FString& Section, const FTerrains* V) {
-    if (V == nullptr) {
-        AddRow(Section, TEXT("Status"), TEXT("No terrain"));
+void STerrainDebugTable::add(const FString& section, const FTerrains* v) {
+    if (v == nullptr) {
+        add(section, TEXT("Status"), TEXT("No terrain"));
         return;
     }
 
-    AddTerrainConfig(Section + TEXT(".terrain_config"), V->terrain_config);
-    AddTerrainViewConfig(Section + TEXT(".terrain_view_config"), V->terrain_view_config);
+    add(section + TEXT(".terrain_config"), v->terrain_config);
+    add(section + TEXT(".terrain_view_config"), v->terrain_view_config);
 }
 
-void STerrainDebugTable::AddTerrainConfig(const FString& Section, const FTerrainConfig& V) {
-    AddRow(Section, TEXT("path"), V.path);
-    AddRow(Section, TEXT("lod_count"), LexToString(V.lod_count));
-    AddRow(Section, TEXT("min_height"), LexToString(V.min_height));
-    AddRow(Section, TEXT("max_height"), LexToString(V.max_height));
-    AddRow(Section, TEXT("side_length"), LexToString(V.side_length));
-    AddRow(Section, TEXT("face_count"), LexToString(V.face_count));
-    AddRow(Section, TEXT("scale_scalar"), LexToString(V.scale_scalar));
-    AddRow(Section, TEXT("face_size"), LexToString(V.face_size));
+void STerrainDebugTable::add(const FString& section, const FTerrainConfig& v) {
+    add(section, TEXT("path"), v.path);
+    add(section, TEXT("lod_count"), LexToString(v.lod_count));
+    add(section, TEXT("min_height"), LexToString(v.min_height));
+    add(section, TEXT("max_height"), LexToString(v.max_height));
+    add(section, TEXT("side_length"), LexToString(v.side_length));
+    add(section, TEXT("face_count"), LexToString(v.face_count));
+    add(section, TEXT("scale_scalar"), LexToString(v.scale_scalar));
+    add(section, TEXT("face_size"), LexToString(v.face_size));
 
-    for (const auto& Pair : V.attachments) {
-        AddAttachmentConfig(
-            FString::Printf(TEXT("%s.attachments[%s]"), *Section, *Pair.Key),
+    for (const auto& Pair : v.attachments) {
+        add(
+            FString::Printf(TEXT("%s.attachments[%s]"), *section, *Pair.Key),
             Pair.Value
         );
     }
 }
 
-void STerrainDebugTable::AddTerrainViewConfig(const FString& Section, const FTerrainViewConfig& V) {
-    AddRow(Section, TEXT("tree_size"), LexToString(V.tree_size));
-    AddRow(Section, TEXT("geometry_tile_count"), LexToString(V.geometry_tile_count));
-    AddRow(Section, TEXT("refinement_count"), LexToString(V.refinement_count));
-    AddRow(Section, TEXT("grid_size"), LexToString(V.grid_size));
-    AddRow(Section, TEXT("morph_distance"), LexToString(V.morph_distance));
-    AddRow(Section, TEXT("blend_distance"), LexToString(V.blend_distance));
-    AddRow(Section, TEXT("load_tolerance"), LexToString(V.load_tolerance));
-    AddRow(Section, TEXT("subdivision_tolerance"), LexToString(V.subdivision_tolerance));
-    AddRow(Section, TEXT("morph_range"), LexToString(V.morph_range));
-    AddRow(Section, TEXT("blend_range"), LexToString(V.blend_range));
-    AddRow(Section, TEXT("precision_distance"), LexToString(V.precision_distance));
-    AddRow(Section, TEXT("view_lod"), LexToString(V.view_lod));
-    AddRow(Section, TEXT("order"), LexToString(V.order));
+void STerrainDebugTable::add(const FString& section, const FTerrainViewConfig& v) {
+    add(section, TEXT("tree_size"), LexToString(v.tree_size));
+    add(section, TEXT("geometry_tile_count"), LexToString(v.geometry_tile_count));
+    add(section, TEXT("refinement_count"), LexToString(v.refinement_count));
+    add(section, TEXT("grid_size"), LexToString(v.grid_size));
+    add(section, TEXT("morph_distance"), LexToString(v.morph_distance));
+    add(section, TEXT("blend_distance"), LexToString(v.blend_distance));
+    add(section, TEXT("load_tolerance"), LexToString(v.load_tolerance));
+    add(section, TEXT("subdivision_tolerance"), LexToString(v.subdivision_tolerance));
+    add(section, TEXT("morph_range"), LexToString(v.morph_range));
+    add(section, TEXT("blend_range"), LexToString(v.blend_range));
+    add(section, TEXT("precision_distance"), LexToString(v.precision_distance));
+    add(section, TEXT("view_lod"), LexToString(v.view_lod));
+    add(section, TEXT("order"), LexToString(v.order));
 }
 
-void STerrainDebugTable::AddTileTree(const FString& Section, const FTileTree* V) {
-    if (V == nullptr) {
-        AddRow(Section, TEXT("Status"), TEXT("No tile tree"));
+void STerrainDebugTable::add(const FString& section, const FTileTree* v) {
+    if (v == nullptr) {
+        add(section, TEXT("Status"), TEXT("No tile tree"));
         return;
     }
-    AddRow(Section, TEXT("tree_size"), LexToString(V->tree_size));
-    AddRow(Section, TEXT("lod_count"), LexToString(V->lod_count));
-    AddRow(Section, TEXT("side_length"), LexToString(V->side_length));
-    AddRow(Section, TEXT("geometry_tile_count"), LexToString(V->geometry_tile_count));
-    AddRow(Section, TEXT("refinement_count"), LexToString(V->refinement_count));
-    AddRow(Section, TEXT("grid_size"), LexToString(V->grid_size));
-    AddRow(Section, TEXT("morph_distance"), LexToString(V->morph_distance));
-    AddRow(Section, TEXT("blend_distance"), LexToString(V->blend_distance));
-    AddRow(Section, TEXT("load_distance"), LexToString(V->load_distance));
-    AddRow(Section, TEXT("subdivision_distance"), LexToString(V->subdivision_distance));
-    AddRow(Section, TEXT("morph_range"), LexToString(V->morph_range));
-    AddRow(Section, TEXT("blend_range"), LexToString(V->blend_range));
-    AddRow(Section, TEXT("precision_distance"), LexToString(V->precision_distance));
-    AddRow(Section, TEXT("view_face"), LexToString(V->view_face));
-    AddRow(Section, TEXT("view_lod"), LexToString(V->view_lod));
-    AddRow(Section, TEXT("view_local_position"), Vec3dToString(V->view_local_position));
-    AddRow(Section, TEXT("view_world_position"), Vec3fToString(V->view_world_position));
-    AddRow(Section, TEXT("approximate_height"), LexToString(V->approximate_height));
-    AddRow(Section, TEXT("order"), LexToString(V->order));
+    add(section, TEXT("tree_size"), LexToString(v->tree_size));
+    add(section, TEXT("lod_count"), LexToString(v->lod_count));
+    add(section, TEXT("side_length"), LexToString(v->side_length));
+    add(section, TEXT("geometry_tile_count"), LexToString(v->geometry_tile_count));
+    add(section, TEXT("refinement_count"), LexToString(v->refinement_count));
+    add(section, TEXT("grid_size"), LexToString(v->grid_size));
+    add(section, TEXT("morph_distance"), LexToString(v->morph_distance));
+    add(section, TEXT("blend_distance"), LexToString(v->blend_distance));
+    add(section, TEXT("load_distance"), LexToString(v->load_distance));
+    add(section, TEXT("subdivision_distance"), LexToString(v->subdivision_distance));
+    add(section, TEXT("morph_range"), LexToString(v->morph_range));
+    add(section, TEXT("blend_range"), LexToString(v->blend_range));
+    add(section, TEXT("precision_distance"), LexToString(v->precision_distance));
+    add(section, TEXT("view_face"), LexToString(v->view_face));
+    add(section, TEXT("view_lod"), LexToString(v->view_lod));
+    add(section, TEXT("view_local_position"), to_string(v->view_local_position));
+    add(section, TEXT("view_world_position"), to_string(v->view_world_position));
+    add(section, TEXT("approximate_height"), LexToString(v->approximate_height));
+    add(section, TEXT("order"), LexToString(v->order));
 
-    for (int32 i = 0; i < V->lod_tile_counts.Num(); ++i) {
-        AddRow(
-            Section,
+    for (int32 i = 0; i < v->lod_tile_counts.Num(); ++i) {
+        add(
+            section,
             FString::Printf(TEXT("lod_tile_counts[%d]"), i),
-            IntPointToString(V->lod_tile_counts[i])
+            to_string(v->lod_tile_counts[i])
         );
     }
 
-    for (int32 i = 0; i < V->requested_tiles.Num(); ++i) {
-        AddRow(
-            Section,
+    for (int32 i = 0; i < v->requested_tiles.Num(); ++i) {
+        add(
+            section,
             FString::Printf(TEXT("requested_tiles[%d]"), i),
-            TileCoordinateToString(V->requested_tiles[i])
+            to_string(v->requested_tiles[i])
         );
     }
 
-    for (int32 i = 0; i < V->released_tiles.Num(); ++i) {
-        AddRow(
-            Section,
+    for (int32 i = 0; i < v->released_tiles.Num(); ++i) {
+        add(
+            section,
             FString::Printf(TEXT("released_tiles[%d]"), i),
-            TileCoordinateToString(V->released_tiles[i])
+            to_string(v->released_tiles[i])
         );
     }
 
-    for (int32 i = 0; i < V->view_coordinates.Num(); ++i) {
-        AddRow(
-            Section,
+    for (int32 i = 0; i < v->view_coordinates.Num(); ++i) {
+        add(
+            section,
             FString::Printf(TEXT("view_coordinates[%d]"), i),
-            CoordinateToString(V->view_coordinates[i])
+            to_string(v->view_coordinates[i])
         );
     }
 
-    for (int32 i = 0; i < V->half_spaces.Num(); ++i) {
-        AddRow(
-            Section,
+    for (int32 i = 0; i < v->half_spaces.Num(); ++i) {
+        add(
+            section,
             FString::Printf(TEXT("half_spaces[%d]"), i),
-            Vec4fToString(V->half_spaces[i])
+            to_string(v->half_spaces[i])
         );
     }
 
     // Your TArray4D API wasn’t provided, so this is intentionally a stub.
-    AddRow(Section, TEXT("data"), DescribeArray4D(V->data));
-    AddRow(Section, TEXT("tiles"), DescribeArray4D(V->tiles));
+    add(section, TEXT("data"), to_string(v->data));
+    add(section, TEXT("tiles"), to_string(v->tiles));
 }
 
-void STerrainDebugTable::AddTileState(const FString& Section, const FTileState* V) {
-    if (V == nullptr) {
-        AddRow(Section, TEXT("Status"), TEXT("No tile state"));
+void STerrainDebugTable::add(const FString& section, const FTileState* v) {
+    if (v == nullptr) {
+        add(section, TEXT("Status"), TEXT("No tile state"));
         return;
     }
-    AddRow(Section, TEXT("coordinate"), TileCoordinateToString(V->coordinate));
-    AddRow(
-        Section,
+    add(section, TEXT("coordinate"), to_string(v->coordinate));
+    add(
+        section,
         TEXT("request_state"),
-        StaticEnum<ERequestState>()->GetValueAsString(V->request_state));
+        StaticEnum<ERequestState>()->GetValueAsString(v->request_state));
 }
 
-void STerrainDebugTable::AddTileTreeEntry(const FString& Section, const TileTreeEntry* V) {
-    if (V == nullptr) {
-        AddRow(Section, TEXT("Status"), TEXT("No tile tree entry"));
+void STerrainDebugTable::add(const FString& section, const TileTreeEntry* v) {
+    if (v == nullptr) {
+        add(section, TEXT("Status"), TEXT("No tile tree entry"));
         return;
     }
-    AddRow(Section, TEXT("atlas_index"), LexToString(V->atlas_index));
-    AddRow(Section, TEXT("atlas_lod"), LexToString(V->atlas_lod));
+    add(section, TEXT("atlas_index"), LexToString(v->atlas_index));
+    add(section, TEXT("atlas_lod"), LexToString(v->atlas_lod));
 }
 
-void STerrainDebugTable::AddAtlasBufferInfo(const FString& Section, const FAtlasBufferInfo& V) {
-    AddRow(Section, TEXT("mask"), BoolToString(V.mask));
-    AddRow(Section, TEXT("lod_count"), LexToString(V.lod_count));
-    AddRow(Section, TEXT("format"), StaticEnum<EAttachmentFormat>()->GetValueAsString(V.format));
-    AddRow(Section, TEXT("texture_size"), LexToString(V.texture_size));
-    AddRow(Section, TEXT("border_size"), LexToString(V.border_size));
-    AddRow(Section, TEXT("center_size"), LexToString(V.center_size));
-    AddRow(Section, TEXT("mip_level_count"), LexToString(V.mip_level_count));
-    AddRow(Section, TEXT("pixels_per_entry"), LexToString(V.pixels_per_entry));
-    AddRow(Section, TEXT("actual_side_size"), LexToString(V.actual_side_size));
-    AddRow(Section, TEXT("aligned_side_size"), LexToString(V.aligned_side_size));
-    AddRow(Section, TEXT("actual_tile_size"), LexToString(V.actual_tile_size));
-    AddRow(Section, TEXT("aligned_tile_size"), LexToString(V.aligned_tile_size));
-    AddRow(Section, TEXT("entries_per_side"), LexToString(V.entries_per_side));
-    AddRow(Section, TEXT("entries_per_tile"), LexToString(V.entries_per_tile));
+void STerrainDebugTable::add(const FString& section, const FAtlasBufferInfo& v) {
+    add(section, TEXT("mask"), to_string(v.mask));
+    add(section, TEXT("lod_count"), LexToString(v.lod_count));
+    add(section, TEXT("format"), StaticEnum<EAttachmentFormat>()->GetValueAsString(v.format));
+    add(section, TEXT("texture_size"), LexToString(v.texture_size));
+    add(section, TEXT("border_size"), LexToString(v.border_size));
+    add(section, TEXT("center_size"), LexToString(v.center_size));
+    add(section, TEXT("mip_level_count"), LexToString(v.mip_level_count));
+    add(section, TEXT("pixels_per_entry"), LexToString(v.pixels_per_entry));
+    add(section, TEXT("actual_side_size"), LexToString(v.actual_side_size));
+    add(section, TEXT("aligned_side_size"), LexToString(v.aligned_side_size));
+    add(section, TEXT("actual_tile_size"), LexToString(v.actual_tile_size));
+    add(section, TEXT("aligned_tile_size"), LexToString(v.aligned_tile_size));
+    add(section, TEXT("entries_per_side"), LexToString(v.entries_per_side));
+    add(section, TEXT("entries_per_tile"), LexToString(v.entries_per_tile));
 }
 
-void STerrainDebugTable::AddGpuAttachment(const FString& Section, const FGpuAttachment& V) {
-    AddRow(Section, TEXT("index"), LexToString(V.index));
-    AddAtlasBufferInfo(Section + TEXT(".buffer_info"), V.buffer_info);
+void STerrainDebugTable::add(const FString& section, const FGpuAttachment& v) {
+    add(section, TEXT("index"), LexToString(v.index));
+    add(section + TEXT(".buffer_info"), v.buffer_info);
 }
 
-void STerrainDebugTable::AddAttachmentTileWithData(
-    const FString& Section,
-    const FAttachmentTileWithData& V) {
-    AddRow(Section, TEXT("atlas_index"), LexToString(V.atlas_index));
-    AddRow(Section, TEXT("label"), V.label);
-    AddRow(Section, TEXT("data"), DescribeAttachmentTileData(V.data));
+void STerrainDebugTable::add(
+    const FString& section,
+    const FAttachmentTileWithData& v) {
+    add(section, TEXT("atlas_index"), LexToString(v.atlas_index));
+    add(section, TEXT("label"), v.label);
+    add(section, TEXT("data"), to_string(v.data));
 }
 
-void STerrainDebugTable::AddGpuTileAtlas(const FString& Section, const FGpuTileAtlas* V) {
-    if (V == nullptr) {
-        AddRow(Section, TEXT("Status"), TEXT("No GPU tile atlas"));
+void STerrainDebugTable::add(const FString& section, const FGpuTileAtlas* v) {
+    if (v == nullptr) {
+        add(section, TEXT("Status"), TEXT("No GPU tile atlas"));
         return;
     }
-    for (const auto& Pair : V->attachments) {
-        AddGpuAttachment(
-            FString::Printf(TEXT("%s.attachments[%s]"), *Section, *Pair.Key),
+    for (const auto& Pair : v->attachments) {
+        add(
+            FString::Printf(TEXT("%s.attachments[%s]"), *section, *Pair.Key),
             Pair.Value
         );
     }
 
-    for (int32 i = 0; i < V->upload_tiles.Num(); ++i) {
-        AddAttachmentTileWithData(
-            FString::Printf(TEXT("%s.upload_tiles[%d]"), *Section, i),
-            V->upload_tiles[i]
+    for (int32 i = 0; i < v->upload_tiles.Num(); ++i) {
+        add(
+            FString::Printf(TEXT("%s.upload_tiles[%d]"), *section, i),
+            v->upload_tiles[i]
         );
     }
 
-    for (int32 i = 0; i < V->download_tiles.Num(); ++i) {
-        AddAttachmentTileWithData(
-            FString::Printf(TEXT("%s.download_tiles[%d]"), *Section, i),
-            V->download_tiles[i]
+    for (int32 i = 0; i < v->download_tiles.Num(); ++i) {
+        add(
+            FString::Printf(TEXT("%s.download_tiles[%d]"), *section, i),
+            v->download_tiles[i]
         );
     }
 }
 
-void STerrainDebugTable::AddGpuTerrainAttachmentConfig(
-    const FString& Section,
-    const AttachmentConfig& V) {
-    AddRow(Section, TEXT("texture_size"), LexToString(V.texture_size));
-    AddRow(Section, TEXT("center_size"), LexToString(V.center_size));
-    AddRow(Section, TEXT("scale"), LexToString(V.scale));
-    AddRow(Section, TEXT("offset"), LexToString(V.offset));
-    AddRow(Section, TEXT("mask"), LexToString(V.mask));
-    AddRow(Section, TEXT("paddinga"), LexToString(V.paddinga));
-    AddRow(Section, TEXT("paddingb"), LexToString(V.paddingb));
-    AddRow(Section, TEXT("paddingc"), LexToString(V.paddingc));
+void STerrainDebugTable::add(
+    const FString& section,
+    const AttachmentConfig& v) {
+    add(section, TEXT("texture_size"), LexToString(v.texture_size));
+    add(section, TEXT("center_size"), LexToString(v.center_size));
+    add(section, TEXT("scale"), LexToString(v.scale));
+    add(section, TEXT("offset"), LexToString(v.offset));
+    add(section, TEXT("mask"), LexToString(v.mask));
+    add(section, TEXT("paddinga"), LexToString(v.paddinga));
+    add(section, TEXT("paddingb"), LexToString(v.paddingb));
+    add(section, TEXT("paddingc"), LexToString(v.paddingc));
 }
 
-void STerrainDebugTable::AddGpuTerrainBlock(const FString& Section, const Terrain* V) {
-    if (V == nullptr) {
-        AddRow(Section, TEXT("Status"), TEXT("No terrain"));
+void STerrainDebugTable::add(const FString& section, const Terrain* v) {
+    if (v == nullptr) {
+        add(section, TEXT("Status"), TEXT("No terrain"));
         return;
     }
-    AddRow(Section, TEXT("lod_count"), LexToString(V->lod_count));
-    AddRow(Section, TEXT("scale"), Vec3fToString(V->scale));
-    AddRow(Section, TEXT("min_height"), LexToString(V->min_height));
-    AddRow(Section, TEXT("max_height"), LexToString(V->max_height));
-    AddRow(Section, TEXT("height_scale"), LexToString(V->height_scale));
-    AddRow(Section, TEXT("world_from_unit"), Matrix3x4ToString(V->world_from_unit));
-    AddRow(
-        Section,
+    add(section, TEXT("lod_count"), LexToString(v->lod_count));
+    add(section, TEXT("scale"), to_string(v->scale));
+    add(section, TEXT("min_height"), LexToString(v->min_height));
+    add(section, TEXT("max_height"), LexToString(v->max_height));
+    add(section, TEXT("height_scale"), LexToString(v->height_scale));
+    add(section, TEXT("world_from_unit"), to_string(v->world_from_unit));
+    add(
+        section,
         TEXT("unit_from_world_transpose_a"),
-        Matrix2x4ToString(V->unit_from_world_transpose_a));
-    AddRow(
-        Section,
+        to_string(v->unit_from_world_transpose_a));
+    add(
+        section,
         TEXT("unit_from_world_transpose_b"),
-        LexToString(V->unit_from_world_transpose_b));
+        LexToString(v->unit_from_world_transpose_b));
 }
 
-void STerrainDebugTable::AddGpuAttachmentsBlock(const FString& Section, const Attachments& V) {
-    for (int32 i = 0; i < V.attachment_configs.Num(); ++i) {
-        AddGpuTerrainAttachmentConfig(
-            FString::Printf(TEXT("%s.attachment_configs[%d]"), *Section, i),
-            V.attachment_configs[i]
+void STerrainDebugTable::add(const FString& section, const Attachments& v) {
+    for (int32 i = 0; i < v.attachment_configs.Num(); ++i) {
+        add(
+            FString::Printf(TEXT("%s.attachment_configs[%d]"), *section, i),
+            v.attachment_configs[i]
         );
     }
 }
 
-void STerrainDebugTable::AddGpuTerrain(const FString& Section, const FGpuTerrain* V) {
-    if (V == nullptr) {
-        AddRow(Section, TEXT("Status"), TEXT("No GPU terrain"));
+void STerrainDebugTable::add(const FString& section, const FGpuTerrain* v) {
+    if (v == nullptr) {
+        add(section, TEXT("Status"), TEXT("No GPU terrain"));
         return;
     }
-    for (int32 i = 0; i < V->attachment_configs.Num(); ++i) {
-        AddGpuTerrainAttachmentConfig(
-            FString::Printf(TEXT("%s.attachment_configs[%d]"), *Section, i),
-            V->attachment_configs[i]
+    for (int32 i = 0; i < v->attachment_configs.Num(); ++i) {
+        add(
+            FString::Printf(TEXT("%s.attachment_configs[%d]"), *section, i),
+            v->attachment_configs[i]
         );
     }
 }
 
-void STerrainDebugTable::AddPrepass(const FString& Section, const Prepass* V) {
-    AddGpuTerrainBlock(
-        Section + TEXT(".terrain"),
+void STerrainDebugTable::add(const FString& section, const Prepass* v) {
+    add(
+        section + TEXT(".terrain"),
         reinterpret_cast<TRDGUniformBuffer<Terrain>*>(
-            V->terrain.GetUniformBuffer())->GetContents()
+            v->terrain.GetUniformBuffer())->GetContents()
     );
-    AddGpuAttachmentsBlock(Section + TEXT(".attachments"), V->attachments);
+    add(
+        section,
+        TEXT("attachment_configs"),
+        v->attachment_configs != nullptr ? TEXT("bound") : TEXT("null")
+    );
 }
 
-void STerrainDebugTable::AddRefineTiles(const FString& Section, const RefineTiles* V) {
-    AddGpuTerrainBlock(
-        Section + TEXT(".terrain"),
+void STerrainDebugTable::add(const FString& section, const RefineTiles* v) {
+    add(
+        section + TEXT(".terrain"),
         reinterpret_cast<TRDGUniformBuffer<Terrain>*>(
-            V->terrain.GetUniformBuffer())->GetContents()
+            v->terrain.GetUniformBuffer())->GetContents()
     );
-    AddGpuAttachmentsBlock(Section + TEXT(".attachments"), V->attachments);
+    add(
+        section,
+        TEXT("attachment_configs"),
+        v->attachment_configs != nullptr ? TEXT("bound") : TEXT("null")
+    );
 }
 
-void STerrainDebugTable::AddGpuTerrainView(const FString& Section, const FGpuTerrainView* V) {
-    AddRow(Section, TEXT("order"), LexToString(V->order));
-    AddRow(Section, TEXT("refinement_count"), LexToString(V->refinement_count));
-    AddRow(Section, TEXT("prepass_parameters"), PtrToString(V->prepass_parameters));
-    AddRow(Section, TEXT("refine_tiles_parameters"), PtrToString(V->refine_tiles_parameters));
+void STerrainDebugTable::add(const FString& section, const FGpuTerrainView* v) {
+    add(section, TEXT("order"), LexToString(v->order));
+    add(section, TEXT("refinement_count"), LexToString(v->refinement_count));
+    add(section, TEXT("prepass_parameters"), to_string(v->prepass_parameters));
+    add(section, TEXT("refine_tiles_parameters"), to_string(v->refine_tiles_parameters));
 
-    if (V->prepass_parameters != nullptr) {
-        AddPrepass(Section + TEXT(".prepass"), V->prepass_parameters);
+    if (v->prepass_parameters != nullptr) {
+        add(section + TEXT(".prepass"), v->prepass_parameters);
     }
 
-    if (V->refine_tiles_parameters != nullptr) {
-        AddRefineTiles(Section + TEXT(".refine_tiles"), V->refine_tiles_parameters);
+    if (v->refine_tiles_parameters != nullptr) {
+        add(section + TEXT(".refine_tiles"), v->refine_tiles_parameters);
     }
 }

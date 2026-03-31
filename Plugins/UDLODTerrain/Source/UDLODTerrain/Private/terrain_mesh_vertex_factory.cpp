@@ -1,5 +1,6 @@
 #include "terrain_mesh_vertex_factory.h"
 
+#include "HAL/IConsoleManager.h"
 #include "MaterialDomain.h"
 #include "MeshBatch.h"
 #include "MeshDrawShaderBindings.h"
@@ -7,6 +8,14 @@
 #include "ShaderParameterUtils.h"
 #include "terrain_render_state.h"
 #include "Logging/StructuredLog.h"
+
+namespace {
+bool should_probe_gpu_mesh() {
+    static const TConsoleVariableData<int32>* cvar = IConsoleManager::Get().
+        FindTConsoleVariableDataInt(TEXT("r.UDLOD.MeshProbe"));
+    return cvar != nullptr && cvar->GetValueOnRenderThread() != 0;
+}
+}
 
 class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactoryShaderParameters {
     DECLARE_TYPE_LAYOUT(FTerrainMeshVertexFactoryShaderParameters, NonVirtual);
@@ -142,6 +151,19 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
         );
         shader_bindings.Add(tile_tree_buffer_parameter, user_data->tile_tree_buffer_srv);
         shader_bindings.Add(geometry_tiles_buffer_parameter, user_data->geometry_tiles_buffer_srv);
+
+        if (should_probe_gpu_mesh()) {
+            static bool logged_successful_gpu_bind = false;
+            if (!logged_successful_gpu_bind) {
+                logged_successful_gpu_bind = true;
+                UE_LOGFMT(
+                    LogTemp,
+                    Display,
+                    "[UDLOD.MeshProbe] Bound terrain VF shader parameters for view={0}.",
+                    view->GetViewKey()
+                );
+            }
+        }
     }
 
 private:
@@ -173,7 +195,6 @@ IMPLEMENT_VERTEX_FACTORY_TYPE(
     "/Plugins/UDLODTerrain/terrain_mesh_vertex_factory.ush",
     EVertexFactoryFlags::UsedWithMaterials |
     EVertexFactoryFlags::SupportsDynamicLighting |
-    EVertexFactoryFlags::SupportsPositionOnly |
     EVertexFactoryFlags::SupportsPSOPrecaching
 );
 
@@ -181,8 +202,9 @@ FTerrainMeshVertexFactory::FTerrainMeshVertexFactory(
     const ERHIFeatureLevel::Type in_feature_level) : FVertexFactory(in_feature_level) {}
 
 void FTerrainMeshVertexFactory::InitRHI(FRHICommandListBase& RHICmdList) {
+    // This draw path still needs a valid graphics vertex declaration, but it does not consume
+    // any streamed vertex attributes because geometry is reconstructed from SV_VertexID.
     FVertexDeclarationElementList elements;
-    elements.Add(FVertexElement(0, 0, VET_Float3, 0, 0, false));
     InitDeclaration(elements);
 }
 

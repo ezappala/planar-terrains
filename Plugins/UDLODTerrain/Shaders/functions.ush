@@ -9,13 +9,16 @@
 
 #if defined(__RESHARPER__) || defined(__INTELLISENSE__)
 Terrain terrain;
+#define VERTEXSHADER 1
+#define PIXELSHADER 1
 #endif
 
 inline WorldCoordinate compute_world_coordinate(Coordinate coordinate, float height) {
     float2 uv = (float2(coordinate.xy) + coordinate.uv) / exp2(float(coordinate.lod));
 
-    float3 unit_position = float3(uv.x - 0.5f, 0.0f, uv.y - 0.5f);
-    float3 unit_normal = float3(0.0f, 1.0f, 0.0f);
+    // Unreal is Z-up, so keep the procedural terrain plane in XY and displace along +Z.
+    float3 unit_position = float3(uv.x - 0.5f, uv.y - 0.5f, 0.0f);
+    float3 unit_normal = float3(0.0f, 0.0f, 1.0f);
 
     float4x4 position_world_from_unit = affine3_to_square(terrain.world_from_unit);
     float3 world_position = mul(position_world_from_unit, float4(unit_position, 1.0f)).xyz;

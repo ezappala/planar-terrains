@@ -6,6 +6,5 @@
     <mapping directory="$PROJECT_DIR$/Plugins/ExtendedGraphicsProgramming" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/Plugins/SubsystemBrowserPlugin" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/Plugins/UE5-GPURuntimeTessellation" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/Plugins/UnrealGDAL" vcs="Git" />
   </component>
 </project>

@@ -1,21 +1,8 @@
-﻿#pragma once
+﻿// ReSharper disable CppInconsistentNaming
+#pragma once
 
 // ReSharper disable once CppUnusedIncludeDirective
 #include "/Engine/Private/Common.ush"
-
-// #define SAMPLE_GRAD 1
-// #define TILE_TREE_LOD 1
-// #define PREPASS 1
-// #define BLEND 1
-// #define MORPH 1
-// #define LIGHTING 1
-// #define PBR_LIGHTING 0
-// #define SHOW_DATA_LOD 0
-// #define SHOW_GEOMETRY_LOD 0
-// #define SHOW_TILE_TREE 0
-// #define SHOW_PIXELS 0
-// #define SHOW_UV 0
-// #define SHOW_NORMALS 0
 
 struct ViewCoordinate {
     uint2 xy;
@@ -125,7 +112,10 @@ Coordinate make_coordinate() {
 }
 
 Coordinate make_coordinate(
-    uint face, uint lod, uint2 xy, float2 uv
+    uint face,
+    uint lod,
+    uint2 xy,
+    float2 uv
 #if PIXELSHADER
     , float2 uv_dx, float2 uv_dy
 #endif
@@ -257,3 +247,10 @@ struct PrepassState {
 struct ApproximateHeight {
     float value;
 };
+
+template <typename T>
+T exchange(inout T ptr, in T val) {
+    T old = ptr;
+    ptr = val;
+    return old;
+}

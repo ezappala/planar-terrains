@@ -5,14 +5,20 @@
 #define LOCTEXT_NAMESPACE "FDebugViewerModule"
 
 void FDebugViewerModule::StartupModule() {
-    GTerrainDebugWindowRequested.AddRaw(this, &FDebugViewerModule::HandleWindowRequested);
+    UE_LOGFMT(LogTemp, Log, "Starting up debug viewer module");
+    TERRAIN_DEBUG_WINDOW_REQUESTED.AddRaw(this, &FDebugViewerModule::handle_window_requested);
+    if (TERRAIN_DEBUG_WINDOW_REQUESTED.IsBound()) {
+        UE_LOGFMT(LogTemp, Log, "Successfully bound to TERRAIN_DEBUG_WINDOW_REQUESTED delegate");
+    } else {
+        UE_LOGFMT(LogTemp, Error, "Failed to bind to TERRAIN_DEBUG_WINDOW_REQUESTED delegate");
+    }
 }
 
 void FDebugViewerModule::ShutdownModule() {
-    GTerrainDebugWindowRequested.RemoveAll(this);
+    TERRAIN_DEBUG_WINDOW_REQUESTED.RemoveAll(this);
 
-    TableWidget.Reset();
-    Window.Reset();
+    table_widget.Reset();
+    window.Reset();
 }
 
 #undef LOCTEXT_NAMESPACE

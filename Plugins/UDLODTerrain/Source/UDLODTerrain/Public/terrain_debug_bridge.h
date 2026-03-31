@@ -1,7 +1,9 @@
 ﻿#pragma once
-#include "CoreMinimal.h"
-#include "terrain_parent_actor.h"
 
-DECLARE_MULTICAST_DELEGATE_OneParam(FTerrainDebugWindowRequested, ATerrainParentActor*);
+#include "Delegates/Delegate.h"
+#include "Delegates/DelegateCombinations.h"
 
-inline static FTerrainDebugWindowRequested GTerrainDebugWindowRequested;
+class ATerrainParentActor;
+DECLARE_MULTICAST_DELEGATE_OneParam(FTerrainDebugWindowRequested, ATerrainParentActor*)
+
+inline FTerrainDebugWindowRequested TERRAIN_DEBUG_WINDOW_REQUESTED;

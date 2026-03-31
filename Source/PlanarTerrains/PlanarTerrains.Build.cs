@@ -20,7 +20,7 @@ public class PlanarTerrains : ModuleRules {
             "DynamicMesh", "MeshUtilities", "CustomMeshComponent",
             "MaterialUtilities", "Landscape", "ShaderCompilerCommon",
             "ShaderPreprocessor", "ExtendedGraphicsProgramming", "Imath", "Json",
-            "UDLODPreprocessor", "UDLODExt"
+            "UDLODPreprocessor", "UDLODExt", "DebugViewer"
         });
 
         PrivateDependencyModuleNames.AddRange(new[] {

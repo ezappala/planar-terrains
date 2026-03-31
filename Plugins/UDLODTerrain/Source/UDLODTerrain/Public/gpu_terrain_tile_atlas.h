@@ -11,22 +11,22 @@ END_SHADER_PARAMETER_STRUCT()
 
 struct FGpuTileAtlas {
     FGpuTileAtlas(
-        FRDGBuilder& gb,
         const FTileAtlas& tile_atlas,
         const FTerrainSettings& settings
     ) : attachments{
         ext::iter::map(
             tile_atlas.attachments,
-            [&gb, &tile_atlas, &settings](const FString& label, const FAttachment& attachment) {
+            [&tile_atlas, &settings](const FString& label, const FAttachment& attachment) {
                 return MakeTuple(
                     label,
-                    FGpuAttachment(gb, label, attachment, tile_atlas, settings));
+                    FGpuAttachment(label, attachment, tile_atlas, settings));
             })
     } {}
 
     TMap<FString, FGpuAttachment> attachments;
     TArray<FAttachmentTileWithData> upload_tiles;
     TArray<FAttachmentTileWithData> download_tiles;
+    bool bNeedsFullResync = true;
 
     friend bool operator ==(const FGpuTileAtlas& a, const FGpuTileAtlas& b) {
         return a.attachments.OrderIndependentCompareEqual(b.attachments);
@@ -38,8 +38,33 @@ struct FGpuTileAtlas {
         const FTileAtlas& tile_atlas,
         const FTerrainSettings& settings
     ) {
-        gpu_tile_atlas.Reset();
-        gpu_tile_atlas.Emplace(gb, tile_atlas, settings);
+        (void)gb;
+
+        auto needs_rebuild = [&tile_atlas, &settings](const FGpuTileAtlas& atlas) {
+            if (atlas.attachments.Num() != tile_atlas.attachments.Num()) { return true; }
+
+            for (const auto& [label, attachment] : tile_atlas.attachments) {
+                const FGpuAttachment* gpu_attachment = atlas.attachments.Find(label);
+                if (gpu_attachment == nullptr) { return true; }
+
+                const uint32 expected_index = static_cast<uint32>(settings.attachments.
+                    IndexOfByPredicate([&label](const FString& name) { return name == label; }));
+                const FAtlasBufferInfo expected_buffer_info{attachment, tile_atlas.lod_count};
+                if (gpu_attachment->index != expected_index ||
+                    !(gpu_attachment->buffer_info == expected_buffer_info)) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        const bool bRebuildAtlas = !gpu_tile_atlas.IsSet() || needs_rebuild(gpu_tile_atlas.GetValue());
+        if (bRebuildAtlas) {
+            gpu_tile_atlas.Reset();
+            gpu_tile_atlas.Emplace(tile_atlas, settings);
+            gpu_tile_atlas->bNeedsFullResync = true;
+        }
     }
 
     static void extract(
@@ -54,20 +79,26 @@ struct FGpuTileAtlas {
             return;
         }
 
-        gpu_tile_atlas->upload_tiles.Empty();
-        for (const auto& [loaded_tile, loaded_data] : tile_atlas.loaded_tile_data) {
-            const FTileLoadingState* tile_state = tile_atlas.tile_states.Find(
-                loaded_tile.coordinate);
-            if (tile_state == nullptr || !tile_state->state.is_loaded) { continue; }
+        if (gpu_tile_atlas->bNeedsFullResync) {
+            gpu_tile_atlas->upload_tiles.Empty();
+            for (const auto& [loaded_tile, loaded_data] : tile_atlas.loaded_tile_data) {
+                const FTileLoadingState* tile_state = tile_atlas.tile_states.Find(
+                    loaded_tile.coordinate);
+                if (tile_state == nullptr || !tile_state->state.is_loaded) { continue; }
 
-            gpu_tile_atlas->upload_tiles.Add(
-                FAttachmentTileWithData{
-                    tile_state->atlas_index,
-                    loaded_tile.label,
-                    loaded_data
-                }
-            );
+                gpu_tile_atlas->upload_tiles.Add(
+                    FAttachmentTileWithData{
+                        tile_state->atlas_index,
+                        loaded_tile.label,
+                        loaded_data
+                    }
+                );
+            }
+            gpu_tile_atlas->bNeedsFullResync = false;
+        } else {
+            gpu_tile_atlas->upload_tiles.Append(MoveTemp(tile_atlas.uploading_tiles));
         }
+        tile_atlas.uploading_tiles.Reset();
 
         tile_atlas.downloading_tiles.Append(gpu_tile_atlas->download_tiles);
         gpu_tile_atlas->download_tiles.Empty();
@@ -77,6 +108,12 @@ struct FGpuTileAtlas {
         FRDGBuilder& gb,
         TOptional<FGpuTileAtlas>& gpu_tile_atlas
     ) {
+        if (!gpu_tile_atlas.IsSet()) { return; }
+
+        for (TPair<FString, FGpuAttachment>& attachment_entry : gpu_tile_atlas->attachments) {
+            attachment_entry.Value.prepare(gb, attachment_entry.Key);
+        }
+
         gpu_tile_atlas->exec_upload_tiles(gb);
     }
 

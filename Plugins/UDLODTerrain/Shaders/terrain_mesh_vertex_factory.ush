@@ -1,3 +1,6 @@
+// ReSharper disable CppInconsistentNaming
+// ReSharper disable CppMissingLinebreak
+// ReSharper disable CppBadControlBracesLineBreaks
 #pragma once
 
 #include "/Engine/Private/Common.ush"
@@ -10,6 +13,16 @@
 #include "attachments.ush"
 #include "bindings.ush"
 #include "functions.ush"
+
+#if defined(__RESHARPER__) || defined(__INTELLISENSE__)
+#include "/Engine/Private/MaterialTemplate.ush"
+#define VERTEXSHADER 1
+#define PIXELSHADER 1
+#define NUM_TEX_COORD_INTERPOLATORS 3
+#define INSTANCED_STEREO 1
+#define INTERPOLATE_VERTEX_COLOR 1
+#define NUM_MATERIAL_TEXCOORDS_VERTEX 3
+#endif
 
 struct FVertexFactoryInput {
     uint VertexId : SV_VertexID;
@@ -56,7 +69,7 @@ struct FVertexFactoryInterpolantsVSToPS {
 #endif
 };
 
-FTerrainVertexInfo ComputeTerrainVertexInfo(FVertexFactoryInput input) {
+FTerrainVertexInfo compute_terrain_vertex_info(FVertexFactoryInput input) {
     FTerrainVertexInfo info;
     info.tile_index = input.VertexId / terrain_view[0].vertices_per_tile;
     info.coordinate = compute_coordinate(input.VertexId);
@@ -68,7 +81,7 @@ FTerrainVertexInfo ComputeTerrainVertexInfo(FVertexFactoryInput input) {
     return info;
 }
 
-float3 BuildWorldTangent(float3 world_normal) {
+float3 build_world_tangent(float3 world_normal) {
     float3 tangent_seed = abs(world_normal.y) < 0.999f
         ? float3(0.0f, 1.0f, 0.0f)
         : float3(1.0f, 0.0f, 0.0f);
@@ -76,17 +89,17 @@ float3 BuildWorldTangent(float3 world_normal) {
 }
 
 FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput input) {
-    FTerrainVertexInfo terrain_info = ComputeTerrainVertexInfo(input);
+    FTerrainVertexInfo terrain_info = compute_terrain_vertex_info(input);
     AtlasTile tile = lookup_tile(terrain_info.coordinate, terrain_info.blend);
     float height = sample_height(tile);
 
-    FVertexFactoryIntermediates intermediates = (FVertexFactoryIntermediates)0;
+    FVertexFactoryIntermediates intermediates;
     intermediates.tile_index = terrain_info.tile_index;
     intermediates.world_position = apply_height(terrain_info.world_coordinate, height);
     intermediates.world_normal = terrain_info.world_coordinate.normal;
-    intermediates.world_tangent_x = BuildWorldTangent(intermediates.world_normal);
-    intermediates.world_tangent_y = normalize(
-        cross(intermediates.world_normal, intermediates.world_tangent_x));
+    intermediates.world_tangent_x = build_world_tangent(intermediates.world_normal);
+    intermediates.world_tangent_y =
+        normalize(cross(intermediates.world_normal, intermediates.world_tangent_x));
     intermediates.tile_uv = terrain_info.coordinate.uv;
 
     float height_range = max(terrain.max_height - terrain.min_height, 1.0f);
@@ -94,9 +107,8 @@ FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput in
     float normalized_distance = saturate(
         terrain_info.world_coordinate.view_distance / max(terrain_view[0].load_distance, 1.0f)
     );
-    float normalized_lod = (float(terrain_info.coordinate.lod) + 1.0f) / max(
-        float(terrain.lod_count),
-        1.0f);
+    float normalized_lod = (float(terrain_info.coordinate.lod) + 1.0f) /
+        max(float(terrain.lod_count), 1.0f);
     intermediates.debug_uv = float2(normalized_height, normalized_distance);
     intermediates.vertex_color = float4(
         normalized_lod,
@@ -110,20 +122,17 @@ FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput in
 half3x3 VertexFactoryGetTangentToLocal(
     FVertexFactoryInput input,
     FVertexFactoryIntermediates intermediates) {
-    (void)input;
-    (void)intermediates;
     return half3x3(
         float3(1.0f, 0.0f, 0.0f),
-        float3(0.0f, 0.0f, 1.0f),
-        float3(0.0f, 1.0f, 0.0f)
+        float3(0.0f, 1.0f, 0.0f),
+        float3(0.0f, 0.0f, 1.0f)
     );
 }
 
 float4 VertexFactoryGetWorldPosition(
     FVertexFactoryInput input,
     FVertexFactoryIntermediates intermediates) {
-    (void)input;
-    return float4(intermediates.world_position - DFDemote(ResolvedView.PreViewTranslation), 1.0f);
+    return float4(intermediates.world_position + DFDemote(ResolvedView.PreViewTranslation), 1.0f);
 }
 
 float4 VertexFactoryGetWorldPosition(FPositionOnlyVertexFactoryInput input) {
@@ -141,28 +150,17 @@ float4 VertexFactoryGetRasterizedWorldPosition(
     FVertexFactoryInput input,
     FVertexFactoryIntermediates intermediates,
     float4 in_world_position
-) {
-    (void)input;
-    (void)intermediates;
-    return in_world_position;
-}
+) { return in_world_position; }
 
 float3 VertexFactoryGetPositionForVertexLighting(
     FVertexFactoryInput input,
     FVertexFactoryIntermediates intermediates,
     float3 translated_world_position
-) {
-    (void)input;
-    (void)intermediates;
-    return translated_world_position;
-}
+) { return translated_world_position; }
 
 float3 VertexFactoryGetWorldNormal(
     FVertexFactoryInput input,
-    FVertexFactoryIntermediates intermediates) {
-    (void)input;
-    return intermediates.world_normal;
-}
+    FVertexFactoryIntermediates intermediates) { return intermediates.world_normal; }
 
 float3 VertexFactoryGetWorldNormal(FPositionAndNormalOnlyVertexFactoryInput input) {
     FVertexFactoryIntermediates intermediates = GetVertexFactoryIntermediates(input);
@@ -174,9 +172,6 @@ FVertexFactoryInterpolantsVSToPS VertexFactoryGetInterpolantsVSToPS(
     FVertexFactoryIntermediates intermediates,
     FMaterialVertexParameters vertex_parameters
 ) {
-    (void)input;
-    (void)vertex_parameters;
-
     FVertexFactoryInterpolantsVSToPS interpolants = (FVertexFactoryInterpolantsVSToPS)0;
     interpolants.TangentToWorld0 = float4(intermediates.world_tangent_x, 0.0f);
     interpolants.TangentToWorld2 = float4(intermediates.world_normal, 1.0f);
@@ -209,7 +204,7 @@ FVertexFactoryInterpolantsVSToPS VertexFactoryGetInterpolantsVSToPS(
     interpolants.Color = intermediates.vertex_color;
 #endif
     interpolants.TerrainTileUV = intermediates.tile_uv;
-    interpolants.TerrainData = float4((float)intermediates.tile_index, intermediates.height, 0.0f, 0.0f);
+    interpolants.TerrainData = float4(intermediates.tile_index, intermediates.height, 0.0f, 0.0f);
 
     return interpolants;
 }
@@ -221,11 +216,9 @@ FMaterialVertexParameters GetMaterialVertexParameters(
     half3x3 tangent_to_local,
     bool bPreviousFrame = false
 ) {
-    (void)input;
-    (void)tangent_to_local;
-    (void)bPreviousFrame;
-
     FMaterialVertexParameters result = MakeInitializedMaterialVertexParameters();
+    FPrimitiveSceneData primitive_data = GetPrimitiveDataFromUniformBuffer();
+    result.SceneData.Primitive = primitive_data;
     result.WorldPosition = world_position;
     result.TangentToWorld = half3x3(
         intermediates.world_tangent_x,
@@ -247,8 +240,12 @@ FMaterialVertexParameters GetMaterialVertexParameters(
 #endif
 
     result.VertexColor = intermediates.vertex_color;
+    result.PositionInstanceSpace = intermediates.world_position;
+    result.PositionPrimitiveSpace = intermediates.world_position;
     result.PreSkinnedPosition = intermediates.world_position;
     result.PreSkinnedNormal = intermediates.world_normal;
+    result.PrevFrameLocalToWorld = primitive_data.LocalToWorld;
+    result.LWCData = MakeMaterialLWCData(result);
     return result;
 }
 
@@ -281,7 +278,7 @@ FMaterialPixelParameters GetMaterialPixelParameters(
     AtlasTile tile = lookup_tile(coordinate, blend);
     float4 albedo = sample_albedo(tile);
 #if INTERPOLATE_VERTEX_COLOR
-    result.VertexColor = albedo;
+    result.VertexColor = interpolants.Color;
 #else
     result.VertexColor = albedo;
 #endif
@@ -291,39 +288,18 @@ FMaterialPixelParameters GetMaterialPixelParameters(
 }
 
 float4 VertexFactoryGetTranslatedPrimitiveVolumeBounds(
-    FVertexFactoryInterpolantsVSToPS interpolants) {
-    (void)interpolants;
-    return float4(0.0f, 0.0f, 0.0f, 0.0f);
-}
+    FVertexFactoryInterpolantsVSToPS interpolants) { return float4(0.0f, 0.0f, 0.0f, 0.0f); }
 
-uint VertexFactoryGetPrimitiveId(FVertexFactoryInterpolantsVSToPS interpolants) {
-    (void)interpolants;
-    return 0;
-}
+uint VertexFactoryGetPrimitiveId(FVertexFactoryInterpolantsVSToPS interpolants) { return 0; }
 
 #if INSTANCED_STEREO
-uint VertexFactoryGetEyeIndex(uint instance_id) {
-    (void)instance_id;
-    return 0;
-}
+uint VertexFactoryGetEyeIndex(uint instance_id) { return 0; }
 #endif
 
-uint VertexFactoryGetViewIndex(FVertexFactoryIntermediates intermediates) {
-    (void)intermediates;
-    return 0;
-}
+uint VertexFactoryGetViewIndex(FVertexFactoryIntermediates intermediates) { return 0; }
 
-uint VertexFactoryGetViewIndex(FVertexFactoryInput input) {
-    (void)input;
-    return 0;
-}
+uint VertexFactoryGetViewIndex(FVertexFactoryInput input) { return 0; }
 
-uint VertexFactoryGetInstanceIdLoadIndex(FVertexFactoryIntermediates intermediates) {
-    (void)intermediates;
-    return 0;
-}
+uint VertexFactoryGetInstanceIdLoadIndex(FVertexFactoryIntermediates intermediates) { return 0; }
 
-uint VertexFactoryGetInstanceIdLoadIndex(FVertexFactoryInput input) {
-    (void)input;
-    return 0;
-}
+uint VertexFactoryGetInstanceIdLoadIndex(FVertexFactoryInput input) { return 0; }
