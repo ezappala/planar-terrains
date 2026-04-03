@@ -1,0 +1,61 @@
+// ReSharper disable CppInconsistentNaming
+
+#include "attachments.ush"
+#include "bindings.ush"
+#include "common.ush"
+#include "functions.ush"
+
+struct GpuSampleProbe {
+    uint atlas_index;
+    uint geometry_lod;
+    uint sampled_lod;
+    uint padding0;
+    float4 albedo;
+    float height;
+    float approximate_height;
+    float normal_z;
+    float padding1;
+};
+RWStructuredBuffer<GpuSampleProbe> output;
+
+[numthreads(1, 1, 1)]
+void probe_samples(uint3 id : SV_DispatchThreadID) {
+    (void)id;
+
+    GpuSampleProbe probe = (GpuSampleProbe)0;
+    probe.atlas_index = 0xFFFFFFFFu;
+    probe.albedo = float4(-1.0f, -1.0f, -1.0f, -1.0f);
+
+    if (terrain_view[0].geometry_tile_count == 0u) {
+        output[0] = probe;
+        return;
+    }
+
+    GeometryTile geometry_tile = geometry_tiles[0];
+    Coordinate coordinate = make_coordinate(
+        geometry_tile.face,
+        geometry_tile.lod,
+        geometry_tile.xy,
+        float2(0.5f, 0.5f)
+    );
+    WorldCoordinate world_coordinate = compute_world_coordinate(
+        coordinate,
+        approximate_height[0]
+    );
+    Blend blend = compute_blend(world_coordinate.view_distance);
+    AtlasTile tile = lookup_tile(coordinate, blend);
+
+    probe.atlas_index = tile.index;
+    probe.geometry_lod = geometry_tile.lod;
+    probe.sampled_lod = tile.coordinate.lod;
+
+    if (tile.index != 0xFFFFFFFFu) {
+        probe.height = sample_height(tile);
+        probe.albedo = sample_albedo(tile);
+    }
+
+    probe.approximate_height = approximate_height[0];
+    probe.normal_z = world_coordinate.normal.z;
+
+    output[0] = probe;
+}
