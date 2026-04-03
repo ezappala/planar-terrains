@@ -64,6 +64,40 @@ TOptional<TArray<T>> try_read_band(GDALRasterBand* band) {
     return read_result->data();
 }
 
+inline FAttachmentTileData load_color_tile_data(
+    const FAttachment& attachment,
+    const TArray<GDALRasterBand*>& bands,
+    const int32 pixel_count
+) {
+    const TOptional<TArray<uint8>> r = bands.Num() > 0
+        ? try_read_band<uint8>(bands[0])
+        : NullOpt;
+    const TOptional<TArray<uint8>> g = bands.Num() > 1
+        ? try_read_band<uint8>(bands[1])
+        : NullOpt;
+    const TOptional<TArray<uint8>> b = bands.Num() > 2
+        ? try_read_band<uint8>(bands[2])
+        : NullOpt;
+    const TOptional<TArray<uint8>> a = bands.Num() > 3
+        ? try_read_band<uint8>(bands[3])
+        : NullOpt;
+    if (!r.IsSet() || !g.IsSet() || !b.IsSet() || r->Num() != pixel_count || g->Num() !=
+        pixel_count || b->Num() != pixel_count) { return make_zero_tile_data(attachment); }
+
+    const bool bHasAlpha = a.IsSet() && a->Num() == pixel_count;
+    TArray<TStaticArray<uint8, 4>> data;
+    data.SetNum(pixel_count);
+    for (int32 index = 0; index < pixel_count; ++index) {
+        data[index] = TStaticArray<uint8, 4>{
+            (*r)[index],
+            (*g)[index],
+            (*b)[index],
+            bHasAlpha ? (*a)[index] : 255u
+        };
+    }
+    return make_tile_data_variant(MoveTemp(data));
+}
+
 inline FAttachmentTileData load_tile_data(
     const FAttachment& attachment,
     const FAttachmentTile& tile
@@ -97,34 +131,7 @@ inline FAttachmentTileData load_tile_data(
 
     switch (attachment.attachment_format) {
     case EAttachmentFormat::Rgb8U:
-    case EAttachmentFormat::Rgba8U: {
-        const TOptional<TArray<uint8>> r = bands.Num() > 0
-            ? try_read_band<uint8>(bands[0])
-            : NullOpt;
-        const TOptional<TArray<uint8>> g = bands.Num() > 1
-            ? try_read_band<uint8>(bands[1])
-            : NullOpt;
-        const TOptional<TArray<uint8>> b = bands.Num() > 2
-            ? try_read_band<uint8>(bands[2])
-            : NullOpt;
-        const TOptional<TArray<uint8>> a = bands.Num() > 3
-            ? try_read_band<uint8>(bands[3])
-            : NullOpt;
-        if (!r.IsSet() || !g.IsSet() || !b.IsSet() || r->Num() != pixel_count || g->Num() !=
-            pixel_count || b->Num() != pixel_count) { return make_zero_tile_data(attachment); }
-
-        TArray<TStaticArray<uint8, 4>> data;
-        data.SetNum(pixel_count);
-        for (int32 index = 0; index < pixel_count; ++index) {
-            data[index] = TStaticArray<uint8, 4>{
-                (*r)[index],
-                (*g)[index],
-                (*b)[index],
-                a.IsSet() && a->Num() == pixel_count ? (*a)[index] : 255u
-            };
-        }
-        return make_tile_data_variant(MoveTemp(data));
-    }
+    case EAttachmentFormat::Rgba8U: return load_color_tile_data(attachment, bands, pixel_count);
     case EAttachmentFormat::R16U: {
         const TOptional<TArray<uint16>> band = bands.Num() > 0
             ? try_read_band<uint16>(bands[0])

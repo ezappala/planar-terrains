@@ -5,7 +5,6 @@
 #include "preprocess_neighbors.h"
 #include "preprocess_result.h"
 #include "preprocess_shared_dataset.h"
-#include "Algo/Accumulate.h"
 #include "Containers/StaticArray.h"
 
 namespace preprocess {
@@ -42,13 +41,13 @@ PreprocessResult<void> stitch_corners(
         {{0, 0}, {-1, 0}, {0, 1}}
     };
 
-    const auto rasters_result = try_collect_rasterbands(tile_dataset);
-    if (!rasters_result.has_value()) {
-        return std::unexpected{FPreprocessError::Gdal(rasters_result.error())};
-    }
+    for (int32 raster_index = 1; raster_index <= tile_dataset->GetRasterCount(); ++raster_index) {
+        GDALRasterBand* raster = tile_dataset->GetRasterBand(raster_index);
+        if (raster == nullptr) {
+            return std::unexpected{FPreprocessError::Gdal(CPLE_IllegalArg)};
+        }
 
-    for (GDALRasterBand* raster : rasters_result.value()) {
-        TArray<PreprocessResult<T>> corner_values{};
+        double sum = 0.0;
         for (uint8 j = 0; j < 3; ++j) {
             const auto offset = corner_offsets[corner][j];
             ext::BufferResult<T> buffer_result =
@@ -67,16 +66,10 @@ PreprocessResult<void> stitch_corners(
             }
             ext::Buffer<T> buffer = buffer_result.value();
             TArray<T>& data = buffer.data();
-            corner_values.Emplace(PreprocessResult<T>{data[0]});
+            sum += static_cast<double>(data[0]);
         }
 
-        const double avg = [&] {
-            TArray<double> as_f64{};
-            for (auto val : corner_values) { as_f64.Emplace(static_cast<double>(val.value())); }
-            const double sum = Algo::Accumulate<double>(as_f64, 0.0);
-            return sum / as_f64.Num();
-        }();
-
+        const double avg = sum / 3.0;
         auto buffer = ext::Buffer<T>{{static_cast<T>(avg)}, {1, 1}};
         const auto write_result = write<T>(
             raster,

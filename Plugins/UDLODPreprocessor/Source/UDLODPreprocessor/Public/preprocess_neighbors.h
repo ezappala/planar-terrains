@@ -22,18 +22,6 @@ PreprocessResult<void> neighbor_data(
     const auto size = sizes[i];
     const auto dst_offset = dst_offsets[i];
     const auto dst_size = size;
-    const auto tile_rasters_result = try_collect_rasterbands(tile_dataset);
-    if (!tile_rasters_result.has_value()) {
-        return std::unexpected{FPreprocessError::Gdal(tile_rasters_result.error())};
-    }
-
-    TArray<GDALRasterBand*> tile_rasters = tile_rasters_result.value();
-
-    const auto neighbor_rasters_result = try_collect_rasterbands(neighbor_dataset);
-    if (!neighbor_rasters_result.has_value()) {
-        return std::unexpected{FPreprocessError::Gdal(neighbor_rasters_result.error())};
-    }
-    TArray<GDALRasterBand*> neighbor_rasters = neighbor_rasters_result.value();
 
     TTuple<isize_c, usize_c> rr = [&]() -> TTuple<isize_c, usize_c> {
         switch (rotation) {
@@ -71,12 +59,17 @@ PreprocessResult<void> neighbor_data(
     }();
 
     const auto& [src_offset, src_size] = rr;
+    const int32 raster_count = FMath::Min(
+        tile_dataset->GetRasterCount(),
+        neighbor_dataset->GetRasterCount());
 
-    auto zipped_rasters = ext::iter::zip<GDALRasterBand*, GDALRasterBand*>(
-        tile_rasters,
-        neighbor_rasters);
+    for (int32 raster_index = 1; raster_index <= raster_count; ++raster_index) {
+        GDALRasterBand* tile_raster = tile_dataset->GetRasterBand(raster_index);
+        GDALRasterBand* neighbor_raster = neighbor_dataset->GetRasterBand(raster_index);
+        if (tile_raster == nullptr || neighbor_raster == nullptr) {
+            return std::unexpected{FPreprocessError::Gdal(CPLE_IllegalArg)};
+        }
 
-    for (const auto& [tile_raster, neighbor_raster] : zipped_rasters) {
         ext::BufferResult<T> buffer_result =
             read_as<T>(neighbor_raster, src_offset, src_size, src_size);
 

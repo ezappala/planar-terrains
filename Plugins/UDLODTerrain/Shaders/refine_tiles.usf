@@ -1,4 +1,4 @@
-﻿// ReSharper disable CppInconsistentNaming
+﻿//ReSharper disable CppInconsistentNaming
 #if defined(__RESHARPER__) || defined(__INTELLISENSE__)
 #define PREPASS 1
 #define COMPUTESHADER 1
@@ -17,58 +17,80 @@ RWStructuredBuffer<PrepassState> state;
 RWStructuredBuffer<TileCoordinate> temporary_tiles;
 RWStructuredBuffer<GeometryTile> final_tiles;
 
+PrepassState get_state() { return state[0]; }
+
+void set_state(PrepassState s) { state[0] = s; }
+
 int child_index() {
-    int result = 0;
-    InterlockedAdd(
-        state[0].child_index,
-        state[0].counter,
-        result
-    );
-    return result;
+    PrepassState s = get_state();
+    int original;
+    InterlockedAdd(state[0].child_index, s.counter, original);
+    return original;
 }
 
 int parent_index(uint id) {
-    return asint(terrain_view[0].geometry_tile_count - 1u) * clamp(state[0].counter, 0, 1) -
-        asint(id) * state[0].counter;
+    PrepassState s = get_state();
+    int clamped_counter = clamp(s.counter, 0, 1);
+    return int(terrain_view[0].geometry_tile_count - 1u) * clamped_counter - int(id) * s.counter;
 }
 
 int final_index() {
-    int result = 0;
-    InterlockedAdd(
-        state[0].final_index,
-        1,
-        result
-    );
-    return result;
+    int original;
+    InterlockedAdd(state[0].final_index, 1, original);
+    return original;
 }
 
 bool should_be_divided(Coordinate coordinate, WorldCoordinate world_coordinate) {
-    return exp2(asfloat(coordinate.lod + 1)) <
-        terrain_view[0].subdivision_distance / world_coordinate.view_distance;
+    if (coordinate.lod + 1u >= terrain.lod_count) { return false; }
+
+    float2 next_tile_count = get_lod_tile_count_f(coordinate.lod + 1u);
+    float next_resolution = max(next_tile_count.x, next_tile_count.y);
+    return next_resolution < terrain_view[0].subdivision_distance / world_coordinate.view_distance;
 }
 
 void subdivide(TileCoordinate tile) {
-    [unroll]
-    for (uint i = 0u; i < 4u; i = i + 1u) {
-        uint2 child_xy = uint2((tile.xy.x << 1u) + (i & 1u), (tile.xy.y << 1u) + (i >> 1u & 1u));
-        uint child_lod = tile.lod + 1u;
+    uint child_lod = tile.lod + 1u;
+    if (child_lod >= terrain.lod_count) { return; }
 
-        temporary_tiles[child_index()] = tile_coordinate(tile.face, child_lod, child_xy);
+    uint2 current_tile_count = get_lod_tile_count(tile.lod);
+    uint2 next_tile_count = get_lod_tile_count(child_lod);
+    float2 uv_min = float2(tile.xy) / max(float2(current_tile_count), 1.0f);
+    float2 uv_max = float2(tile.xy + 1u) / max(float2(current_tile_count), 1.0f);
+
+    uint2 child_min = uint2(floor(uv_min * float2(next_tile_count)));
+    uint2 child_max = uint2(
+        ceil(uv_max * float2(next_tile_count) - float2(1e-6f, 1e-6f)) - 1.0f
+    );
+    child_min = min(child_min, next_tile_count - 1u);
+    child_max = min(child_max, next_tile_count - 1u);
+
+    [loop]
+    for (uint child_y = child_min.y; child_y <= child_max.y; ++child_y) {
+        [loop]
+        for (uint child_x = child_min.x; child_x <= child_max.x; ++child_x) {
+            temporary_tiles[child_index()] = tile_coordinate(
+                tile.face,
+                child_lod,
+                uint2(child_x, child_y)
+            );
+        }
     }
 }
 
 bool frustum_cull_aabb(Coordinate coordinate) {
-    if (coordinate.lod == 0) {
-        return false;
-    }
+    if (coordinate.lod == 0) { return false; }
 
     float3 aabb_min = float3(3.40282e+38f, 3.40282e+38f, 3.40282e+38f);
     float3 aabb_max = float3(-3.40282e+38f, -3.40282e+38f, -3.40282e+38f);
 
     [unroll]
     for (uint i = 0u; i < 4u; i = i + 1u) {
-        float2 corner_uv = float2(asfloat(i & 1u), asfloat(i >> 1u & 1u));
-        Coordinate corner_coordinate = make_coordinate(coordinate.face, coordinate.lod, coordinate.xy, corner_uv);
+        float2 corner_uv = float2((float)(i & 1u), (float)(i >> 1u & 1u));
+        Coordinate corner_coordinate = make_coordinate(
+            coordinate.face,
+            coordinate.lod,
+            coordinate.xy,
+            corner_uv);
         WorldCoordinate corner_world_coordinate = compute_world_coordinate(corner_coordinate);
         float3 corner_low = apply_height(corner_world_coordinate, terrain.min_height);
         float3 corner_high = apply_height(corner_world_coordinate, terrain.max_height);
@@ -80,14 +102,13 @@ bool frustum_cull_aabb(Coordinate coordinate) {
     [unroll]
     for (uint i = 0u; i < 6u; i = i + 1u) {
         float4 half_space = terrain_view[0].half_spaces[i];
-        float4 closest_corner = float4(
-            select(half_space.xyz > float3(0.0f, 0.0f, 0.0f), aabb_min, aabb_max),
-            1.0f
+        float3 closest_corner = float3(
+            half_space.x > 0.0 ? aabb_max.x : aabb_min.x,
+            half_space.y > 0.0 ? aabb_max.y : aabb_min.y,
+            half_space.z > 0.0 ? aabb_max.z : aabb_min.z
         );
 
-        if (dot(half_space, closest_corner) < 0.0f) {
-            return true;
-        }
+        if (dot(half_space, float4(closest_corner, 1.0)) < 0.0f) { return true; }
     }
 
     return false;
@@ -105,8 +126,8 @@ bool frustum_cull_sphere(Coordinate coordinate) {
     float radius = 0.0f;
 
     [unroll]
-    for (uint i = 0u; i < 4u; i = i + 1u) {
-        float2 corner_uv = float2(asfloat(i & 1u), asfloat(i >> 1u & 1u));
+    for (uint i = 0u; i < 4u; ++i) {
+        float2 corner_uv = float2((float)(i & 1u), (float)(i >> 1u & 1u));
         Coordinate corner_coordinate = make_coordinate(
             coordinate.face,
             coordinate.lod,
@@ -124,7 +145,7 @@ bool frustum_cull_sphere(Coordinate coordinate) {
     }
 
     [unroll]
-    for (uint i = 0u; i < 6u; i = i + 1u) {
+    for (uint i = 0u; i < 6u; ++i) {
         float4 half_space = terrain_view[0].half_spaces[i];
         if (dot(half_space, float4(center_position, 1.0f)) + radius < 0.0f) { return true; }
     }
@@ -133,10 +154,12 @@ bool frustum_cull_sphere(Coordinate coordinate) {
 }
 
 bool horizon_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
-    // The Bevy reference uses horizon culling for curved/ellipsoidal terrain.
-    // PlanarTerrains runs single-face planar terrain configs, so this test becomes
-    // over-aggressive once the terrain basis is remapped to Unreal's Z-up space.
-    // Keep the planar path conservative until the procedural draw is stable again.
+    (void)coordinate;
+    (void)world_coordinate;
+
+    // The current Unreal runtime only targets planar datasets. The old horizon test came from the
+    // spheroid path and intermittently rejects valid planar tiles as the camera moves, which shows
+    // up as flashing patches and disappearing strips.
     return false;
 }
 
@@ -145,32 +168,31 @@ bool no_data_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
     blend.lod = min(coordinate.lod, blend.lod);
     AtlasTile tile = lookup_tile(coordinate, blend);
 
-    return tile.index == 4294967295u;
+    return tile.index == 0xFFFFFFFFu;
 }
 
 bool cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
-    if (frustum_cull_sphere(coordinate)) {
+    return false;
+    if (frustum_cull_aabb(coordinate)) {
         return true;
     }
 
-    if (horizon_cull(coordinate, world_coordinate)) {
-        return true;
-    }
+    // if (frustum_cull_sphere(coordinate)) { return true; }
 
-    if (no_data_cull(coordinate, world_coordinate)) {
-        return true;
-    }
+    if (horizon_cull(coordinate, world_coordinate)) { return true; }
+
+    if (no_data_cull(coordinate, world_coordinate)) { return true; }
 
     return false;
 }
 
 GeometryTile prepare_tile(TileCoordinate tile) {
-    float4 distances;
-    float4 ratios;
+    float distances[4];
+    float ratios[4];
 
     [unroll]
-    for (uint i = 0u; i < 4u; i = i + 1u) {
-        float2 corner_uv = float2(asfloat(i & 1u), asfloat(i >> 1u & 1u));
+    for (uint i = 0u; i < 4u; ++i) {
+        float2 corner_uv = float2((float)(i & 1u), (float)(i >> 1u & 1u));
         Coordinate corner_coordinate = make_coordinate(tile.face, tile.lod, tile.xy, corner_uv);
         WorldCoordinate corner_world_coordinate = compute_world_coordinate(corner_coordinate);
 
@@ -192,20 +214,19 @@ GeometryTile prepare_tile(TileCoordinate tile) {
 
 [numthreads(64, 1, 1)]
 void refine_tiles(uint3 id : SV_DispatchThreadID) {
-    if (id.x >= state[0].tile_count) {
+    PrepassState s = get_state();
+
+    if (id.x >= s.tile_count) {
         return;
     }
 
     TileCoordinate tile = temporary_tiles[parent_index(id.x)];
     Coordinate coordinate = compute_subdivision_coordinate(tile);
     WorldCoordinate world_coordinate = compute_world_coordinate(coordinate);
-    if (cull(coordinate, world_coordinate)) {
-        return;
-    }
 
-    if (should_be_divided(coordinate, world_coordinate) && !frustum_cull_sphere(coordinate)) {
-        subdivide(tile);
-    } else {
+    if (cull(coordinate, world_coordinate)) { return; }
+
+    if (should_be_divided(coordinate, world_coordinate)) { subdivide(tile); } else {
         final_tiles[final_index()] = prepare_tile(tile);
     }
 }

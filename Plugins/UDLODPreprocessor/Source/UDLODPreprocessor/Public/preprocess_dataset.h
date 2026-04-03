@@ -110,6 +110,7 @@ PreprocessResult<GDALDatasetRef> create_empty_dataset(
         switch (context.attachment.format) {
         case EAttachmentFormat::R16U:
         case EAttachmentFormat::R32F: return "PHOTOMETRIC=MINISBLACK";
+        case EAttachmentFormat::Rgb8U:
         case EAttachmentFormat::Rgba8U: return "PHOTOMETRIC=RGB";
         default: return "";
         }

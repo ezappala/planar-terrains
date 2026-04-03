@@ -76,11 +76,19 @@ inline void tile_tree_compute_requests(
 }
 
 inline void tile_tree_adjust_to_tile_atlas(
-    const FTileTree* tile_tree,
+    FTileTree* tile_tree,
     FTileAtlas* tile_atlas
 ) {
-    for (auto& [tile, entry] : ext::iter::zip(tile_tree->tiles, tile_tree->data)) {
-        entry = tile_atlas->get_best_tile(tile.coordinate);
+    using usize = ext::types::usize;
+    for (usize face = 0; face < tile_tree->tiles.get_dim0(); ++face) {
+        for (usize lod = 0; lod < tile_tree->tiles.get_dim1(); ++lod) {
+            for (usize x = 0; x < tile_tree->tiles.get_dim2(); ++x) {
+                for (usize y = 0; y < tile_tree->tiles.get_dim3(); ++y) {
+                    const FTileState& tile = tile_tree->tiles(face, lod, x, y);
+                    tile_tree->data(face, lod, x, y) = tile_atlas->get_best_tile(tile.coordinate);
+                }
+            }
+        }
     }
 }
 
@@ -107,7 +115,7 @@ inline void tile_tree_update_terrain_view_buffer(
     *approximate_height = tile_tree->approximate_height;
     gb.QueueBufferUpload(tile_tree->approximate_height_buffer, approximate_height, sizeof(float));
 
-    TerrainView* terrain_view = gb.AllocParameters<TerrainView>();
+    FTerrainViewUpload* terrain_view = gb.AllocPOD<FTerrainViewUpload>();
     terrain_view->tree_size = tile_tree->tree_size;
     terrain_view->geometry_tile_count = tile_tree->geometry_tile_count;
     terrain_view->grid_size = static_cast<float>(tile_tree->grid_size);
@@ -122,16 +130,47 @@ inline void tile_tree_update_terrain_view_buffer(
     terrain_view->blend_range = tile_tree->blend_range;
     terrain_view->face = tile_tree->view_face;
     terrain_view->lod = tile_tree->view_lod;
-    terrain_view->coordinates = ext::iter::map(
-        tile_tree->view_coordinates,
-        [&tile_tree](const FCoordinate& view_coordinate) {
-            return view_coordinate_from_coordinate(view_coordinate, tile_tree->view_lod);
-        });
+
+    for (uint32 lod_index = 0; lod_index < UE_UDLOD_MAX_SHADER_LOD_COUNT; ++lod_index) {
+        const FVector2d lod_tile_count = tile_tree->get_tile_count(lod_index);
+        const uint32 lod_count_x = static_cast<uint32>(
+            FMath::Max<int32>(1, FMath::RoundToInt(lod_tile_count.X))
+        );
+        const uint32 lod_count_y = static_cast<uint32>(
+            FMath::Max<int32>(1, FMath::RoundToInt(lod_tile_count.Y))
+        );
+        terrain_view->lod_tile_counts[lod_index] = FUintVector4(lod_count_x, lod_count_y, 0u, 0u);
+    }
+
+    for (uint32 coordinate_index = 0; coordinate_index < UE_ARRAY_COUNT(terrain_view->coordinates);
+         ++coordinate_index) {
+        const FVector2d tile_count = tile_tree->get_tile_count(tile_tree->view_lod);
+        const int32 tile_count_x = FMath::Max(
+            1,
+            static_cast<int32>(FMath::RoundToInt(tile_count.X))
+        );
+        const int32 tile_count_y = FMath::Max(
+            1,
+            static_cast<int32>(FMath::RoundToInt(tile_count.Y))
+        );
+        const ViewCoordinate upload_coordinate = view_coordinate_from_coordinate(
+            tile_tree->view_coordinates[coordinate_index],
+            FIntPoint(tile_count_x, tile_count_y)
+        );
+        terrain_view->coordinates[coordinate_index].xy = upload_coordinate.xy;
+        terrain_view->coordinates[coordinate_index].uv = upload_coordinate.uv;
+    }
     terrain_view->height_scale = 1.0f;
     terrain_view->world_position = tile_tree->view_world_position;
-    terrain_view->half_spaces = tile_tree->half_spaces;
+    for (uint32 half_space_index = 0; half_space_index < UE_ARRAY_COUNT(terrain_view->half_spaces);
+         ++half_space_index) {
+        terrain_view->half_spaces[half_space_index] = tile_tree->half_spaces[half_space_index];
+    }
 
-    const FRDGBufferDesc terrain_view_desc = FRDGBufferDesc::CreateStructuredDesc<TerrainView>(1);
+    const FRDGBufferDesc terrain_view_desc = FRDGBufferDesc::CreateStructuredDesc(
+        sizeof(FTerrainViewUpload),
+        1
+    );
     AllocatePooledBuffer(
         terrain_view_desc,
         tile_tree->terrain_view_buffer_pooled,
@@ -143,7 +182,7 @@ inline void tile_tree_update_terrain_view_buffer(
         TEXT("UDLOD.TerrainViewUploadBuffer")
     );
 
-    gb.QueueBufferUpload(tile_tree->terrain_view_buffer, terrain_view, sizeof(TerrainView));
+    gb.QueueBufferUpload(tile_tree->terrain_view_buffer, terrain_view, sizeof(FTerrainViewUpload));
 
     const auto tile_tree_entry_count = tile_tree->data.size();
     const FRDGBufferDesc tile_tree_desc =
@@ -160,15 +199,16 @@ inline void tile_tree_update_terrain_view_buffer(
         TEXT("UDLOD.TileTreeEntriesUploadBuffer")
     );
 
-    const auto tile_tree_entries = gb.AllocPODArrayView<TileTreeEntry>(tile_tree_entry_count);
+    TileTreeEntry* tile_tree_entries = gb.AllocPODArray<TileTreeEntry>(tile_tree_entry_count);
     const TArray<TileTreeEntry>& source_entries = tile_tree->data.get_storage();
     for (uint32 index = 0; index < tile_tree_entry_count; ++index) {
         tile_tree_entries[index] = source_entries[static_cast<int32>(index)];
     }
 
-    gb.QueueBufferUpload<TileTreeEntry>(
+    gb.QueueBufferUpload(
         tile_tree->tile_tree_buffer,
-        tile_tree_entries
+        tile_tree_entries,
+        sizeof(TileTreeEntry) * tile_tree_entry_count
     );
 }
 

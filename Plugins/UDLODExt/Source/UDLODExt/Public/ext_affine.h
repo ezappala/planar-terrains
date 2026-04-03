@@ -74,12 +74,12 @@ FORCEINLINE FNormalMatrixPacked to_local_from_world_normal_packed(const FTransfo
     out.rows.M[0][0] = normal_mat.Row0[0];
     out.rows.M[0][1] = normal_mat.Row0[1];
     out.rows.M[0][2] = normal_mat.Row0[2];
-    out.rows.M[0][3] = 0.f;
+    out.rows.M[0][3] = normal_mat.Row1[0];
 
-    out.rows.M[1][0] = normal_mat.Row1[0];
-    out.rows.M[1][1] = normal_mat.Row1[1];
-    out.rows.M[1][2] = normal_mat.Row1[2];
-    out.rows.M[1][3] = 0.f;
+    out.rows.M[1][0] = normal_mat.Row1[1];
+    out.rows.M[1][1] = normal_mat.Row1[2];
+    out.rows.M[1][2] = normal_mat.Row2[0];
+    out.rows.M[1][3] = normal_mat.Row2[1];
 
     out.last = normal_mat.Row2[2];
     return out;

@@ -18,6 +18,11 @@ PreprocessResult<FPreprocessRunSummary> run_preprocess(
     if (normalized_settings.use_albedo && !normalized_settings.albedo_lod_count.IsSet()) {
         normalized_settings.albedo_lod_count = normalized_settings.heightmap_lod_count.Get(7);
     }
+    if (normalized_settings.use_albedo) {
+        normalized_settings.albedo_lod_count = clamp_lod_count(
+            normalized_settings.albedo_lod_count,
+            normalized_settings.heightmap_lod_count);
+    }
 
     const FDateTime started_at = FDateTime::UtcNow();
     const auto progress = create_progress(options.progress_mode);
@@ -53,6 +58,9 @@ PreprocessResult<FPreprocessRunSummary> run_preprocess(
     }
 
     if (bPreprocessAlbedo) {
+        albedo_context.lod_count = clamp_lod_count(
+            albedo_context.lod_count,
+            heightmap_context.lod_count);
         progress->enter_progress_frame(1.0f, LOCTEXT("Albedo", "Preprocessing albedo"));
         const auto albedo_result = preprocess(
             MoveTemp(albedo_dataset),

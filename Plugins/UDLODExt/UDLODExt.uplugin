@@ -18,6 +18,11 @@
       "Name": "UDLODExt",
       "Type": "Runtime",
       "LoadingPhase": "Default"
+    },
+    {
+      "Name": "UDLODExtTests",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
     }
   ],
   "Plugins": [

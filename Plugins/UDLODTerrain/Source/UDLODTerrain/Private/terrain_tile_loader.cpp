@@ -7,39 +7,40 @@
 namespace terrain::tile_loader {
 namespace {
 struct FAsyncTileLoadKey {
-    const FTileAtlas* atlas = nullptr;
+    uint64 atlas_id = 0;
     FAttachmentTile tile;
 
-    friend bool operator==(const FAsyncTileLoadKey& a, const FAsyncTileLoadKey& b) {
-        return a.atlas == b.atlas && a.tile == b.tile;
+    friend bool operator ==(const FAsyncTileLoadKey& a, const FAsyncTileLoadKey& b) {
+        return a.atlas_id == b.atlas_id && a.tile == b.tile;
     }
 };
 
 FORCEINLINE uint32 GetTypeHash(const FAsyncTileLoadKey& key) {
-    return HashCombine(GetTypeHash(key.atlas), GetTypeHash(key.tile));
+    return HashCombine(key.atlas_id, GetTypeHash(key.tile));
 }
 
 struct FAsyncTileLoadResult {
-    const FTileAtlas* atlas = nullptr;
+    uint64 atlas_id = 0;
     FAttachmentTile tile;
     FAttachmentTileData data;
 };
 
 class FAsyncTileLoaderState {
 public:
-    void enqueue(FTileAtlas* tile_atlas, const FAttachment& attachment, const FAttachmentTile& tile) {
-        const FAsyncTileLoadKey key{tile_atlas, tile};
+    void enqueue(
+        FTileAtlas* tile_atlas,
+        const FAttachment& attachment,
+        const FAttachmentTile& tile) {
+        const FAsyncTileLoadKey key{tile_atlas->instance_id, tile};
 
         FScopeLock _(&guard);
-        if (inflight.Contains(key)) {
-            return;
-        }
+        if (inflight.Contains(key)) { return; }
 
         inflight.Emplace(
             key,
             Async(
                 EAsyncExecution::ThreadPool,
-                [atlas_key = static_cast<const FTileAtlas*>(tile_atlas), attachment, tile]() mutable {
+                [atlas_key = tile_atlas->instance_id, attachment, tile]() mutable {
                     return FAsyncTileLoadResult{
                         atlas_key,
                         tile,
@@ -55,27 +56,39 @@ public:
 
         TArray<FAsyncTileLoadKey> completed_keys;
         for (auto& pair : inflight) {
-            if (!pair.Value.IsReady()) {
-                continue;
-            }
+            if (!pair.Value.IsReady()) { continue; }
 
-            completed.FindOrAdd(pair.Key.atlas).Add(pair.Value.Get());
+            completed.FindOrAdd(pair.Key.atlas_id).Add(pair.Value.Get());
             completed_keys.Add(pair.Key);
         }
 
-        for (const FAsyncTileLoadKey& key : completed_keys) {
-            inflight.Remove(key);
-        }
+        for (const FAsyncTileLoadKey& key : completed_keys) { inflight.Remove(key); }
 
         TArray<FAsyncTileLoadResult> ready_results;
-        completed.RemoveAndCopyValue(tile_atlas, ready_results);
+        completed.RemoveAndCopyValue(tile_atlas->instance_id, ready_results);
+
+        for (auto It = completed.CreateIterator(); It; ++It) {
+            const uint64 atlas_id = It.Key();
+            const bool is_current = atlas_id == tile_atlas->instance_id;
+
+            bool still_inflight = false;
+            for (const auto& pair : inflight) {
+                if (pair.Key.atlas_id == atlas_id) {
+                    still_inflight = true;
+                    break;
+                }
+            }
+
+            if (!is_current && !still_inflight) { completed.Remove(atlas_id); }
+        }
+
         return ready_results;
     }
 
 private:
     FCriticalSection guard;
     TMap<FAsyncTileLoadKey, TFuture<FAsyncTileLoadResult>> inflight;
-    TMap<const FTileAtlas*, TArray<FAsyncTileLoadResult>> completed;
+    TMap<uint64, TArray<FAsyncTileLoadResult>> completed;
 };
 
 FAsyncTileLoaderState& async_tile_loader() {
@@ -85,9 +98,7 @@ FAsyncTileLoaderState& async_tile_loader() {
 }
 
 void pump_tile_loads(FTileAtlas* tile_atlas) {
-    if (tile_atlas == nullptr) {
-        return;
-    }
+    if (tile_atlas == nullptr) { return; }
 
     TArray<FAttachmentTile> pending = MoveTemp(tile_atlas->to_load);
     tile_atlas->to_load.Reset();

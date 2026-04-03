@@ -271,6 +271,16 @@ inline EGDALDataType resolve_data_type(
     std::unreachable();
 }
 
+inline TOptional<int32> clamp_lod_count(
+    const TOptional<int32> requested_lod_count,
+    const TOptional<int32> max_lod_count
+) {
+    if (!max_lod_count.IsSet()) { return requested_lod_count; }
+    if (!requested_lod_count.IsSet()) { return max_lod_count; }
+
+    return FMath::Min(requested_lod_count.GetValue(), max_lod_count.GetValue());
+}
+
 inline PreprocessResult<TTuple<
     TTuple<GDALDatasetRef, FPreprocessContext>,
     TTuple<GDALDatasetRef, FPreprocessContext>
@@ -400,7 +410,9 @@ inline PreprocessResult<TTuple<
     albedo_context.attachment_label = settings.albedo_attachment_label;
     albedo_context.attachment = albedo_attachment;
     albedo_context.terrain_path = settings.terrain_path.Path;
-    albedo_context.lod_count = settings.albedo_lod_count;
+    albedo_context.lod_count = bUseAlbedo
+        ? clamp_lod_count(settings.albedo_lod_count, settings.heightmap_lod_count)
+        : settings.albedo_lod_count;
 
     return MakeTuple(
         MakeTuple(MoveTemp(heightmap_src_dataset), heightmap_context),

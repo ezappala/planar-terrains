@@ -106,7 +106,7 @@ FORCEINLINE void TransposeTransform(FMatrix2x4& DstTransform, const FMatrix44f& 
 #endif
 }
 
-void TransposeTransforms(
+UDLODEXT_API void TransposeTransforms(
     FMatrix2x4* DstTransforms,
     const FMatrix44f* SrcTransforms,
     int64 Count

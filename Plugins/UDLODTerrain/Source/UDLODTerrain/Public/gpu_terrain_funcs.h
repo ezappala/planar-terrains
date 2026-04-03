@@ -44,11 +44,23 @@ inline AttachmentConfig attachment_config_from_gpu_tile_atlas(
     if (!tile_atlas.IsSet()) {
         UE_LOGFMT(
             LogTemp,
-            Fatal,
+            Error,
             "GPU tile atlas is not set; cannot find attachment with label {n}",
             label
         );
+        return AttachmentConfig{};
     }
+
     const FGpuAttachment* attachment = find_attachment_by_label(tile_atlas->attachments, label);
-    return attachment != nullptr ? new_attachment_config(*attachment) : AttachmentConfig{};
+    if (attachment == nullptr) {
+        UE_LOGFMT(
+            LogTemp,
+            Error,
+            "Attachment with label {n} not found in GPU tile atlas; using default config",
+            label
+        );
+        return AttachmentConfig{};
+    }
+
+    return new_attachment_config(*attachment);
 }

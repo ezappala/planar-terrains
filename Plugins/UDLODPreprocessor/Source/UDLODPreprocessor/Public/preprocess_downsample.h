@@ -149,8 +149,13 @@ PreprocessResult<void> downsample(
                     }
 
                     Buffer<T>& tile_buffer = tile_buffer_result.value();
-                    TArray<TTuple<usize, usize, T>> child_iter = indexed_iter<T>(child_buffer);
-                    for (const auto& [child_x, child_y, child_value] : child_iter) {
+                    indexed_for_each<T>(
+                        child_buffer.data(),
+                        child_buffer.shape(),
+                        [&tile_buffer, &child_coordinate, &child_center_size, &no_data_value](
+                        const usize child_x,
+                        const usize child_y,
+                        const T child_value) {
                         const auto tile_xy = isize_c{
                             static_cast<isize>(child_x),
                             static_cast<isize>(child_y)} + isize_c{
@@ -158,10 +163,10 @@ PreprocessResult<void> downsample(
                             child_coordinate.xy.Y % 2} * static_cast<isize>(child_center_size);
 
                         if (no_data_value.IsSet() && child_value == no_data_value.GetValue()) {
-                            continue;
+                            return;
                         }
                         tile_buffer[tile_xy.transpose()] = child_value;
-                    }
+                    });
                 }
             }
 

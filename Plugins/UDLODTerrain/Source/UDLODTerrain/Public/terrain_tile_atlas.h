@@ -1,6 +1,5 @@
 ﻿#pragma once
 
-#include "ext_math.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphEvent.h"
 #include "terrain_config.h"
@@ -8,6 +7,8 @@
 #include "terrain_shader_helpers.h"
 #include "terrain_tile_state.h"
 #include "Logging/StructuredLog.h"
+
+inline static std::atomic<uint64> GTileAtlasInstanceCounter = 1;
 
 struct FTileAtlas {
     FTileAtlas() = delete;
@@ -37,12 +38,15 @@ struct FTileAtlas {
         min_height{config.min_height},
         height_scale{1280.},
         side_length{config.side_length},
-        terrain_buffer{nullptr} {}
+        instance_id{GTileAtlasInstanceCounter.fetch_add(1u, std::memory_order_relaxed)} {
+        initialize_pinned_tiles();
+    }
 
     TMap<FString, FAttachment> attachments;
     TMap<FTileCoordinate, FTileLoadingState> tile_states;
     TDeque<uint32> unused_indices;
     TSet<FTileCoordinate> existing_tiles;
+    TSet<FTileCoordinate> pinned_tiles;
     TArray<FAttachmentTileWithData> uploading_tiles;
     TArray<FAttachmentTileWithData> downloading_tiles;
     TArray<FAttachmentTile> to_load;
@@ -54,8 +58,7 @@ struct FTileAtlas {
     float height_scale;
     double side_length;
 
-    // TODO: where is this buffer instantiated?
-    FRDGUniformBufferRef terrain_buffer;
+    uint64 instance_id;
 
     friend bool operator==(const FTileAtlas& a, const FTileAtlas& b) {
         if (
@@ -126,6 +129,22 @@ struct FTileAtlas {
 
             best_tile_coordinate = best_tile_coordinate.parent().Get(FTileCoordinate::INVALID());
         }
+    }
+
+    const FTileLoadingState* find_tile_state(const FTileCoordinate& tile_coordinate) const {
+        return tile_states.Find(tile_coordinate);
+    }
+
+    bool is_pinned_tile(const FTileCoordinate& tile_coordinate) const {
+        return pinned_tiles.Contains(tile_coordinate);
+    }
+
+    FTileCoordinate get_face_root_tile(const uint32 face) const {
+        for (const FTileCoordinate& tile_coordinate : pinned_tiles) {
+            if (tile_coordinate.face == face) { return tile_coordinate; }
+        }
+
+        return FTileCoordinate::INVALID();
     }
 
     void tile_loaded(
@@ -231,34 +250,34 @@ struct FTileAtlas {
         );
     }
 
-    static void update_terrain_buffer(
-        FRDGBuilder& gb,
-        TArray<TPair<FTileAtlas, FTransform>>& tile_atlases
-    ) {
-        uint32 counter = 0;
-        for (const TPair<FTileAtlas, FTransform>& tile_atlas_data : tile_atlases) {
-            const FTileAtlas& tile_atlas = tile_atlas_data.Key;
-            const FTransform& transform = tile_atlas_data.Value;
-            gb.AddPass(
-                RDG_EVENT_NAME("UDLOD.UpdateTerrainBuffer.%d", counter++),
-                ERDGPassFlags::NeverCull | ERDGPassFlags::Raster,
-                [tile_atlas, transform](FRHICommandList& cmd_list) {
-                    const Terrain t = new_terrain(
-                        tile_atlas.lod_count,
-                        ext::math::scale(tile_atlas.side_length),
-                        tile_atlas.max_height,
-                        tile_atlas.min_height,
-                        tile_atlas.height_scale,
-                        transform
-                    );
-                    cmd_list.UpdateUniformBuffer(
-                        reinterpret_cast<FRHIUniformBuffer*>(tile_atlas.terrain_buffer),
-                        &t
-                    );
-                }
-            );
-        }
-    }
+    // static void update_terrain_buffer(
+    //     FRDGBuilder& gb,
+    //     TArray<TPair<FTileAtlas, FTransform>>& tile_atlases
+    // ) {
+    //     uint32 counter = 0;
+    //     for (const TPair<FTileAtlas, FTransform>& tile_atlas_data : tile_atlases) {
+    //         const FTileAtlas& tile_atlas = tile_atlas_data.Key;
+    //         const FTransform& transform = tile_atlas_data.Value;
+    //         gb.AddPass(
+    //             RDG_EVENT_NAME("UDLOD.UpdateTerrainBuffer.%d", counter++),
+    //             ERDGPassFlags::NeverCull | ERDGPassFlags::Raster,
+    //             [tile_atlas, transform](FRHICommandList& cmd_list) {
+    //                 const Terrain t = new_terrain(
+    //                     tile_atlas.lod_count,
+    //                     ext::math::scale(tile_atlas.side_length),
+    //                     tile_atlas.min_height,
+    //                     tile_atlas.max_height,
+    //                     tile_atlas.height_scale,
+    //                     transform
+    //                 );
+    //                 cmd_list.UpdateUniformBuffer(
+    //                     reinterpret_cast<FRHIUniformBuffer*>(tile_atlas.terrain_buffer),
+    //                     &t
+    //                 );
+    //             }
+    //         );
+    //     }
+    // }
 
     void request_tile(FTileCoordinate tile_coordinate) {
         // UE_LOGFMT(
@@ -364,6 +383,7 @@ struct FTileAtlas {
             return;
         }
 
+        const uint32 min_requests = is_pinned_tile(tile_coordinate) ? 1u : 0u;
         if (state->requests == 0) {
             UE_LOGFMT(
                 LogTemp,
@@ -373,6 +393,8 @@ struct FTileAtlas {
             return;
         }
 
+        if (state->requests == min_requests) { return; }
+
         state->requests -= 1;
         // UE_LOGFMT(
         //     LogTemp,
@@ -381,6 +403,19 @@ struct FTileAtlas {
         //     tile_coordinate.to_string(),
         //     state->requests);
         if (state->requests == 0) { unused_indices.PushLast(state->atlas_index); }
+    }
+
+private:
+    void initialize_pinned_tiles() {
+        for (const FTileCoordinate& tile_coordinate : existing_tiles) {
+            if (tile_coordinate.lod != 0u) { continue; }
+
+            pinned_tiles.Add(tile_coordinate);
+        }
+
+        for (const FTileCoordinate& tile_coordinate : pinned_tiles) {
+            request_tile(tile_coordinate);
+        }
     }
 };
 

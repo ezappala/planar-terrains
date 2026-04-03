@@ -32,8 +32,10 @@ inline uint32 bytes_per_pixel(const EAttachmentFormat format) {
 
 inline EPixelFormat to_pixel_format(const EAttachmentFormat f) {
     switch (f) {
-    case EAttachmentFormat::Rgb8U: return PF_R8G8B8A8_UINT;
-    case EAttachmentFormat::Rgba8U: return PF_R8G8B8A8_UINT;
+    // Runtime albedo tiles are always uploaded as RGBA8 for GPU sampling. RGB source tiles are
+    // expanded to RGBA on load with an opaque alpha channel, while true RGBA tiles preserve band 4.
+    case EAttachmentFormat::Rgb8U: return PF_R8G8B8A8;
+    case EAttachmentFormat::Rgba8U: return PF_R8G8B8A8;
     case EAttachmentFormat::R16U: return PF_R16_UINT;
     case EAttachmentFormat::R16I: return PF_R16_SINT;
     case EAttachmentFormat::Rg16U: return PF_R16G16_UINT;

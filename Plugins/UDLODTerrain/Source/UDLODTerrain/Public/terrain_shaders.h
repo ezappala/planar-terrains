@@ -7,6 +7,8 @@
 #include "ShaderParameterStruct.h"
 #include "Runtime/Engine/Public/Matrix3x4.h"
 
+static constexpr uint32 UE_UDLOD_MAX_SHADER_LOD_COUNT = 32u;
+
 // BEGIN_SHADER_PARAMETER_STRUCT(Terrain, UDLODTERRAIN_API)
 BEGIN_UNIFORM_BUFFER_STRUCT(Terrain, UDLODTERRAIN_API)
     SHADER_PARAMETER(uint32, lod_count)
@@ -78,6 +80,11 @@ BEGIN_SHADER_PARAMETER_STRUCT(ViewCoordinate, UDLODTERRAIN_API)
     SHADER_PARAMETER(FVector2f, uv)
 END_SHADER_PARAMETER_STRUCT()
 
+struct FViewCoordinateUpload {
+    FUint32Vector2 xy;
+    FVector2f uv;
+};
+
 BEGIN_SHADER_PARAMETER_STRUCT(TerrainView, UDLODTERRAIN_API)
     SHADER_PARAMETER(uint32, tree_size)
     SHADER_PARAMETER(uint32, geometry_tile_count)
@@ -93,6 +100,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(TerrainView, UDLODTERRAIN_API)
     SHADER_PARAMETER(float, precision_distance)
     SHADER_PARAMETER(uint32, face)
     SHADER_PARAMETER(uint32, lod)
+    SHADER_PARAMETER_ARRAY(FUintVector4, lod_tile_counts, [UE_UDLOD_MAX_SHADER_LOD_COUNT])
 // BUG: StructArrays are not yet supported as uniform buffer structs
 // As a workaround we've implemented this as a normal shader parameter struct
     SHADER_PARAMETER_STRUCT_ARRAY(ViewCoordinate, coordinates, [6])
@@ -100,6 +108,28 @@ BEGIN_SHADER_PARAMETER_STRUCT(TerrainView, UDLODTERRAIN_API)
     SHADER_PARAMETER(FVector3f, world_position)
     SHADER_PARAMETER_ARRAY(FVector4f, half_spaces, [6])
 END_SHADER_PARAMETER_STRUCT()
+
+struct FTerrainViewUpload {
+    uint32 tree_size = 0u;
+    uint32 geometry_tile_count = 0u;
+    float grid_size = 0.0f;
+    uint32 vertices_per_row = 0u;
+    uint32 vertices_per_tile = 0u;
+    float morph_distance = 0.0f;
+    float blend_distance = 0.0f;
+    float load_distance = 0.0f;
+    float subdivision_distance = 0.0f;
+    float morph_range = 0.0f;
+    float blend_range = 0.0f;
+    float precision_distance = 0.0f;
+    uint32 face = 0u;
+    uint32 lod = 0u;
+    FUintVector4 lod_tile_counts[UE_UDLOD_MAX_SHADER_LOD_COUNT]{};
+    FViewCoordinateUpload coordinates[6]{};
+    float height_scale = 0.0f;
+    FVector3f world_position = FVector3f::ZeroVector;
+    FVector4f half_spaces[6];
+};
 
 BEGIN_SHADER_PARAMETER_STRUCT(ApproximateHeight, UDLODTERRAIN_API)
     SHADER_PARAMETER(float, value)
@@ -142,6 +172,11 @@ BEGIN_SHADER_PARAMETER_STRUCT(GeometryTile, UDLODTERRAIN_API)
     SHADER_PARAMETER(FVector4f, morph_radios)
 END_SHADER_PARAMETER_STRUCT()
 
+// Runtime terrain contract:
+// - height_attachment must be a single-channel float texture array (R32F path)
+// - albedo_attachment must be a four-channel color texture array
+// If you widen supported attachment formats, update both the shader parameter types
+// and the upload/allocation path together.
 BEGIN_SHADER_PARAMETER_STRUCT(DrawElementsIndirectParameters, UDLODTERRAIN_API)
     SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
     // General bindings: bindings.ush
@@ -149,12 +184,12 @@ BEGIN_SHADER_PARAMETER_STRUCT(DrawElementsIndirectParameters, UDLODTERRAIN_API)
 SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<AttachmentConfig>, attachment_configs)
 SHADER_PARAMETER_SAMPLER(SamplerState, terrain_sampler)
 SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, height_attachment)
-SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, albedo_attachment)
-    SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TerrainView>, terrain_view)
-    SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float>, approximate_height)
-    SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TileTreeEntry>, tile_tree)
+SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<FVector4f>, albedo_attachment)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TerrainView>, terrain_view)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float>, approximate_height)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TileTreeEntry>, tile_tree)
 
-    // RDG_BUFFER_ACCESS(geometry_tiles, ERHIAccess::ReadOnlyMask) ?? or ERHIAccess::CopyDest
+// RDG_BUFFER_ACCESS(geometry_tiles, ERHIAccess::ReadOnlyMask) ?? or ERHIAccess::CopyDest
     SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<GeometryTile>, geometry_tiles)
 
     // Vertex Input: vertex.usf
@@ -280,10 +315,10 @@ BEGIN_SHADER_PARAMETER_STRUCT(Prepass, UDLODTERRAIN_API)
 SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<AttachmentConfig>, attachment_configs)
 SHADER_PARAMETER_SAMPLER(SamplerState, terrain_sampler)
 SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, height_attachment)
-SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, albedo_attachment)
-    SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TerrainView>, terrain_view)
-    SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float>, approximate_height)
-    SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TileTreeEntry>, tile_tree)
+SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<FVector4f>, albedo_attachment)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TerrainView>, terrain_view)
+SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float>, approximate_height)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TileTreeEntry>, tile_tree)
     SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<PrepassState>, state)
     SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, indirect_buffer)
     SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<TileCoordinate>, temporary_tiles)
@@ -294,14 +329,39 @@ BEGIN_SHADER_PARAMETER_STRUCT(RefineTiles, UDLODTERRAIN_API)
 SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<AttachmentConfig>, attachment_configs)
 SHADER_PARAMETER_SAMPLER(SamplerState, terrain_sampler)
 SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, height_attachment)
-    SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, albedo_attachment)
-    SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TerrainView>, terrain_view)
-    SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float>, approximate_height)
-    SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TileTreeEntry>, tile_tree)
+SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<FVector4f>, albedo_attachment)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TerrainView>, terrain_view)
+SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float>, approximate_height)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TileTreeEntry>, tile_tree)
     SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<PrepassState>, state)
     SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<TileCoordinate>, temporary_tiles)
     SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<GeometryTile>, final_tiles)
     RDG_BUFFER_ACCESS(IndirectArgs, ERHIAccess::IndirectArgs)
+END_SHADER_PARAMETER_STRUCT()
+
+BEGIN_SHADER_PARAMETER_STRUCT(GpuSampleProbe, UDLODTERRAIN_API)
+    SHADER_PARAMETER(uint32, atlas_index)
+    SHADER_PARAMETER(uint32, geometry_lod)
+    SHADER_PARAMETER(uint32, sampled_lod)
+    SHADER_PARAMETER(uint32, padding0)
+    SHADER_PARAMETER(FVector4f, albedo)
+    SHADER_PARAMETER(float, height)
+    SHADER_PARAMETER(float, approximate_height)
+    SHADER_PARAMETER(float, normal_z)
+    SHADER_PARAMETER(float, padding1)
+END_SHADER_PARAMETER_STRUCT()
+
+BEGIN_SHADER_PARAMETER_STRUCT(TerrainSampleProbeParameters, UDLODTERRAIN_API)
+    SHADER_PARAMETER_STRUCT_REF(Terrain, terrain)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<AttachmentConfig>, attachment_configs)
+SHADER_PARAMETER_SAMPLER(SamplerState, terrain_sampler)
+SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float>, height_attachment)
+SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<FVector4f>, albedo_attachment)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TerrainView>, terrain_view)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float>, approximate_height)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TileTreeEntry>, tile_tree)
+SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<GeometryTile>, geometry_tiles)
+    SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<GpuSampleProbe>, output)
 END_SHADER_PARAMETER_STRUCT()
 
 // BEGIN_SHADER_PARAMETER_STRUCT(PickingData, UDLODTERRAIN_API)
@@ -441,6 +501,39 @@ class UDLODTERRAIN_API FTerrainPrepassRefineTilesComputeShader : public FGlobalS
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
+        out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
+        out_environment.SetDefine(TEXT("SHOW_UV"), 0);
+        out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
+    }
+};
+
+class UDLODTERRAIN_API FTerrainSampleProbeComputeShader : public FGlobalShader {
+    DECLARE_GLOBAL_SHADER(FTerrainSampleProbeComputeShader);
+    SHADER_USE_PARAMETER_STRUCT(FTerrainSampleProbeComputeShader, FGlobalShader);
+    using FParameters = TerrainSampleProbeParameters;
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& params) {
+        const bool feature_level = IsFeatureLevelSupported(params.Platform, ERHIFeatureLevel::SM5);
+        return feature_level;
+    }
+
+    static void ModifyCompilationEnvironment(
+        const FGlobalShaderPermutationParameters& params,
+        FShaderCompilerEnvironment& out_environment
+    ) {
+        FGlobalShader::ModifyCompilationEnvironment(params, out_environment);
+        out_environment.SetDefine(TEXT("FRAGMENT"), 0);
+        out_environment.SetDefine(TEXT("VERTEX"), 0);
+        out_environment.SetDefine(TEXT("PREPASS"), 0);
+        out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 0);
+        out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
+        out_environment.SetDefine(TEXT("BLEND"), 1);
+        out_environment.SetDefine(TEXT("MORPH"), 1);
+        out_environment.SetDefine(TEXT("LIGHTING"), 0);
+        out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
+        out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
+        out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);

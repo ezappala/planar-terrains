@@ -22,6 +22,7 @@ public:
 
 #pragma region FPrimitiveSceneProxy_interface
     virtual void CreateRenderThreadResources(FRHICommandListBase& RHICmdList) override;
+    virtual void DestroyRenderThreadResources() override;
     virtual void GetDynamicMeshElements(
         const TArray<const FSceneView*>& views,
         const FSceneViewFamily& view_family,

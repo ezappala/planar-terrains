@@ -90,6 +90,9 @@ TOptional<EGDALDataType> parse_data_type(const FString& value) {
 
 TOptional<EAttachmentFormat> parse_attachment_format(const FString& value) {
     const FString normalized = value.ToUpper();
+    if (normalized == TEXT("RGB8U")) {
+        return EAttachmentFormat::Rgb8U;
+    }
     if (normalized == TEXT("R16U")) {
         return EAttachmentFormat::R16U;
     }

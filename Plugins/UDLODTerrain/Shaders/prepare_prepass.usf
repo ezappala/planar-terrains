@@ -44,15 +44,26 @@ void prepare_root() {
 [numthreads(1, 1, 1)]
 void prepare_next() {
     if (state[0].counter == 1) {
-        state[0].tile_count = uint(
-            exchange<int>(
-                state[0].child_index,
-                int(terrain_view[0].geometry_tile_count - 1u)
-            )
+        InterlockedExchange(
+            state[0].child_index,
+            int(terrain_view[0].geometry_tile_count - 1u),
+            state[0].tile_count
         );
+
+        // state[0].tile_count = uint(
+        //     exchange<int>(
+        //         state[0].child_index,
+        //         int(terrain_view[0].geometry_tile_count - 1u)
+        //     )
+        // );
     } else {
-        state[0].tile_count = terrain_view[0].geometry_tile_count - 1u -
-            uint(exchange<int>(state[0].child_index, 0));
+        // state[0].tile_count = terrain_view[0].geometry_tile_count - 1u - uint(exchange<int>(state[0].child_index, 0));
+        InterlockedExchange(
+            state[0].child_index,
+            0,
+            state[0].tile_count
+        );
+        state[0].tile_count = terrain_view[0].geometry_tile_count - 1u - state[0].tile_count;
     }
 
     state[0].counter = -state[0].counter;

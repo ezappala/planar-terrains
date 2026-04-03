@@ -3,6 +3,7 @@
 #include "ext_affine.h"
 #include "preprocess_tile_coordinate.h"
 #include "RenderGraphUtils.h"
+#include "terrain_runtime_planar.h"
 #include "terrain_shaders.h"
 
 inline Terrain new_terrain(
@@ -36,18 +37,22 @@ inline Terrain new_terrain(
 
 inline ViewCoordinate view_coordinate_from_coordinate(
     const FCoordinate& coordinate,
-    const uint32 lod
+    const FIntPoint& tile_count
 ) {
-    const auto count = FMath::Exp2(static_cast<double>(lod));
+    const double count_x = FMath::Max(static_cast<double>(tile_count.X), 1.0);
+    const double count_y = FMath::Max(static_cast<double>(tile_count.Y), 1.0);
+    const double scaled_x = FMath::Clamp(coordinate.uv.X * count_x, 0.0, count_x - 1e-6);
+    const double scaled_y = FMath::Clamp(coordinate.uv.Y * count_y, 0.0, count_y - 1e-6);
+
     ViewCoordinate view_coordinate;
     view_coordinate.xy = FUint32Point{
-        static_cast<uint32>(coordinate.uv.X * count),
-        static_cast<uint32>(coordinate.uv.Y * count)
+        static_cast<uint32>(FMath::FloorToDouble(scaled_x)),
+        static_cast<uint32>(FMath::FloorToDouble(scaled_y))
     };
 
     view_coordinate.uv = FVector2f{
-        static_cast<float>(FMath::Frac(coordinate.uv.X)),
-        static_cast<float>(FMath::Frac(coordinate.uv.Y))
+        static_cast<float>(scaled_x - FMath::FloorToDouble(scaled_x)),
+        static_cast<float>(scaled_y - FMath::FloorToDouble(scaled_y))
     };
 
     return view_coordinate;

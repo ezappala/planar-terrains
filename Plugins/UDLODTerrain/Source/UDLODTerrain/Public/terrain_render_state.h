@@ -73,19 +73,10 @@ public:
     bool try_get_view_state(const uint32 view_key, FTerrainMeshViewState& out_view_state) const {
         FReadScopeLock _(view_states_guard);
         const FTerrainMeshViewState* view_state = published_view_states.Find(view_key);
-        if (view_state != nullptr) {
-            out_view_state = *view_state;
-            if (out_view_state.IsReady()) { return true; }
-        }
+        if (view_state == nullptr) { return false; }
 
-        for (const TPair<uint32, FTerrainMeshViewState>& pair : published_view_states) {
-            if (!pair.Value.IsReady()) { continue; }
-
-            out_view_state = pair.Value;
-            return true;
-        }
-
-        return false;
+        out_view_state = *view_state;
+        return out_view_state.IsReady();
     }
 
 private:

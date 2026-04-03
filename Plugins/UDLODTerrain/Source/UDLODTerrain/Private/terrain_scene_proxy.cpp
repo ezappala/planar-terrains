@@ -9,7 +9,7 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialRenderProxy.h"
 
-namespace {
+namespace terrain::scene_proxy::detail {
 TAutoConsoleVariable CVarUDLODMeshProbe(
     TEXT("r.UDLOD.MeshProbe"),
     1,
@@ -50,11 +50,16 @@ FTerrainSceneProxy::FTerrainSceneProxy(const UTerrain* component) : FPrimitiveSc
     bAffectDistanceFieldLighting = true;
 }
 
-FTerrainSceneProxy::~FTerrainSceneProxy() { vertex_factory.ReleaseResource(); }
+FTerrainSceneProxy::~FTerrainSceneProxy() = default;
 
 void FTerrainSceneProxy::CreateRenderThreadResources(FRHICommandListBase& RHICmdList) {
     FPrimitiveSceneProxy::CreateRenderThreadResources(RHICmdList);
     vertex_factory.InitResource(RHICmdList);
+}
+
+void FTerrainSceneProxy::DestroyRenderThreadResources() {
+    vertex_factory.ReleaseResource();
+    FPrimitiveSceneProxy::DestroyRenderThreadResources();
 }
 
 void FTerrainSceneProxy::GetDynamicMeshElements(
@@ -73,7 +78,7 @@ void FTerrainSceneProxy::GetDynamicMeshElements(
         const FSceneView* view = views[view_index];
         if (view == nullptr) { continue; }
 
-        if (should_use_cpu_mesh_builder()) {
+        if (terrain::scene_proxy::detail::should_use_cpu_mesh_builder()) {
             FTerrainCpuMeshViewState cpu_view_state;
             if (render_resources->try_get_cpu_view_state(view->GetViewKey(), cpu_view_state)) {
                 FDynamicMeshBuilder mesh_builder(collector.GetFeatureLevel());
@@ -110,7 +115,7 @@ void FTerrainSceneProxy::GetDynamicMeshElements(
 
         FTerrainMeshViewState view_state;
         if (!render_resources->try_get_view_state(view->GetViewKey(), view_state)) {
-            if (should_probe_gpu_mesh()) {
+            if (terrain::scene_proxy::detail::should_probe_gpu_mesh()) {
                 static bool logged_missing_gpu_view_state = false;
                 if (!logged_missing_gpu_view_state) {
                     logged_missing_gpu_view_state = true;
@@ -134,7 +139,7 @@ void FTerrainSceneProxy::GetDynamicMeshElements(
         batch_element.IndexBuffer = nullptr;
         batch_element.FirstIndex = 0;
         batch_element.NumPrimitives = 0;
-        batch_element.NumInstances = 0;
+        batch_element.NumInstances = 1;
         batch_element.BaseVertexIndex = 0;
         batch_element.MinVertexIndex = 0;
         batch_element.MaxVertexIndex = view_state.max_vertex_index;
@@ -151,9 +156,9 @@ void FTerrainSceneProxy::GetDynamicMeshElements(
         mesh.CastShadow = IsShadowCast(view);
         mesh.bCanApplyViewModeOverrides = true;
         mesh.bUseForMaterial = true;
-        mesh.bUseForDepthPass = false;
+        mesh.bUseForDepthPass = true;
 
-        if (should_probe_gpu_mesh()) {
+        if (terrain::scene_proxy::detail::should_probe_gpu_mesh()) {
             static bool logged_gpu_mesh_submission = false;
             if (!logged_gpu_mesh_submission) {
                 logged_gpu_mesh_submission = true;

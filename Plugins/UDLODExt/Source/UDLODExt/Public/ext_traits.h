@@ -22,7 +22,7 @@ concept GdalType = requires {
  * generic functions requiring copy semantics.
  */
 template <typename T>
-concept Copy = requires { std::is_trivially_copyable_v<T>; };
+concept Copy = std::is_trivially_copyable_v<T>;
 
 template <typename T>
 concept PartialEq = std::equality_comparable<T>;

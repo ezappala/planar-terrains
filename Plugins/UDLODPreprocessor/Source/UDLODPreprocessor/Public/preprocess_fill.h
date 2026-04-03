@@ -101,21 +101,24 @@ PreprocessResult<void> create_mask_and_fill_no_data_gen(
             if (!bands_result.has_value()) { return unexpected{bands_result.error()}; }
 
             auto bands = MoveTemp(bands_result.value());
+            check(masks.Num() == bands.Num());
 
-            auto zipped_masks_and_bands = zip<Buffer<uint8>, GDALRasterBand*>(
-                masks,
-                bands);
-
-            for (auto& [mask_buffer, band] : zipped_masks_and_bands) {
+            for (int32 band_index = 0; band_index < bands.Num(); ++band_index) {
+                const Buffer<uint8>& mask_buffer = masks[band_index];
+                GDALRasterBand* band = bands[band_index];
                 BufferResult<T> band_data_result = read_band_as<T>(band);
                 if (!band_data_result.has_value()) {
                     return unexpected{FPreprocessError::Gdal(band_data_result.error())};
                 }
                 Buffer<T>& band_data = band_data_result.value();
+                check(mask_buffer.data().Num() == band_data.data().Num());
 
-                auto zipped_mask_values = zip<uint8, T>(mask_buffer.data(), band_data.data());
-                for (auto& [mask, value] : zipped_mask_values) {
-                    value = apply_bitmask<T>(value, mask);
+                TArray<T>& band_values = band_data.data();
+                const TArray<uint8>& mask_values = mask_buffer.data();
+                for (int32 pixel_index = 0; pixel_index < band_values.Num(); ++pixel_index) {
+                    band_values[pixel_index] = apply_bitmask<T>(
+                        band_values[pixel_index],
+                        mask_values[pixel_index]);
                 }
 
                 usize texture_size = static_cast<usize>(context.attachment.texture_size);

@@ -1,9 +1,9 @@
 ﻿#pragma once
 #include "ext_array4.h"
-#include "ext_math.h"
 #include "preprocess_tile_coordinate.h"
 #include "RHIGPUReadback.h"
 #include "terrain_config.h"
+#include "terrain_runtime_planar.h"
 #include "terrain_shaders.h"
 #include "terrain_view_config.h"
 #include "Async/Async.h"
@@ -164,39 +164,39 @@ struct FTileTree {
             && a.tiles == b.tiles;
     }
 
-    static void approximate_height_readback(
-        FRDGBuilder& gb,
-        FTileTree* tile_tree) {
-        const FRDGBufferRef approximate_height_buffer = tile_tree->approximate_height_buffer;
-        if (approximate_height_buffer == nullptr) {
-            UE_LOGFMT(
-                LogTemp,
-                Warning,
-                "[FTerrainSceneViewExtension::draw_tile_tree] "
-                "Approximate height buffer is null for tile tree readback, skipping");
-            return;
-        }
-        FRHIGPUBufferReadback* buffer_readback =
-            new FRHIGPUBufferReadback(TEXT("UDLOD.ApproximateHeightReadback"));
-        AddEnqueueCopyPass(gb, buffer_readback, approximate_height_buffer, 0u);
-        auto async_callback = [&tile_tree](const float out_value) {
-            tile_tree->approximate_height = out_value;
-        };
-
-        auto runner = [&buffer_readback, &async_callback](auto&& fn) -> void {
-            if (buffer_readback->IsReady()) {
-                const float* data = static_cast<float*>(buffer_readback->Lock(1));
-                float out_value = data[0];
-                buffer_readback->Unlock();
-                AsyncTask(
-                    ENamedThreads::GameThread,
-                    [async_callback, out_value] { async_callback(out_value); });
-                delete buffer_readback;
-            } else { AsyncTask(ENamedThreads::ActualRenderingThread, [fn] { fn(fn); }); }
-        };
-
-        AsyncTask(ENamedThreads::ActualRenderingThread, [runner] { runner(runner); });
-    }
+    // static void approximate_height_readback(
+    //     FRDGBuilder& gb,
+    //     FTileTree* tile_tree) {
+    //     const FRDGBufferRef approximate_height_buffer = tile_tree->approximate_height_buffer;
+    //     if (approximate_height_buffer == nullptr) {
+    //         UE_LOGFMT(
+    //             LogTemp,
+    //             Warning,
+    //             "[FTerrainSceneViewExtension::draw_tile_tree] "
+    //             "Approximate height buffer is null for tile tree readback, skipping");
+    //         return;
+    //     }
+    //     FRHIGPUBufferReadback* buffer_readback =
+    //         new FRHIGPUBufferReadback(TEXT("UDLOD.ApproximateHeightReadback"));
+    //     AddEnqueueCopyPass(gb, buffer_readback, approximate_height_buffer, 0u);
+    //     auto async_callback = [&tile_tree](const float out_value) {
+    //         tile_tree->approximate_height = out_value;
+    //     };
+    //
+    //     auto runner = [&buffer_readback, &async_callback](auto&& fn) -> void {
+    //         if (buffer_readback->IsReady()) {
+    //             const float* data = static_cast<float*>(buffer_readback->Lock(1));
+    //             float out_value = data[0];
+    //             buffer_readback->Unlock();
+    //             AsyncTask(
+    //                 ENamedThreads::GameThread,
+    //                 [async_callback, out_value] { async_callback(out_value); });
+    //             delete buffer_readback;
+    //         } else { AsyncTask(ENamedThreads::ActualRenderingThread, [fn] { fn(fn); }); }
+    //     };
+    //
+    //     AsyncTask(ENamedThreads::ActualRenderingThread, [runner] { runner(runner); });
+    // }
 
     FVector2d get_tile_count(const uint32 lod) const {
         if (lod_tile_counts.IsValidIndex(static_cast<int32>(lod))) {
@@ -268,18 +268,20 @@ struct FTileTree {
                 (tile.xy.Y + offset.Y) / tile_count.Y
             }
         };
-        const auto tile_local_position = tile_position.local_position(
+        const auto tile_local_position = terrain::runtime::planar::local_position_from_coordinate(
+            tile_position,
             approximate_height,
-            static_cast<FVector3d>(ext::math::scale(side_length)));
+            side_length
+        );
 
         return FVector3d::Distance(tile_local_position, view_local_position);
     }
 
     void update() {
-        using ext::iter::range, ext::math::scale, ext::iter::product;
-        const auto view_coordinate = FCoordinate::from_local_position(
+        using ext::iter::product, ext::iter::range;
+        const auto view_coordinate = terrain::runtime::planar::coordinate_from_local_position(
             view_local_position,
-            static_cast<FVector3d>(scale(side_length))
+            side_length
         );
 
         view_face = view_coordinate.face;

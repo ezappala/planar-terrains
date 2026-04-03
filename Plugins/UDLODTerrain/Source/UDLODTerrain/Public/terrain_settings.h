@@ -255,7 +255,7 @@ struct FTerrainPreprocessSettings {
         DisplayName="Heightmap Attachemnt Format",
         meta=(EditCondition="use_albedo", EditConditionHides)
     )
-    EAttachmentFormat albedo_attachment_format = EAttachmentFormat::Rgba8U;
+    EAttachmentFormat albedo_attachment_format = EAttachmentFormat::Rgb8U;
 
     FString to_string() {
         return FString::Printf(

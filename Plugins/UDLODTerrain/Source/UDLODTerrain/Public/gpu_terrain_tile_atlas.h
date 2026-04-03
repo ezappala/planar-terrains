@@ -51,15 +51,14 @@ struct FGpuTileAtlas {
                     IndexOfByPredicate([&label](const FString& name) { return name == label; }));
                 const FAtlasBufferInfo expected_buffer_info{attachment, tile_atlas.lod_count};
                 if (gpu_attachment->index != expected_index ||
-                    !(gpu_attachment->buffer_info == expected_buffer_info)) {
-                    return true;
-                }
+                    !(gpu_attachment->buffer_info == expected_buffer_info)) { return true; }
             }
 
             return false;
         };
 
-        const bool bRebuildAtlas = !gpu_tile_atlas.IsSet() || needs_rebuild(gpu_tile_atlas.GetValue());
+        const bool bRebuildAtlas = !gpu_tile_atlas.IsSet() || needs_rebuild(
+            gpu_tile_atlas.GetValue());
         if (bRebuildAtlas) {
             gpu_tile_atlas.Reset();
             gpu_tile_atlas.Emplace(tile_atlas, settings);
@@ -95,9 +94,7 @@ struct FGpuTileAtlas {
                 );
             }
             gpu_tile_atlas->bNeedsFullResync = false;
-        } else {
-            gpu_tile_atlas->upload_tiles.Append(MoveTemp(tile_atlas.uploading_tiles));
-        }
+        } else { gpu_tile_atlas->upload_tiles.Append(MoveTemp(tile_atlas.uploading_tiles)); }
         tile_atlas.uploading_tiles.Reset();
 
         tile_atlas.downloading_tiles.Append(gpu_tile_atlas->download_tiles);
@@ -118,10 +115,19 @@ struct FGpuTileAtlas {
     }
 
     static void queue(
-        TOptional<FGpuTileAtlas>&
+        TOptional<FGpuTileAtlas>& gpu_tile_atlas
     ) {
-        // noop
-        // TODO: if dealing with mips, generate pipeline specializations here.
+        if (!gpu_tile_atlas.IsSet()) { return; }
+
+        for (const auto& [label, attachment] : gpu_tile_atlas->attachments) {
+            checkf(
+                attachment.buffer_info.mip_level_count <= 1,
+                TEXT("UDLOD runtime atlas currently only uploads mip 0. "
+                    "Attachment %s requested %u mip levels."),
+                *label,
+                attachment.buffer_info.mip_level_count
+            )
+        }
     }
 
     void exec_upload_tiles(
@@ -199,7 +205,12 @@ struct FGpuTileAtlas {
                 );
 
                 FRHICopyTextureInfo copy_info;
+                copy_info.SourceMipIndex = 0;
+                copy_info.DestMipIndex = 0;
+                copy_info.SourceSliceIndex = 0;
                 copy_info.DestSliceIndex = atlas_index;
+                copy_info.NumMips = 1;
+                copy_info.NumSlices = 1;
                 copy_info.Size = FIntVector(texture_size, texture_size, 1);
                 AddCopyTexturePass(gb, staging_texture, atlas_texture, copy_info);
             };

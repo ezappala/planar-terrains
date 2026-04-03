@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "Logging/StructuredLog.h"
+#include "Logging/LogMacros.h"
 #include "Misc/DateTime.h"
 #include "Misc/Timespan.h"
 
@@ -18,11 +18,7 @@ inline FString time_elapsed_to_string(const FDateTime& start_time) {
 }
 
 inline void log_time(const FDateTime& start_time, const FString& msg) {
-    UE_LOGFMT(
-        LogTemp,
-        Log,
-        "[{t}] {m}",
-        time_elapsed_to_string(start_time),
-        msg);
+    const FString elapsed = time_elapsed_to_string(start_time);
+    UE_LOG(LogTemp, Log, TEXT("[%s] %s"), *elapsed, *msg);
 }
 }

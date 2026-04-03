@@ -18,14 +18,31 @@
 #include "/Engine/Private/MaterialTemplate.ush"
 #define VERTEXSHADER 1
 #define PIXELSHADER 1
-#define NUM_TEX_COORD_INTERPOLATORS 3
-#define INSTANCED_STEREO 1
-#define INTERPOLATE_VERTEX_COLOR 1
+#define LIGHTING 1
+#define SHOW_DATA_LOD 1
+#define SHOW_GEOMETRY_LOD 1
+#define SHOW_TILE_TREE 1
+#define SHOW_PIXELS 1
+#define SHOW_UV 1
+#define SHOW_NORMALS 1
 #define NUM_MATERIAL_TEXCOORDS_VERTEX 3
+#define NUM_TEX_COORD_INTERPOLATORS 3
+#define INTERPOLATE_VERTEX_COLOR 1
+#define INSTANCED_STEREO 1
+#define VF_USE_PRIMITIVE_SCENE_DATA 1
+#define USE_INSTANCING 1
 #endif
 
 struct FVertexFactoryInput {
     uint VertexId : SV_VertexID;
+
+#if VF_USE_PRIMITIVE_SCENE_DATA
+    nointerpolation uint PrimitiveId : PRIMITIVE_ID;
+#endif
+
+#if USE_INSTANCING
+    nointerpolation uint InstanceId : SV_InstanceID;
+#endif
 };
 
 #define FPositionOnlyVertexFactoryInput FVertexFactoryInput
@@ -40,6 +57,7 @@ struct FTerrainVertexInfo {
 
 struct FVertexFactoryIntermediates {
     uint tile_index;
+    uint primitive_id;
     float3 world_position;
     float3 world_normal;
     float3 world_tangent_x;
@@ -62,7 +80,12 @@ struct FVertexFactoryInterpolantsVSToPS {
 #endif
 
     float2 TerrainTileUV : TEXCOORD12;
-    float4 TerrainData : TEXCOORD13;
+    nointerpolation uint TerrainTileIndex : TEXCOORD13;
+    float TerrainHeight : TEXCOORD14;
+
+#if VF_USE_PRIMITIVE_SCENE_DATA
+    nointerpolation uint PrimitiveId : TEXCOORD15;
+#endif
 
 #if INSTANCED_STEREO
     nointerpolation uint EyeIndex : PACKED_EYE_INDEX;
@@ -88,6 +111,154 @@ float3 build_world_tangent(float3 world_normal) {
     return normalize(cross(tangent_seed, world_normal));
 }
 
+float4 sample_color(AtlasTile tile) {
+    // Runtime albedo is always sampled as RGBA. RGB source tiles are expanded to opaque RGBA
+    // on load, while true RGBA tiles preserve their authored alpha channel.
+    return sample_albedo(tile);
+}
+
+float4 index_color(uint index) {
+    float4 color_array[6] = {
+        float4(1.0f, 0.0f, 0.0f, 1.0f),
+        float4(0.0f, 1.0f, 0.0f, 1.0f),
+        float4(0.0f, 0.0f, 1.0f, 1.0f),
+        float4(1.0f, 1.0f, 0.0f, 1.0f),
+        float4(1.0f, 0.0f, 1.0f, 1.0f),
+        float4(0.0f, 1.0f, 1.0f, 1.0f)
+    };
+
+    return lerp(color_array[index % 6], float4(0.6f, 0.6f, 0.6f, 0.6f), 0.2f);
+}
+
+float tile_tree_outlines(float2 uv) {
+    float thickness = 0.015f;
+    float2 inside =
+        step(float2(thickness, thickness), uv) *
+        step(uv, float2(1.0f - thickness, 1.0f - thickness));
+
+    return 1.0f - inside.x * inside.y;
+}
+
+float4 checker_color(Coordinate coordinate, float ratio) {
+    float4 color = index_color(coordinate.lod);
+    float4 parent_color = index_color(coordinate.lod - 1u);
+
+    color = select(
+        (coordinate.xy.x + coordinate.xy.y) % 2u == 0u,
+        lerp(color, float4(0.0f, 0.0f, 0.0f, 0.5f), ratio),
+        color);
+    parent_color = select(
+        ((coordinate.xy.x >> 1) + (coordinate.xy.y >> 1)) % 2u == 0u,
+        lerp(parent_color, float4(0.0f, 0.0f, 0.0f, 0.0f), 0.5f),
+        parent_color);
+
+    return lerp(color, parent_color, ratio);
+}
+
+float4 show_tile_tree(Coordinate coordinate, WorldCoordinate world_coordinate) {
+    float target_lod = log2(terrain_view[0].load_distance / world_coordinate.view_distance);
+    BestLookup best_lookup = lookup_best(coordinate);
+    float4 color = checker_color(best_lookup.tile.coordinate, 0.0f);
+    color = lerp(
+        color,
+        float4(0.1f, 0.1f, 0.1f, 0.1f),
+        tile_tree_outlines(best_lookup.tile_tree_uv));
+
+    if (frac(target_lod) < 0.01f && target_lod >= 1.0f) {
+        color = lerp(index_color((uint)target_lod), float4(0.0f, 0.0f, 0.0f, 0.0f), 0.8f);
+    }
+
+    return color;
+}
+
+float4 show_data_lod(Blend blend, AtlasTile tile) {
+#if TILE_TREE_LOD
+    float ratio = 0.0;
+#else
+    float ratio = blend.lod == tile.coordinate.lod ? blend.ratio : 0.0f;
+#endif
+    float4 color = checker_color(tile.coordinate, ratio);
+    if (ratio > 0.95f && blend.lod == tile.coordinate.lod) {
+        color = lerp(color, float4(0.0f, 0.0f, 0.0f, 0.0f), 0.8f);
+    }
+
+    return color;
+}
+
+float4 show_geometry_lod(Coordinate coordinate, uint tile_index) {
+    float2 tile_uv = coordinate.uv;
+    GeometryTile tile = geometry_tiles[tile_index];
+    float view_distance = lerp(
+        lerp(tile.view_distances.x, tile.view_distances.y, tile_uv.x),
+        lerp(tile.view_distances.z, tile.view_distances.w, tile_uv.x),
+        tile_uv.y);
+
+    float target_lod = log2(terrain_view[0].morph_distance / view_distance);
+    uint lod = coordinate.lod;
+
+#if MORPH
+    float ratio = lod == 0u ? 0.0f : saturate(1.0f - (target_lod - (float)lod));
+#else
+    float ratio = 0.0f;
+#endif
+
+    float4 color = checker_color(coordinate, ratio);
+    TileCoordinate tc = tile_coordinate(tile.face, tile.lod, tile.xy);
+    if (distance(coordinate.uv, compute_subdivision_coordinate(tc).uv) < 0.1f) {
+        color = lerp(index_color(coordinate.lod + 1u), float4(0.0f, 0.0f, 0.0f, 0.0f), 0.7f);
+    }
+
+    if (frac(target_lod) < 0.01f && target_lod >= 1.0f) {
+        color = lerp(color, float4(0.0f, 0.0f, 0.0f, 0.0f), 0.8f);
+    }
+
+    if (max(0.0f, target_lod) < (float)coordinate.lod - 1.0f + terrain_view[0].morph_range) {
+        color = float4(1.0, 0.0, 0.0, 1.0);
+    }
+
+    if (floor(target_lod) > (float)coordinate.lod) { color = float4(0.0, 1.0, 0.0, 1.0); }
+
+    return color;
+}
+
+float4 show_pixels(AtlasTile tile) {
+    float pixel_size = 1.0;
+    float2 pixel_coordinate = tile.coordinate.uv *
+        (float)attachment_configs[0].center_size /
+        pixel_size;
+    bool is_even = ((uint)pixel_coordinate.x + (uint)pixel_coordinate.y) % 2u == 0u;
+    return is_even ? float4(0.5f, 0.5f, 0.5f, 1.0f) : float4(0.1f, 0.1f, 0.1f, 1.0f);
+}
+
+float4 evaluate_surface_color(
+    Coordinate coordinate,
+    WorldCoordinate world_coordinate,
+    Blend blend,
+    AtlasTile tile,
+    float3 surface_gradient
+) {
+#if LIGHTING
+    float4 color = sample_color(tile) * relief_shading(world_coordinate, surface_gradient);
+#elif SHOW_DATA_LOD
+    float4 color = show_data_lod(blend, tile);
+#elif SHOW_GEOMETRY_LOD
+    float4 color = show_geometry_lod(coordinate, tile.index);
+#elif SHOW_TILE_TREE
+    float4 color = show_tile_tree(coordinate, world_coordinate);
+#elif SHOW_PIXELS
+    float4 color = lerp(sample_color(tile), show_pixels(tile), 0.5f);
+#elif SHOW_UV
+    float4 color = float4(tile.coordinate.uv, 0.0f, 1.0f);
+#elif SHOW_NORMALS
+    float3 normal = normalize(world_coordinate.normal - surface_gradient);
+    float4 color = float4(normal, 1.0f);
+#else
+    float4 color = sample_color(tile);
+#endif
+
+    return color;
+}
+
 FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput input) {
     FTerrainVertexInfo terrain_info = compute_terrain_vertex_info(input);
     AtlasTile tile = lookup_tile(terrain_info.coordinate, terrain_info.blend);
@@ -95,11 +266,16 @@ FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput in
 
     FVertexFactoryIntermediates intermediates;
     intermediates.tile_index = terrain_info.tile_index;
+#if VF_USE_PRIMITIVE_SCENE_DATA
+    intermediates.primitive_id = input.PrimitiveId;
+#else
+    intermediates.primitive_id = 0u;
+#endif
     intermediates.world_position = apply_height(terrain_info.world_coordinate, height);
     intermediates.world_normal = terrain_info.world_coordinate.normal;
     intermediates.world_tangent_x = build_world_tangent(intermediates.world_normal);
-    intermediates.world_tangent_y =
-        normalize(cross(intermediates.world_normal, intermediates.world_tangent_x));
+    intermediates.world_tangent_y = normalize(
+        cross(intermediates.world_normal, intermediates.world_tangent_x));
     intermediates.tile_uv = terrain_info.coordinate.uv;
 
     float height_range = max(terrain.max_height - terrain.min_height, 1.0f);
@@ -107,8 +283,8 @@ FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput in
     float normalized_distance = saturate(
         terrain_info.world_coordinate.view_distance / max(terrain_view[0].load_distance, 1.0f)
     );
-    float normalized_lod = (float(terrain_info.coordinate.lod) + 1.0f) /
-        max(float(terrain.lod_count), 1.0f);
+    float normalized_lod = ((float)terrain_info.coordinate.lod + 1.0f) /
+        max((float)terrain.lod_count, 1.0f);
     intermediates.debug_uv = float2(normalized_height, normalized_distance);
     intermediates.vertex_color = float4(
         normalized_lod,
@@ -121,7 +297,8 @@ FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput in
 
 half3x3 VertexFactoryGetTangentToLocal(
     FVertexFactoryInput input,
-    FVertexFactoryIntermediates intermediates) {
+    FVertexFactoryIntermediates intermediates
+) {
     return half3x3(
         float3(1.0f, 0.0f, 0.0f),
         float3(0.0f, 1.0f, 0.0f),
@@ -131,9 +308,8 @@ half3x3 VertexFactoryGetTangentToLocal(
 
 float4 VertexFactoryGetWorldPosition(
     FVertexFactoryInput input,
-    FVertexFactoryIntermediates intermediates) {
-    return float4(intermediates.world_position + DFDemote(ResolvedView.PreViewTranslation), 1.0f);
-}
+    FVertexFactoryIntermediates intermediates
+) { return float4(intermediates.world_position + DFDemote(ResolvedView.PreViewTranslation), 1.0f); }
 
 float4 VertexFactoryGetWorldPosition(FPositionOnlyVertexFactoryInput input) {
     FVertexFactoryIntermediates intermediates = GetVertexFactoryIntermediates(input);
@@ -142,9 +318,8 @@ float4 VertexFactoryGetWorldPosition(FPositionOnlyVertexFactoryInput input) {
 
 float4 VertexFactoryGetPreviousWorldPosition(
     FVertexFactoryInput input,
-    FVertexFactoryIntermediates intermediates) {
-    return VertexFactoryGetWorldPosition(input, intermediates);
-}
+    FVertexFactoryIntermediates intermediates
+) { return VertexFactoryGetWorldPosition(input, intermediates); }
 
 float4 VertexFactoryGetRasterizedWorldPosition(
     FVertexFactoryInput input,
@@ -160,12 +335,27 @@ float3 VertexFactoryGetPositionForVertexLighting(
 
 float3 VertexFactoryGetWorldNormal(
     FVertexFactoryInput input,
-    FVertexFactoryIntermediates intermediates) { return intermediates.world_normal; }
+    FVertexFactoryIntermediates intermediates
+) { return intermediates.world_normal; }
 
 float3 VertexFactoryGetWorldNormal(FPositionAndNormalOnlyVertexFactoryInput input) {
     FVertexFactoryIntermediates intermediates = GetVertexFactoryIntermediates(input);
     return intermediates.world_normal;
 }
+
+#if NUM_TEX_COORD_INTERPOLATORS
+float2 GetUV(FVertexFactoryInterpolantsVSToPS interpolants, int index) {
+    float4 uv = interpolants.TexCoords[index / 2];
+    return Mod(index, 2) == 1 ? uv.zw : uv.xy;
+}
+
+void SetUV(inout FVertexFactoryInterpolantsVSToPS interpolants, int index, float2 value) {
+    [flatten]
+    if (Mod(index, 2) == 1) { interpolants.TexCoords[index / 2].zw = value; } else {
+        interpolants.TexCoords[index / 2].xy = value;
+    }
+}
+#endif
 
 FVertexFactoryInterpolantsVSToPS VertexFactoryGetInterpolantsVSToPS(
     FVertexFactoryInput input,
@@ -177,26 +367,14 @@ FVertexFactoryInterpolantsVSToPS VertexFactoryGetInterpolantsVSToPS(
     interpolants.TangentToWorld2 = float4(intermediates.world_normal, 1.0f);
 
 #if NUM_TEX_COORD_INTERPOLATORS
-    float2 tex_coords[NUM_TEX_COORD_INTERPOLATORS];
-    tex_coords[0] = intermediates.tile_uv;
-
-#if NUM_TEX_COORD_INTERPOLATORS > 1
-    tex_coords[1] = intermediates.debug_uv;
-#endif
-
-#if NUM_TEX_COORD_INTERPOLATORS > 2
-    [unroll]
-    for (int coord_index = 2; coord_index < NUM_TEX_COORD_INTERPOLATORS; ++coord_index) {
-        tex_coords[coord_index] = intermediates.tile_uv;
-    }
-#endif
+    float2 customized_uvs[NUM_TEX_COORD_INTERPOLATORS];
+    GetMaterialCustomizedUVs(vertex_parameters, customized_uvs);
+    GetCustomInterpolators(vertex_parameters, customized_uvs);
 
     [unroll]
-    for (int coord_index = 0; coord_index < NUM_TEX_COORD_INTERPOLATORS; coord_index += 2) {
-        interpolants.TexCoords[coord_index / 2].xy = tex_coords[coord_index];
-        if (coord_index + 1 < NUM_TEX_COORD_INTERPOLATORS) {
-            interpolants.TexCoords[coord_index / 2].zw = tex_coords[coord_index + 1];
-        }
+    for (int coordinate_index = 0; coordinate_index < NUM_TEX_COORD_INTERPOLATORS; ++
+         coordinate_index) {
+        SetUV(interpolants, coordinate_index, customized_uvs[coordinate_index]);
     }
 #endif
 
@@ -204,7 +382,12 @@ FVertexFactoryInterpolantsVSToPS VertexFactoryGetInterpolantsVSToPS(
     interpolants.Color = intermediates.vertex_color;
 #endif
     interpolants.TerrainTileUV = intermediates.tile_uv;
-    interpolants.TerrainData = float4(intermediates.tile_index, intermediates.height, 0.0f, 0.0f);
+    interpolants.TerrainTileIndex = intermediates.tile_index;
+    interpolants.TerrainHeight = intermediates.height;
+
+#if VF_USE_PRIMITIVE_SCENE_DATA
+    interpolants.PrimitiveId = intermediates.primitive_id;
+#endif
 
     return interpolants;
 }
@@ -217,7 +400,13 @@ FMaterialVertexParameters GetMaterialVertexParameters(
     bool bPreviousFrame = false
 ) {
     FMaterialVertexParameters result = MakeInitializedMaterialVertexParameters();
+
+#if VF_USE_PRIMITIVE_SCENE_DATA
+    FPrimitiveSceneData primitive_data = GetPrimitiveData(intermediates.primitive_id);
+#else
     FPrimitiveSceneData primitive_data = GetPrimitiveDataFromUniformBuffer();
+#endif
+
     result.SceneData.Primitive = primitive_data;
     result.WorldPosition = world_position;
     result.TangentToWorld = half3x3(
@@ -233,18 +422,15 @@ FMaterialVertexParameters GetMaterialVertexParameters(
 #endif
 #if NUM_MATERIAL_TEXCOORDS_VERTEX > 2
     [unroll]
-    for (int coord_index = 2; coord_index < NUM_MATERIAL_TEXCOORDS_VERTEX; ++coord_index) {
-        result.TexCoords[coord_index] = intermediates.tile_uv;
-    }
+    for (int coordinate_index = 2; coordinate_index < NUM_MATERIAL_TEXCOORDS_VERTEX; ++
+         coordinate_index) { result.TexCoords[coordinate_index] = intermediates.tile_uv; }
 #endif
 #endif
 
     result.VertexColor = intermediates.vertex_color;
-    result.PositionInstanceSpace = intermediates.world_position;
-    result.PositionPrimitiveSpace = intermediates.world_position;
-    result.PreSkinnedPosition = intermediates.world_position;
-    result.PreSkinnedNormal = intermediates.world_normal;
-    result.PrevFrameLocalToWorld = primitive_data.LocalToWorld;
+    result.PrevFrameLocalToWorld = primitive_data.PreviousLocalToWorld;
+    result.PreSkinnedPosition = float3(intermediates.tile_uv - 0.5f, 0.0f);
+    result.PreSkinnedNormal = float3(0.0f, 0.0f, 1.0f);
     result.LWCData = MakeMaterialLWCData(result);
     return result;
 }
@@ -257,49 +443,72 @@ FMaterialPixelParameters GetMaterialPixelParameters(
 
 #if NUM_TEX_COORD_INTERPOLATORS
     [unroll]
-    for (int coord_index = 0; coord_index < NUM_TEX_COORD_INTERPOLATORS; coord_index += 2) {
-        result.TexCoords[coord_index] = interpolants.TexCoords[coord_index / 2].xy;
-        if (coord_index + 1 < NUM_TEX_COORD_INTERPOLATORS) {
-            result.TexCoords[coord_index + 1] = interpolants.TexCoords[coord_index / 2].zw;
-        }
+    for (int coordinate_index = 0; coordinate_index < NUM_TEX_COORD_INTERPOLATORS; ++
+         coordinate_index) {
+        result.TexCoords[coordinate_index] = GetUV(interpolants, coordinate_index);
     }
 #endif
 
-    result.TangentToWorld = AssembleTangentToWorld(
-        interpolants.TangentToWorld0.xyz,
-        interpolants.TangentToWorld2
-    );
-
-    uint tile_index = (uint)round(interpolants.TerrainData.x);
-    float height = interpolants.TerrainData.y;
+    uint tile_index = interpolants.TerrainTileIndex;
+    float height = interpolants.TerrainHeight;
     Coordinate coordinate = compute_coordinate(tile_index, interpolants.TerrainTileUV);
     WorldCoordinate world_coordinate = compute_world_coordinate(coordinate, height);
     Blend blend = compute_blend(world_coordinate.view_distance);
     AtlasTile tile = lookup_tile(coordinate, blend);
-    float4 albedo = sample_albedo(tile);
-#if INTERPOLATE_VERTEX_COLOR
-    result.VertexColor = interpolants.Color;
+
+    if (sample_height_mask(tile)) { clip(-1.0f); }
+
+#if PIXELSHADER
+    TangentSpace tangent_space = compute_tangent_space(world_coordinate);
+    float3 surface_gradient = sample_surface_gradient(tile, tangent_space);
 #else
-    result.VertexColor = albedo;
+    float3 surface_gradient = float3(0.0f, 0.0f, 0.0f);
 #endif
+
+    float3 shaded_normal = normalize(world_coordinate.normal - surface_gradient);
+    float3 shaded_tangent_x = build_world_tangent(shaded_normal);
+    float3 shaded_tangent_y = normalize(cross(shaded_normal, shaded_tangent_x));
+
+    result.TangentToWorld = half3x3(shaded_tangent_x, shaded_tangent_y, shaded_normal);
     result.UnMirrored = 1.0f;
     result.TwoSidedSign = 1.0f;
+    result.VertexColor = evaluate_surface_color(
+        coordinate,
+        world_coordinate,
+        blend,
+        tile,
+        surface_gradient);
+    result.Particle.Color = half4(1.0f, 1.0f, 1.0f, 1.0f);
+
+#if VF_USE_PRIMITIVE_SCENE_DATA
+    result.PrimitiveId = interpolants.PrimitiveId;
+#else
+    result.PrimitiveId = 0u;
+#endif
+
     return result;
 }
 
 float4 VertexFactoryGetTranslatedPrimitiveVolumeBounds(
-    FVertexFactoryInterpolantsVSToPS interpolants) { return float4(0.0f, 0.0f, 0.0f, 0.0f); }
+    FVertexFactoryInterpolantsVSToPS interpolants
+) { return float4(0.0f, 0.0f, 0.0f, 0.0f); }
 
-uint VertexFactoryGetPrimitiveId(FVertexFactoryInterpolantsVSToPS interpolants) { return 0; }
+uint VertexFactoryGetPrimitiveId(FVertexFactoryInterpolantsVSToPS interpolants) {
+#if VF_USE_PRIMITIVE_SCENE_DATA
+    return interpolants.PrimitiveId;
+#else
+    return 0u;
+#endif
+}
 
 #if INSTANCED_STEREO
-uint VertexFactoryGetEyeIndex(uint instance_id) { return 0; }
+uint VertexFactoryGetEyeIndex(uint instance_id) { return 0u; }
 #endif
 
-uint VertexFactoryGetViewIndex(FVertexFactoryIntermediates intermediates) { return 0; }
+uint VertexFactoryGetViewIndex(FVertexFactoryIntermediates intermediates) { return 0u; }
 
-uint VertexFactoryGetViewIndex(FVertexFactoryInput input) { return 0; }
+uint VertexFactoryGetViewIndex(FVertexFactoryInput input) { return 0u; }
 
-uint VertexFactoryGetInstanceIdLoadIndex(FVertexFactoryIntermediates intermediates) { return 0; }
+uint VertexFactoryGetInstanceIdLoadIndex(FVertexFactoryIntermediates intermediates) { return 0u; }
 
-uint VertexFactoryGetInstanceIdLoadIndex(FVertexFactoryInput input) { return 0; }
+uint VertexFactoryGetInstanceIdLoadIndex(FVertexFactoryInput input) { return 0u; }

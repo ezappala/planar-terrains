@@ -35,6 +35,7 @@ struct TerrainView {
     float precision_distance;
     uint face;
     uint lod;
+    uint4 lod_tile_counts[32];
     ViewCoordinate coordinates[6];
     float height_scale;
     float3 world_position;
@@ -50,7 +51,7 @@ struct SampleUV {
 };
 
 #if PIXELSHADER
-SampleUV _SampleUV(float2 uv, float2 dx, float2 dy) {
+SampleUV sample_uv(float2 uv, float2 dx, float2 dy) {
     SampleUV result;
     result.uv = uv;
     result.dx = dx;
@@ -58,7 +59,7 @@ SampleUV _SampleUV(float2 uv, float2 dx, float2 dy) {
     return result;
 }
 #else
-SampleUV _SampleUV(float2 uv) {
+SampleUV sample_uv(float2 uv) {
     SampleUV result;
     result.uv = uv;
     return result;
@@ -149,7 +150,7 @@ WorldCoordinate world_coordinate(float3 position, float3 normal, float view_dist
 WorldCoordinate world_coordinate() {
     WorldCoordinate result;
     result.position = float3(0.0f, 0.0f, 0.0f);
-    result.normal = float3(0.0f, 1.0f, 0.0f);
+    result.normal = float3(0.0f, 0.0f, 1.0f);
     result.view_distance = 0.0f;
     return result;
 }

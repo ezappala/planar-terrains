@@ -251,6 +251,84 @@ bool FPreprocessExecInitializeUsesSourceDataTypesAndAttachmentTempDirsTest::RunT
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FPreprocessExecClampLodCountTest,
+    "UDLODPreprocessor.Preprocess.Exec.ClampLodCount",
+    TestFlags)
+
+bool FPreprocessExecClampLodCountTest::RunTest(const FString& Parameters) {
+    const TOptional<int32> inherited_cap = clamp_lod_count(NullOpt, TOptional{4});
+    TestTrue(TEXT("Unset request inherits cap"), inherited_cap.IsSet());
+    if (!inherited_cap.IsSet()) { return false; }
+    TestEqual(TEXT("Inherited cap value"), inherited_cap.GetValue(), 4);
+
+    const TOptional<int32> preserved_request = clamp_lod_count(TOptional{6}, NullOpt);
+    TestTrue(TEXT("Unset cap leaves request untouched"), preserved_request.IsSet());
+    if (!preserved_request.IsSet()) { return false; }
+    TestEqual(TEXT("Preserved request value"), preserved_request.GetValue(), 6);
+
+    const TOptional<int32> lower_request = clamp_lod_count(
+        TOptional{3},
+        TOptional{5});
+    TestTrue(TEXT("Lower request is preserved"), lower_request.IsSet());
+    if (!lower_request.IsSet()) { return false; }
+    TestEqual(TEXT("Lower request value"), lower_request.GetValue(), 3);
+
+    const TOptional<int32> capped_request = clamp_lod_count(
+        TOptional{6},
+        TOptional{4});
+    TestTrue(TEXT("Higher request is capped"), capped_request.IsSet());
+    if (!capped_request.IsSet()) { return false; }
+    TestEqual(TEXT("Capped request value"), capped_request.GetValue(), 4);
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FPreprocessExecInitializeCapsAlbedoLodCountToHeightTest,
+    "UDLODPreprocessor.Preprocess.Exec.InitializeCapsAlbedoLodCountToHeight",
+    TestFlags)
+
+bool FPreprocessExecInitializeCapsAlbedoLodCountToHeightTest::RunTest(
+    const FString& Parameters) {
+    GDALAllRegister();
+
+    const FString root = make_unique_test_root(TEXT("ExecInitializeCapsAlbedoLodCount"));
+    ON_SCOPE_EXIT { delete_tree(root); };
+
+    const FString heightmap_path = FPaths::Combine(root, TEXT("height.tif"));
+    const FString albedo_path = FPaths::Combine(root, TEXT("albedo.tif"));
+
+    {
+        const GDALDatasetRef heightmap = create_tiff_dataset<float>(heightmap_path, 4, 4, 1);
+        heightmap->FlushCache();
+    }
+
+    {
+        const GDALDatasetRef albedo = create_tiff_dataset<uint8>(albedo_path, 4, 4, 3);
+        albedo->FlushCache();
+    }
+
+    FTerrainPreprocessSettings settings{};
+    settings.heightmap_src_path = FFilePath{heightmap_path};
+    settings.albedo_src_path = FFilePath{albedo_path};
+    settings.terrain_path = FDirectoryPath{FPaths::Combine(root, TEXT("terrain"))};
+    settings.temp_path = FDirectoryPath{FPaths::Combine(root, TEXT("temp"))};
+    settings.heightmap_lod_count = 4;
+    settings.albedo_lod_count = 7;
+
+    const auto initialize_result = initialize(settings);
+    TestTrue(TEXT("Initialization succeeds"), initialize_result.has_value());
+    if (!initialize_result.has_value()) { return false; }
+
+    const auto& albedo_context = initialize_result.value().Get<1>().Get<1>();
+    TestTrue(TEXT("Albedo LOD count is set"), albedo_context.lod_count.IsSet());
+    if (!albedo_context.lod_count.IsSet()) { return false; }
+    TestEqual(TEXT("Albedo LOD count is capped to height"), albedo_context.lod_count.GetValue(), 4);
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FPreprocessExecInitializeRejectsMissingSourcesTest,
     "UDLODPreprocessor.Preprocess.Exec.InitializeRejectsMissingSources",
     TestFlags)
@@ -596,6 +674,95 @@ bool FPreprocessReprojectPlanarUpdatesLodCountTest::RunTest(const FString& Param
     if (!context.lod_count.IsSet()) { return false; }
 
     TestEqual(TEXT("LOD count matches planar dataset dimensions"), context.lod_count.GetValue(), 4);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FPreprocessReprojectPlanarUsesPresetLodCountAsCapTest,
+    "UDLODPreprocessor.Preprocess.Reproject.PlanarUsesPresetLodCountAsCap",
+    TestFlags)
+
+bool FPreprocessReprojectPlanarUsesPresetLodCountAsCapTest::RunTest(const FString& Parameters) {
+    GDALAllRegister();
+
+    const FString root = make_unique_test_root(TEXT("ReprojectPlanarUsesPresetLodCountAsCap"));
+    ON_SCOPE_EXIT { delete_tree(root); };
+
+    FPreprocessContext context = make_context(root, EAttachmentFormat::R32F, 512, 2);
+    context.temp_dir = FPaths::Combine(root, TEXT("temp"));
+    context.lod_count = 4;
+    IFileManager::Get().MakeDirectory(*context.temp_dir, true);
+
+    auto source = create_memory_dataset<float>(4096, 2048, 1);
+    double source_geotransform[6]{100.0, 1.0, 0.0, 200.0, 0.0, -1.0};
+    TestEqual(
+        TEXT("Source geotransform is configured"),
+        source->SetGeoTransform(source_geotransform),
+        CE_None);
+
+    const auto result = reproject_planar<float>(MoveTemp(source), context);
+    TestTrue(TEXT("Planar reproject succeeds"), result.has_value());
+    if (!result.has_value()) { return false; }
+
+    TestTrue(TEXT("Preset LOD count is preserved"), context.lod_count.IsSet());
+    if (!context.lod_count.IsSet()) { return false; }
+    TestEqual(TEXT("Preset LOD count remains the cap"), context.lod_count.GetValue(), 4);
+
+    const FaceInfo* face_info = result.value().Find(0u);
+    TestNotNull(TEXT("Face 0 exists"), face_info);
+    if (face_info == nullptr) { return false; }
+
+    TestEqual(TEXT("Face uses capped max LOD"), static_cast<int32>(face_info->lod), 3);
+    TestEqual(
+        TEXT("Face width is downsampled to the capped quadtree size"),
+        face_info->pixel_end.Get<0>(),
+        static_cast<ext::types::isize>(4064)
+    );
+
+    TestEqual(
+        TEXT("Face height keeps aspect ratio when capped"),
+        face_info->pixel_end.Get<1>(),
+        static_cast<ext::types::isize>(2032));
+
+    GDALDatasetRef reprojected_face = GDALDatasetRef{
+        GDALDataset::Open(TCHAR_TO_UTF8(*face_info->path), GA_ReadOnly)
+    };
+    TestNotNull(TEXT("Downsampled face dataset opens"), reprojected_face.Get());
+    if (reprojected_face.Get() == nullptr) { return false; }
+
+    TestEqual(
+        TEXT("Downsampled face width matches the capped size"),
+        reprojected_face->GetRasterXSize(),
+        4064);
+    TestEqual(
+        TEXT("Downsampled face height matches the capped size"),
+        reprojected_face->GetRasterYSize(),
+        2032);
+
+    double reprojected_geotransform[6]{};
+    TestEqual(
+        TEXT("Downsampled face geotransform is readable"),
+        reprojected_face->GetGeoTransform(reprojected_geotransform),
+        CE_None);
+    TestTrue(
+        TEXT("Origin X is preserved"),
+        FMath::IsNearlyEqual(reprojected_geotransform[0], 100.0, KINDA_SMALL_NUMBER));
+    TestTrue(
+        TEXT("Origin Y is preserved"),
+        FMath::IsNearlyEqual(reprojected_geotransform[3], 200.0, KINDA_SMALL_NUMBER));
+    TestTrue(
+        TEXT("Pixel width expands to preserve extent"),
+        FMath::IsNearlyEqual(
+            reprojected_geotransform[1],
+            4096.0 / 4064.0,
+            KINDA_SMALL_NUMBER));
+    TestTrue(
+        TEXT("Pixel height expands to preserve extent"),
+        FMath::IsNearlyEqual(
+            reprojected_geotransform[5],
+            -2048.0 / 2032.0,
+            KINDA_SMALL_NUMBER));
+
     return true;
 }
 

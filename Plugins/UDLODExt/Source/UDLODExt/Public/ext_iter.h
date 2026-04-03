@@ -110,7 +110,7 @@ template <typename K, typename V>
 TArray<TPair<K, V>> snapshot(const TMap<K, V>& input) {
     TArray<TPair<K, V>> output;
     output.Reserve(input.Num());
-    for (const TPair<K, V>& Entry : input) { output.Emplace(Entry.Key, Entry.value); }
+    for (const TPair<K, V>& Entry : input) { output.Emplace(Entry.Key, Entry.Value); }
     return output;
 }
 } // namespace detail
@@ -746,7 +746,7 @@ TMap<
     ParallelFor(
         snapshot.Num(),
         [&](int32 index) {
-            mapped[index] = std::invoke(func, snapshot[index].Key, snapshot[index].value);
+            mapped[index] = std::invoke(func, snapshot[index].Key, snapshot[index].Value);
         });
 
     TMap<RetKey, Retvalue> output;
@@ -779,7 +779,7 @@ void par_for_each(const TMap<K, V>& input, F&& func) {
     const TArray<TPair<K, V>> snapshot = detail::snapshot(input);
     ParallelFor(
         snapshot.Num(),
-        [&](int32 index) { std::invoke(func, snapshot[index].Key, snapshot[index].value); });
+        [&](int32 index) { std::invoke(func, snapshot[index].Key, snapshot[index].Value); });
 }
 } // namespace parallel
 } // namespace ext::iter

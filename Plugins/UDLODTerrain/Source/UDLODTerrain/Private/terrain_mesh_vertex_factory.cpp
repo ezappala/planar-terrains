@@ -1,15 +1,15 @@
 #include "terrain_mesh_vertex_factory.h"
 
-#include "HAL/IConsoleManager.h"
 #include "MaterialDomain.h"
 #include "MeshBatch.h"
 #include "MeshDrawShaderBindings.h"
 #include "MeshMaterialShader.h"
 #include "ShaderParameterUtils.h"
 #include "terrain_render_state.h"
+#include "HAL/IConsoleManager.h"
 #include "Logging/StructuredLog.h"
 
-namespace {
+namespace terrain::vertex_factory::detail {
 bool should_probe_gpu_mesh() {
     static const TConsoleVariableData<int32>* cvar = IConsoleManager::Get().
         FindTConsoleVariableDataInt(TEXT("r.UDLOD.MeshProbe"));
@@ -47,13 +47,15 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
         );
         if (user_data == nullptr || !user_data->IsReady()) { return; }
 
+        const uint32 view_key = view != nullptr ? view->GetViewKey() : 0u;
+
         if (attachments_buffer_parameter.IsBound() && !user_data->attachments_buffer_srv.
             IsValid()) {
             UE_LOGFMT(
                 LogTemp,
                 Error,
                 "Attachments buffer parameter is bound but the buffer SRV is invalid for view key {vk}",
-                view->GetViewKey());
+                view_key);
             return;
         }
 
@@ -62,7 +64,7 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
                 LogTemp,
                 Error,
                 "Terrain sampler parameter is bound but the sampler state is invalid for view key {vk}",
-                view->GetViewKey());
+                view_key);
             return;
         }
 
@@ -72,7 +74,7 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
                 LogTemp,
                 Error,
                 "Height attachment parameter is bound but the texture is invalid for view key {vk}",
-                view->GetViewKey());
+                view_key);
             return;
         }
 
@@ -82,7 +84,7 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
                 LogTemp,
                 Error,
                 "Albedo attachment parameter is bound but the texture is invalid for view key {vk}",
-                view->GetViewKey());
+                view_key);
             return;
         }
 
@@ -92,7 +94,7 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
                 LogTemp,
                 Error,
                 "Terrain view buffer parameter is bound but the buffer SRV is invalid for view key {vk}",
-                view->GetViewKey());
+                view_key);
             return;
         }
 
@@ -102,7 +104,7 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
                 LogTemp,
                 Error,
                 "Approximate height buffer parameter is bound but the buffer SRV is invalid for view key {vk}",
-                view->GetViewKey());
+                view_key);
             return;
         }
 
@@ -111,7 +113,7 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
                 LogTemp,
                 Error,
                 "Tile tree buffer parameter is bound but the buffer SRV is invalid for view key {vk}",
-                view->GetViewKey());
+                view_key);
             return;
         }
 
@@ -121,7 +123,7 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
                 LogTemp,
                 Error,
                 "Geometry tiles buffer parameter is bound but the buffer SRV is invalid for view key {vk}",
-                view->GetViewKey());
+                view_key);
             return;
         }
 
@@ -132,7 +134,7 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
                 LogTemp,
                 Error,
                 "Terrain uniform buffer parameter is bound but the uniform buffer is invalid for view key {vk}",
-                view->GetViewKey());
+                view_key);
             return;
         }
 
@@ -152,7 +154,7 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
         shader_bindings.Add(tile_tree_buffer_parameter, user_data->tile_tree_buffer_srv);
         shader_bindings.Add(geometry_tiles_buffer_parameter, user_data->geometry_tiles_buffer_srv);
 
-        if (should_probe_gpu_mesh()) {
+        if (terrain::vertex_factory::detail::should_probe_gpu_mesh()) {
             static bool logged_successful_gpu_bind = false;
             if (!logged_successful_gpu_bind) {
                 logged_successful_gpu_bind = true;
@@ -160,7 +162,7 @@ class FTerrainMeshVertexFactoryShaderParameters final : public FVertexFactorySha
                     LogTemp,
                     Display,
                     "[UDLOD.MeshProbe] Bound terrain VF shader parameters for view={0}.",
-                    view->GetViewKey()
+                    view_key
                 );
             }
         }
@@ -194,8 +196,8 @@ IMPLEMENT_VERTEX_FACTORY_TYPE(
     FTerrainMeshVertexFactory,
     "/Plugins/UDLODTerrain/terrain_mesh_vertex_factory.ush",
     EVertexFactoryFlags::UsedWithMaterials |
-    EVertexFactoryFlags::SupportsDynamicLighting |
-    EVertexFactoryFlags::SupportsPSOPrecaching
+    EVertexFactoryFlags::SupportsDynamicLighting
+    // | EVertexFactoryFlags::SupportsPSOPrecaching
 );
 
 FTerrainMeshVertexFactory::FTerrainMeshVertexFactory(
@@ -215,8 +217,6 @@ bool FTerrainMeshVertexFactory::ShouldCompilePermutation(
 ) {
     return IsFeatureLevelSupported(parameters.Platform, ERHIFeatureLevel::SM5) &&
     (parameters.MaterialParameters.MaterialDomain == MD_Surface ||
-        parameters.MaterialParameters.bIsUsedWithSkeletalMesh ||
-        parameters.MaterialParameters.bIsUsedWithStaticLighting ||
         parameters.MaterialParameters.bIsDefaultMaterial);
 }
 
@@ -226,12 +226,21 @@ void FTerrainMeshVertexFactory::ModifyCompilationEnvironment(
 ) {
     FVertexFactory::ModifyCompilationEnvironment(parameters, out_environment);
     out_environment.SetDefine(TEXT("MANUAL_VERTEX_FETCH"), 1);
-    out_environment.SetDefine(TEXT("USE_INSTANCING"), 0);
     out_environment.SetDefine(TEXT("PREPASS"), 0);
     out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 1);
     out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
     out_environment.SetDefine(TEXT("BLEND"), 1);
     out_environment.SetDefine(TEXT("MORPH"), 1);
+
+    // Mutually exclusive view modes
+    out_environment.SetDefine(TEXT("LIGHTING"), 0);
+    out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
+    out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
+    out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
+    out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
+    out_environment.SetDefine(TEXT("SHOW_UV"), 0);
+    out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
+
     out_environment.SetDefine(TEXT("VF_SUPPORTS_PRIMITIVE_SCENE_DATA"), 0);
     out_environment.SetDefine(TEXT("UDLOD_TERRAIN_MESH_VERTEX_FACTORY"), 1);
 }

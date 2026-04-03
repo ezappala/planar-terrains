@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <expected>
+
 #include "cpl_error.h"
 #include "ext_traits.h"
 #include "ext_types.h"
@@ -25,8 +27,11 @@ struct Buffer {
     }
 
     TTuple<types::isize_c, TArray<T>> into_shape_and_vec() && {
-        return {
-            _shape,
+        return TTuple<types::isize_c, TArray<T>>{
+            types::isize_c{
+                static_cast<types::isize>(_shape.Get<0>()),
+                static_cast<types::isize>(_shape.Get<1>())
+            },
             MoveTemp(_data)
         };
     }

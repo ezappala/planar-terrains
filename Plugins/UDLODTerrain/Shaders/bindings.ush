@@ -18,7 +18,7 @@
 StructuredBuffer<AttachmentConfig> attachment_configs;
 SamplerState terrain_sampler : register(s0);
 Texture2DArray<float> height_attachment : register(t0);
-Texture2DArray<float> albedo_attachment : register(t1);
+Texture2DArray<float4> albedo_attachment : register(t1);
 
 StructuredBuffer<TerrainView> terrain_view;
 #if PREPASS

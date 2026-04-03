@@ -5,6 +5,7 @@
 #include "RenderGraphUtils.h"
 #include "terrain_settings.h"
 #include "terrain_tile_atlas.h"
+#include "geos/namespaces.h"
 
 struct FGpuAttachment {
     FGpuAttachment(
@@ -18,6 +19,25 @@ struct FGpuAttachment {
             ))
         },
         buffer_info{attachment, tile_atlas.lod_count} {
+        if (label.Equals(TEXT("height"), ESearchCase::IgnoreCase)) {
+            checkf(
+                buffer_info.format == EAttachmentFormat::R32F,
+                TEXT("Height attachment must be R32F for the current terrain shader path.")
+            );
+        }
+
+        if (label.Equals(TEXT("albedo"), ESearchCase::IgnoreCase)) {
+            checkf(
+                buffer_info.format == EAttachmentFormat::Rgba8U || buffer_info.format ==
+                EAttachmentFormat::Rgb8U,
+                TEXT(
+                    "Albedo attachment must be an 8-bit color format "
+                    "for the current terrain_shader path."
+                )
+            );
+        }
+
+        constexpr uint16 mip_count = 1;
         const FRDGTextureDesc texture_desc = FRDGTextureDesc::Create2DArray(
             FIntPoint{
                 static_cast<int32>(buffer_info.texture_size),
@@ -27,7 +47,7 @@ struct FGpuAttachment {
             FClearValueBinding::Transparent,
             ETextureCreateFlags::ShaderResource | ETextureCreateFlags::UAV,
             static_cast<uint16>(settings.atlas_size),
-            attachment.mip_level_count
+            mip_count
         );
         AllocatePooledTexture(texture_desc, atlas_texture_pooled, *label);
     }

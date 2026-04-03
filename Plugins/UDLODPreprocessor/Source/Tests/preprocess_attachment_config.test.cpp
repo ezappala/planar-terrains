@@ -22,7 +22,11 @@ bool FPreprocessAttachmentConfigFormatMappingsTest::RunTest(const FString& Param
     TestEqual(
         TEXT("Rgb8U pixel format"),
         to_pixel_format(EAttachmentFormat::Rgb8U),
-        PF_R8G8B8A8_UINT);
+        PF_R8G8B8A8);
+    TestEqual(
+        TEXT("Rgba8U pixel format"),
+        to_pixel_format(EAttachmentFormat::Rgba8U),
+        PF_R8G8B8A8);
     TestEqual(
         TEXT("R16U pixel format"),
         to_pixel_format(EAttachmentFormat::R16U),

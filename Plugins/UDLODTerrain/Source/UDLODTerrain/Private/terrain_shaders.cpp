@@ -27,6 +27,11 @@ IMPLEMENT_GLOBAL_SHADER(
     "refine_tiles",
     SF_Compute)
 IMPLEMENT_GLOBAL_SHADER(
+    FTerrainSampleProbeComputeShader,
+    "/Plugins/UDLODTerrain/probe_samples.usf",
+    "probe_samples",
+    SF_Compute)
+IMPLEMENT_GLOBAL_SHADER(
     FTerrainVertexShader,
     "/Plugins/UDLODTerrain/vertex.usf",
     "vertex",
