@@ -227,20 +227,6 @@ void FTerrainMeshVertexFactory::ModifyCompilationEnvironment(
     FVertexFactory::ModifyCompilationEnvironment(parameters, out_environment);
     out_environment.SetDefine(TEXT("MANUAL_VERTEX_FETCH"), 1);
     out_environment.SetDefine(TEXT("PREPASS"), 0);
-    out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 1);
-    out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
-    out_environment.SetDefine(TEXT("BLEND"), 1);
-    out_environment.SetDefine(TEXT("MORPH"), 1);
-
-    // Mutually exclusive view modes
-    out_environment.SetDefine(TEXT("LIGHTING"), 0);
-    out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
-    out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-    out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
-    out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
-    out_environment.SetDefine(TEXT("SHOW_UV"), 0);
-    out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
-
     out_environment.SetDefine(TEXT("VF_SUPPORTS_PRIMITIVE_SCENE_DATA"), 0);
     out_environment.SetDefine(TEXT("UDLOD_TERRAIN_MESH_VERTEX_FACTORY"), 1);
 }

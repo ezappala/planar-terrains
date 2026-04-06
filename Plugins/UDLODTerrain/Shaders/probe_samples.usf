@@ -6,15 +6,11 @@
 #include "functions.ush"
 
 struct GpuSampleProbe {
-    uint atlas_index;
-    uint geometry_lod;
-    uint sampled_lod;
-    uint padding0;
+    uint4 ids0;
+    uint4 coords0;
+    float4 scalars;
     float4 albedo;
-    float height;
-    float approximate_height;
-    float normal_z;
-    float padding1;
+    float4 extra;
 };
 RWStructuredBuffer<GpuSampleProbe> output;
 
@@ -23,7 +19,7 @@ void probe_samples(uint3 id : SV_DispatchThreadID) {
     (void)id;
 
     GpuSampleProbe probe = (GpuSampleProbe)0;
-    probe.atlas_index = 0xFFFFFFFFu;
+    probe.ids0 = uint4(0xFFFFFFFFu, 0u, 0u, 0u);
     probe.albedo = float4(-1.0f, -1.0f, -1.0f, -1.0f);
 
     if (terrain_view[0].geometry_tile_count == 0u) {
@@ -45,17 +41,22 @@ void probe_samples(uint3 id : SV_DispatchThreadID) {
     Blend blend = compute_blend(world_coordinate.view_distance);
     AtlasTile tile = lookup_tile(coordinate, blend);
 
-    probe.atlas_index = tile.index;
-    probe.geometry_lod = geometry_tile.lod;
-    probe.sampled_lod = tile.coordinate.lod;
+    probe.ids0 = uint4(tile.index, geometry_tile.lod, tile.coordinate.lod, geometry_tile.face);
+    probe.coords0 = uint4(
+        geometry_tile.xy.x,
+        geometry_tile.xy.y,
+        tile.coordinate.xy.x,
+        tile.coordinate.xy.y
+    );
+    probe.scalars.xy = tile.coordinate.uv;
 
     if (tile.index != 0xFFFFFFFFu) {
-        probe.height = sample_height(tile);
+        probe.scalars.z = sample_height(tile);
         probe.albedo = sample_albedo(tile);
     }
 
-    probe.approximate_height = approximate_height[0];
-    probe.normal_z = world_coordinate.normal.z;
+    probe.scalars.w = approximate_height[0];
+    probe.extra.x = world_coordinate.normal.z;
 
     output[0] = probe;
 }

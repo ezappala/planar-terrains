@@ -6,12 +6,11 @@
 
 #include "bindings.ush"
 #include "common.ush"
+#include "functions.ush"
 
 #if defined(__RESHARPER__) || defined(__INTELLISENSE__)
-Terrain terrain;
 #define VERTEXSHADER 1
 #define PIXELSHADER 1
-#define SAMPLE_GRAD 1
 #endif
 
 #if PIXELSHADER
@@ -40,20 +39,20 @@ inline float sample_height(AtlasTile tile) {
     float sampled_height = 0.0f;
 
 #if PIXELSHADER
-#if SAMPLE_GRAD
-    float3 coord = float3(uv.uv, tile.index);
-    sampled_height = terrain.height_scale * height_attachment.SampleGrad(
-        terrain_sampler,
-        coord,
-        uv.dx,
-        uv.dy).x;
-#else
-    float3 coord = float3(uv.uv, tile.index);
-    sampled_height = terrain.height_scale * height_attachment.Sample(
-        terrain_sampler,
-        coord,
-        tile.blend_ratio).x;
-#endif
+    if (terrain_has_debug_flag(TERRAIN_DEBUG_SAMPLE_GRAD)) {
+        float3 coord = float3(uv.uv, tile.index);
+        sampled_height = terrain.height_scale * height_attachment.SampleGrad(
+            terrain_sampler,
+            coord,
+            uv.dx,
+            uv.dy).x;
+    } else {
+        float3 coord = float3(uv.uv, tile.index);
+        sampled_height = terrain.height_scale * height_attachment.SampleLevel(
+            terrain_sampler,
+            coord,
+            tile.blend_ratio).x;
+    }
 #else
     float3 coord = float3(uv.uv, tile.index);
     sampled_height = terrain.height_scale * height_attachment.SampleLevel(
@@ -69,12 +68,16 @@ inline float sample_height(AtlasTile tile) {
 inline float4 sample_albedo(AtlasTile tile) {
     SampleUV uv = compute_sample_uv(tile, attachment_configs[1]);
 
-#if SAMPLE_GRAD
-    float3 coord = float3(uv.uv, tile.index);
-    return albedo_attachment.SampleGrad(terrain_sampler, coord, uv.dx, uv.dy);
+#if PIXELSHADER
+    if (terrain_has_debug_flag(TERRAIN_DEBUG_SAMPLE_GRAD)) {
+        float3 coord = float3(uv.uv, tile.index);
+        return albedo_attachment.SampleGrad(terrain_sampler, coord, uv.dx, uv.dy);
+    } else {
+        float3 coord = float3(uv.uv, tile.index);
+        return albedo_attachment.SampleLevel(terrain_sampler, coord, tile.blend_ratio);
+    }
 #else
-    float3 coord = float3(uv.uv, tile.index);
-    return albedo_attachment.SampleLevel(terrain_sampler, coord, tile.blend_ratio);
+    return albedo_attachment.SampleLevel(terrain_sampler, float3(uv.uv, tile.index), 0.0f);
 #endif
 }
 
@@ -97,36 +100,39 @@ float3 sample_surface_gradient(AtlasTile tile, TangentSpace tangent_space) {
     SampleUV uv = compute_sample_uv(tile, attachment_configs[0]);
     float scale = max(length(uv.dx), length(uv.dy));
     float step = 0.5f * scale;
-#if SAMPLE_GRAD
-    float height = height_attachment.SampleGrad(
-        terrain_sampler,
-        float3(uv.uv + float2(-step, -step), tile.index),
-        uv.dx,
-        uv.dy).x;
-    float height_u = height_attachment.SampleGrad(
-        terrain_sampler,
-        float3(uv.uv + float2(step, -step), tile.index),
-        uv.dx,
-        uv.dy).x;
-    float height_v = height_attachment.SampleGrad(
-        terrain_sampler,
-        float3(uv.uv + float2(-step, step), tile.index),
-        uv.dx,
-        uv.dy).x;
-#else
-    float height = height_attachment.SampleLevel(
-        terrain_sampler,
-        float3(uv.uv + float2(-step, -step), tile.index),
-        tile.blend_ratio).x;
-    float height_u = height_attachment.SampleLevel(
-        terrain_sampler,
-        float3(uv.uv + float2(step, -step), tile.index),
-        tile.blend_ratio).x;
-    float height_v = height_attachment.SampleLevel(
-        terrain_sampler,
-        float3(uv.uv + float2(-step, step), tile.index),
-        tile.blend_ratio).x;
-#endif
+    float height;
+    float height_u;
+    float height_v;
+    if (terrain_has_debug_flag(TERRAIN_DEBUG_SAMPLE_GRAD)) {
+        height = height_attachment.SampleGrad(
+            terrain_sampler,
+            float3(uv.uv + float2(-step, -step), tile.index),
+            uv.dx,
+            uv.dy).x;
+        height_u = height_attachment.SampleGrad(
+            terrain_sampler,
+            float3(uv.uv + float2(step, -step), tile.index),
+            uv.dx,
+            uv.dy).x;
+        height_v = height_attachment.SampleGrad(
+            terrain_sampler,
+            float3(uv.uv + float2(-step, step), tile.index),
+            uv.dx,
+            uv.dy).x;
+    } else {
+        height = height_attachment.SampleLevel(
+            terrain_sampler,
+            float3(uv.uv + float2(-step, -step), tile.index),
+            tile.blend_ratio).x;
+        height_u = height_attachment.SampleLevel(
+            terrain_sampler,
+            float3(uv.uv + float2(step, -step), tile.index),
+            tile.blend_ratio).x;
+        height_v = height_attachment.SampleLevel(
+            terrain_sampler,
+            float3(uv.uv + float2(-step, step), tile.index),
+            tile.blend_ratio).x;
+    }
     float2 height_duv = float2(height_u - height, height_v - height) / scale;
     float start = 0.5f;
     float end = 0.05f;

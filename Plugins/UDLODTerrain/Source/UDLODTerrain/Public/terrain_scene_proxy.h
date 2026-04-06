@@ -38,6 +38,7 @@ private:
     const FMaterialRenderProxy* material_proxy = nullptr;
     FMaterialRelevance material_relevance;
     TSharedPtr<FTerrainRenderResources> render_resources;
+    bool bDebugWireframe = false;
     FTerrainMeshVertexFactory vertex_factory;
 
     friend class UTerrain;

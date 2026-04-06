@@ -35,12 +35,32 @@ struct TerrainView {
     float precision_distance;
     uint face;
     uint lod;
+    uint debug_flags;
+    uint planar_gradient_mode;
     uint4 lod_tile_counts[32];
     ViewCoordinate coordinates[6];
     float height_scale;
     float3 world_position;
     float4 half_spaces[6];
 };
+
+static const uint TERRAIN_DEBUG_WIREFRAME = 1u << 0;
+static const uint TERRAIN_DEBUG_SHOW_DATA_LOD = 1u << 1;
+static const uint TERRAIN_DEBUG_SHOW_GEOMETRY_LOD = 1u << 2;
+static const uint TERRAIN_DEBUG_SHOW_TILE_TREE = 1u << 3;
+static const uint TERRAIN_DEBUG_SHOW_PIXELS = 1u << 4;
+static const uint TERRAIN_DEBUG_SHOW_UV = 1u << 5;
+static const uint TERRAIN_DEBUG_SHOW_NORMALS = 1u << 6;
+static const uint TERRAIN_DEBUG_MORPH = 1u << 7;
+static const uint TERRAIN_DEBUG_BLEND = 1u << 8;
+static const uint TERRAIN_DEBUG_TILE_TREE_LOD = 1u << 9;
+static const uint TERRAIN_DEBUG_LIGHTING = 1u << 10;
+static const uint TERRAIN_DEBUG_SAMPLE_GRAD = 1u << 11;
+static const uint TERRAIN_DEBUG_HIGH_PRECISION = 1u << 12;
+static const uint TERRAIN_DEBUG_FREEZE = 1u << 13;
+static const uint TERRAIN_DEBUG_TEST1 = 1u << 14;
+static const uint TERRAIN_DEBUG_TEST2 = 1u << 15;
+static const uint TERRAIN_DEBUG_TEST3 = 1u << 16;
 
 struct SampleUV {
     float2 uv;

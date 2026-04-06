@@ -172,7 +172,6 @@ bool no_data_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
 }
 
 bool cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
-    return false;
     if (frustum_cull_aabb(coordinate)) {
         return true;
     }

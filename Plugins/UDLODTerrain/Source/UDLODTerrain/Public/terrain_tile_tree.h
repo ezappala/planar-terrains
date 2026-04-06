@@ -249,8 +249,8 @@ struct FTileTree {
         const FVector2d tile_count = get_tile_count(tile.lod);
         const auto view_tile_xy = compute_tree_xy(view_coordinate, tile_count);
         const auto tile_offset = FIntVector2{
-            tile.xy.X - static_cast<int32>(view_tile_xy.X),
-            tile.xy.Y - static_cast<int32>(view_tile_xy.Y)
+            static_cast<int32>(view_tile_xy.X) - tile.xy.X,
+            static_cast<int32>(view_tile_xy.Y) - tile.xy.Y
         };
         auto offset = FVector2d{
             FMath::Fmod(view_tile_xy.X, 1.),

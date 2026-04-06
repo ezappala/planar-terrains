@@ -1,12 +1,15 @@
-﻿#pragma once
+﻿// ReSharper disable CppInconsistentNaming
+#pragma once
 
 float4x4 affine3_to_square(float3x4 affine) {
-    return transpose(float4x4(
-        affine[0],
-        affine[1],
-        affine[2],
-        float4(0.0f, 0.0f, 0.0f, 1.0f)
-    ));
+    return transpose(
+        float4x4(
+            affine[0],
+            affine[1],
+            affine[2],
+            float4(0.0f, 0.0f, 0.0f, 1.0f)
+        )
+    );
 }
 
 float3x3 mat2x4_f32_to_mat3x3_unpack(float2x4 a, float b) {

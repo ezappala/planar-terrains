@@ -65,6 +65,7 @@ public:
     UPROPERTY()
     UMaterialInterface* material;
 
+    bool bDebugWireframe = false;
     bool bDrawDebug;
 
     friend class FTerrainSceneProxy;

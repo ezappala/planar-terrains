@@ -13,9 +13,14 @@ Terrain terrain;
 #define VERTEXSHADER 1
 #define PIXELSHADER 1
 #define PREPASS 1
-#define MORPH 1
-#define BLEND 1
 #endif
+
+inline bool terrain_has_debug_flag(uint flag) { return (terrain_view[0].debug_flags & flag) != 0u; }
+
+inline bool high_precision(float view_distance) {
+    return terrain_has_debug_flag(TERRAIN_DEBUG_HIGH_PRECISION) &&
+        view_distance < terrain_view[0].precision_distance;
+}
 
 #if VERTEXSHADER
 inline Coordinate compute_coordinate(uint vertex_index) {
@@ -76,17 +81,20 @@ inline float2 get_lod_tile_count_f(uint lod) { return max(float2(get_lod_tile_co
 inline WorldCoordinate compute_world_coordinate(Coordinate coordinate, float height) {
     float2 uv = (float2(coordinate.xy) + coordinate.uv) / get_lod_tile_count_f(coordinate.lod);
 
-    // Unreal is Z-up, so keep the procedural terrain plane in XY and displace along +Z.
+    // Bevy's planar terrain lives on XZ with +Y as the height axis. The runtime planar helpers in
+    // this Unreal port already place the terrain on XY with +Z as the local height axis, so keep
+    // the same position basis here and make the normal transform explicit instead of reconstructing
+    // it from the world matrix columns.
     float3 unit_position = float3(uv.x - 0.5f, uv.y - 0.5f, 0.0f);
+    float3 unit_normal = float3(0.0f, 0.0f, 1.0f);
 
     float4x4 position_world_from_unit = affine3_to_square(terrain.world_from_unit);
     float3 world_position = mul(position_world_from_unit, float4(unit_position, 1.0f)).xyz;
-    float3 world_origin = mul(position_world_from_unit, float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;
-    float3 world_axis_x = mul(position_world_from_unit, float4(1.0f, 0.0f, 0.0f, 1.0f)).xyz -
-        world_origin;
-    float3 world_axis_y = mul(position_world_from_unit, float4(0.0f, 1.0f, 0.0f, 1.0f)).xyz -
-        world_origin;
-    float3 world_normal = normalize(cross(world_axis_x, world_axis_y));
+    float3x3 normal_world_from_unit = mat2x4_f32_to_mat3x3_unpack(
+        terrain.unit_from_world_transpose_a,
+        terrain.unit_from_world_transpose_b
+    );
+    float3 world_normal = normalize(mul(normal_world_from_unit, unit_normal));
     float view_distance = distance(
         world_position + height * world_normal,
         terrain_view[0].world_position);
@@ -148,23 +156,25 @@ inline float3 apply_height(WorldCoordinate world_coordinate, float height) {
 }
 
 inline float compute_morph(uint lod, float view_distance) {
-#if MORPH
-    float target_lod = log2(terrain_view[0].morph_distance / view_distance);
-    return select(lod == 0u, /*true*/ 0.0f, /*false*/ saturate(1.0f - (target_lod - float(lod))));
-#else
-    return 0.0;
-#endif
+    if (terrain_has_debug_flag(TERRAIN_DEBUG_MORPH)) {
+        float target_lod = log2(terrain_view[0].morph_distance / view_distance);
+        return select(
+            lod == 0u,
+            /*true*/
+            0.0f,
+            /*false*/
+            saturate(1.0f - (target_lod - float(lod)) / terrain_view[0].morph_range)
+        );
+    } else { return 0.0; }
 }
 
 inline Blend compute_blend(float view_distance) {
     float target_lod = log2(terrain_view[0].blend_distance / view_distance);
     float clamped_target_lod = max(target_lod, 0.0f);
 
-#if BLEND
-    float ratio = saturate(1.0f - frac(target_lod) / terrain_view[0].blend_range);
-#else
-    float ratio = 0.0f;
-#endif
+    const float ratio = terrain_has_debug_flag(TERRAIN_DEBUG_BLEND)
+        ? saturate(1.0f - frac(target_lod) / terrain_view[0].blend_range)
+        : 0.0f;
 
     uint blend_lod = min(uint(clamped_target_lod), terrain.lod_count - 1u);
     return blend(
@@ -251,11 +261,12 @@ inline float2 compute_tile_tree_uv(Coordinate coordinate) {
         float2(view_coordinate.xy) + view_coordinate.uv,
         float2(tile_count) - float2(1e-6f, 1e-6f)
     );
-    int2 view_xy = int2(clamp(
-        round(tree_xy - 0.5f * float2(tree_size)),
-        float2(0.0f, 0.0f),
-        float2(max(tile_count - tree_size, int2(0, 0)))
-    ));
+    int2 view_xy = int2(
+        clamp(
+            round(tree_xy - 0.5f * float2(tree_size)),
+            float2(0.0f, 0.0f),
+            float2(max(tile_count - tree_size, int2(0, 0)))
+        ));
     return (float2(int2(coordinate.xy) - view_xy) + coordinate.uv) / max(
         float2(tree_size),
         float2(1.0f, 1.0f)
@@ -269,33 +280,16 @@ inline TileTreeEntry lookup_tile_tree_entry(Coordinate coordinate) {
     return tile_tree[tree_index];
 }
 
-inline TileTreeEntry lookup_loaded_tile_tree_entry(Coordinate coordinate) {
-    Coordinate fallback_coordinate = coordinate;
-
-    [loop]
-    while (true) {
-        TileTreeEntry tile_tree_entry = lookup_tile_tree_entry(fallback_coordinate);
-        if (tile_tree_entry.atlas_index != 0xFFFFFFFFu &&
-            tile_tree_entry.atlas_lod != 0xFFFFFFFFu) {
-            return tile_tree_entry;
-        }
-
-        if (fallback_coordinate.lod == 0u) { return tile_tree_entry; }
-
-        coordinate_change_lod(fallback_coordinate, fallback_coordinate.lod - 1u);
-    }
-}
-
 inline BestLookup lookup_best(Coordinate lookup_coordinate) {
-    Coordinate coordinate = make_coordinate();
-    float2 tile_tree_uv;
     Coordinate new_coordinate = lookup_coordinate;
     coordinate_change_lod(new_coordinate, 0u);
-    float2 new_tile_tree_uv = compute_tile_tree_uv(new_coordinate);
+    Coordinate coordinate = new_coordinate;
+    float2 new_tile_tree_uv = new_coordinate.uv;
+    float2 tile_tree_uv = new_tile_tree_uv;
 
     [unroll]
     while (new_coordinate.lod < terrain.lod_count &&
-        !any(new_tile_tree_uv < float2(0.0f, 0.0f)) &&
+        !any(new_tile_tree_uv <= float2(0.0f, 0.0f)) &&
         !any(new_tile_tree_uv >= float2(1.0f, 1.0f))) {
         coordinate = new_coordinate;
         tile_tree_uv = new_tile_tree_uv;
@@ -305,7 +299,7 @@ inline BestLookup lookup_best(Coordinate lookup_coordinate) {
         new_tile_tree_uv = compute_tile_tree_uv(new_coordinate);
     }
 
-    TileTreeEntry tile_tree_entry = lookup_loaded_tile_tree_entry(coordinate);
+    TileTreeEntry tile_tree_entry = lookup_tile_tree_entry(coordinate);
     if (tile_tree_entry.atlas_index == 0xFFFFFFFFu || tile_tree_entry.atlas_lod == 0xFFFFFFFFu) {
         return best_lookup(atlas_tile(0xFFFFFFFFu, coordinate, 0.0f), tile_tree_uv);
     }
@@ -315,17 +309,16 @@ inline BestLookup lookup_best(Coordinate lookup_coordinate) {
 }
 
 inline AtlasTile lookup_tile(Coordinate lookup_coordinate, Blend blend) {
-#if TILE_TREE_LOD
-    return lookup_best(lookup_coordinate).tile;
-#else
+    if (terrain_has_debug_flag(TERRAIN_DEBUG_TILE_TREE_LOD)) {
+        return lookup_best(lookup_coordinate).tile;
+    }
+
     Coordinate coordinate = lookup_coordinate;
     coordinate_change_lod(coordinate, blend.lod);
-    TileTreeEntry tile_tree_entry = lookup_loaded_tile_tree_entry(coordinate);
-    if (tile_tree_entry.atlas_index == 0xFFFFFFFFu || tile_tree_entry.atlas_lod == 0xFFFFFFFFu) {
-        return atlas_tile(0xFFFFFFFFu, coordinate, blend.ratio);
-    }
+    TileTreeEntry tile_tree_entry = lookup_tile_tree_entry(coordinate);
+    if (tile_tree_entry.atlas_index == 0xFFFFFFFFu || tile_tree_entry.atlas_lod ==
+        0xFFFFFFFFu) { return atlas_tile(0xFFFFFFFFu, coordinate, blend.ratio); }
 
     coordinate_change_lod(coordinate, tile_tree_entry.atlas_lod);
     return atlas_tile(tile_tree_entry.atlas_index, coordinate, blend.ratio);
-#endif
 }

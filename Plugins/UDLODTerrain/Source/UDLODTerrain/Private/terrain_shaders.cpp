@@ -41,8 +41,13 @@ IMPLEMENT_GLOBAL_SHADER(
     "/Plugins/UDLODTerrain/fragment.usf",
     "fragment",
     SF_Pixel)
-// IMPLEMENT_GLOBAL_SHADER(
-//     FTerrainPickingComputeShader,
-//     "/Plugins/UDLODTerrain/picking.usf",
-//     "picking",
-//     SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(
+    FTerrainPickingComputeShader,
+    "/Plugins/UDLODTerrain/picking.usf",
+    "pick",
+    SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(
+    FTerrainDepthCopyPixelShader,
+    "/Plugins/UDLODTerrain/depth_copy.usf",
+    "depth_copy",
+    SF_Pixel);

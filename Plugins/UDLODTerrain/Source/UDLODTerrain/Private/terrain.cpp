@@ -24,9 +24,10 @@ FPrimitiveSceneProxy* UTerrain::CreateSceneProxy() { return new FTerrainScenePro
 
 FBoxSphereBounds UTerrain::CalcBounds(const FTransform& LocalToWorld) const {
     const double half_side = config.side_length > 0.0 ? config.side_length * 0.5 : 500.0;
+    const double height_scale = atlas.IsSet() ? static_cast<double>(atlas->height_scale) : 1.0;
     const double max_abs_height = FMath::Max(
-        FMath::Abs(static_cast<double>(config.min_height)),
-        FMath::Abs(static_cast<double>(config.max_height))
+        FMath::Abs(static_cast<double>(config.min_height) * height_scale),
+        FMath::Abs(static_cast<double>(config.max_height) * height_scale)
     );
     const double half_height = FMath::Max(max_abs_height, 100.0);
 

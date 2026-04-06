@@ -2,6 +2,7 @@
 #include "gpu_terrain.h"
 #include "gpu_terrain_atlas_buffer_info.h"
 #include "terrain_config.h"
+#include "terrain_debug_settings.h"
 // #include "terrain_picking.h"
 #include "terrain_settings.h"
 #include "terrain_tile_atlas.h"
@@ -83,6 +84,10 @@ public:
     virtual void OnConstruction(const FTransform& tf) override;
     virtual void BeginPlay() override;
 
+#if WITH_EDITOR
+    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UDLOD")
     USceneComponent* root;
 
@@ -128,6 +133,76 @@ public:
 
     UFUNCTION(
         CallInEditor,
+        Category = "UDLOD|Debug",
+        DisplayName="Reset Runtime Debug Controls"
+    )
+    void ResetRuntimeDebugControls();
+
+    UFUNCTION(
+        CallInEditor,
+        Category = "UDLOD|Debug",
+        DisplayName="Cycle Planar Gradient Mode"
+    )
+    void CyclePlanarGradientMode();
+
+    UFUNCTION(
+        CallInEditor,
+        Category = "UDLOD|Debug",
+        DisplayName="Increase Height Scale"
+    )
+    void IncreaseRuntimeHeightScale();
+
+    UFUNCTION(
+        CallInEditor,
+        Category = "UDLOD|Debug",
+        DisplayName="Decrease Height Scale"
+    )
+    void DecreaseRuntimeHeightScale();
+
+    UFUNCTION(
+        CallInEditor,
+        Category = "UDLOD|Debug",
+        DisplayName="Increase Blend/Load Distance"
+    )
+    void IncreaseRuntimeBlendLoadDistance();
+
+    UFUNCTION(
+        CallInEditor,
+        Category = "UDLOD|Debug",
+        DisplayName="Decrease Blend/Load Distance"
+    )
+    void DecreaseRuntimeBlendLoadDistance();
+
+    UFUNCTION(
+        CallInEditor,
+        Category = "UDLOD|Debug",
+        DisplayName="Increase Morph/Subdivision Distance"
+    )
+    void IncreaseRuntimeMorphDistance();
+
+    UFUNCTION(
+        CallInEditor,
+        Category = "UDLOD|Debug",
+        DisplayName="Decrease Morph/Subdivision Distance"
+    )
+    void DecreaseRuntimeMorphDistance();
+
+    UFUNCTION(
+        CallInEditor,
+        Category = "UDLOD|Debug",
+        DisplayName="Increase Grid Size"
+    )
+    void IncreaseRuntimeGridSize();
+
+    UFUNCTION(
+        CallInEditor,
+        Category = "UDLOD|Debug",
+        DisplayName="Decrease Grid Size"
+    )
+    void DecreaseRuntimeGridSize();
+
+    UFUNCTION(
+        CallInEditor,
         Category = "UDLOD|Editor",
         DisplayName="Respawn From Selected Blueprint")
     void RespawnFromSelectedBlueprint();
@@ -152,6 +227,9 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UDLOD|Runtime")
     FTerrainSettings settings;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Transient, Category = "UDLOD|Debug")
+    FTerrainDebugSettings debug_settings;
 
     UPROPERTY(
         EditAnywhere,
@@ -193,6 +271,9 @@ private:
     UPROPERTY(VisibleInstanceOnly, Transient, Category = "UDLOD|Editor")
     bool auto_spawned_by_world_subsystem = false;
 
+    UPROPERTY(Transient)
+    bool bRuntimeDebugControlsInitialized = false;
+
 public:
     void set_auto_spawned_by_world_subsystem(bool bInAutoSpawned);
     bool is_auto_spawned_by_world_subsystem() const;
@@ -201,6 +282,10 @@ private:
     bool has_pending_runtime_load() const;
     bool needs_runtime_rebuild() const;
     void sync_runtime_state_from_spawned_terrain();
+    void seed_runtime_debug_controls(bool bForceReset = false);
+    void apply_runtime_debug_controls();
+    void notify_runtime_debug_controls_changed();
+    double get_debug_face_size() const;
     void rebuild_terrains();
     void clear_spawned_terrains();
 };

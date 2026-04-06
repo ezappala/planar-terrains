@@ -148,6 +148,16 @@ struct FGpuTerrainView {
             final_tiles_buffer_pooled,
             TEXT("UDLOD.FinalTilesBuffer")
         );
+
+        const FRDGBufferDesc picking_data_desc = FRDGBufferDesc::CreateStructuredDesc(
+            sizeof(FPickingDataUpload),
+            1u
+        );
+        AllocatePooledBuffer(
+            picking_data_desc,
+            picking_data_buffer_pooled,
+            TEXT("UDLOD.PickingDataBuffer")
+        );
     }
 
     uint32 order;
@@ -167,8 +177,12 @@ struct FGpuTerrainView {
     FRDGBufferRef final_tiles_buffer;
     FRDGBufferUAVRef final_tiles_uav;
     FRDGBufferSRVRef final_tiles_srv;
+    TRefCountPtr<FRDGPooledBuffer> picking_data_buffer_pooled;
+    FRDGBufferRef picking_data_buffer;
+    FRDGBufferUAVRef picking_data_uav;
     Prepass* prepass_parameters;
     RefineTiles* refine_tiles_parameters;
+    Picking* picking_parameters;
 
     friend bool operator==(const FGpuTerrainView& a, const FGpuTerrainView& b) {
         return a.order == b.order
@@ -185,7 +199,10 @@ struct FGpuTerrainView {
             && a.final_tiles_buffer_pooled == b.final_tiles_buffer_pooled
             && a.final_tiles_buffer == b.final_tiles_buffer
             && a.final_tiles_uav == b.final_tiles_uav
-            && a.final_tiles_srv == b.final_tiles_srv;
+            && a.final_tiles_srv == b.final_tiles_srv
+            && a.picking_data_buffer_pooled == b.picking_data_buffer_pooled
+            && a.picking_data_buffer == b.picking_data_buffer
+            && a.picking_data_uav == b.picking_data_uav;
     }
 
     static void initialize(
@@ -246,6 +263,11 @@ struct FGpuTerrainView {
         );
         gtv->final_tiles_uav = gb.CreateUAV(gtv->final_tiles_buffer);
         gtv->final_tiles_srv = gb.CreateSRV(gtv->final_tiles_buffer);
+        gtv->picking_data_buffer = gb.RegisterExternalBuffer(
+            gtv->picking_data_buffer_pooled,
+            TEXT("UDLOD.PickingDataBuffer")
+        );
+        gtv->picking_data_uav = gb.CreateUAV(gtv->picking_data_buffer);
 
         gtv->prepass_parameters = gb.AllocParameters<Prepass>();
         gtv->prepass_parameters->terrain_view = gtv->terrain_view_buffer;
@@ -259,6 +281,8 @@ struct FGpuTerrainView {
         gtv->refine_tiles_parameters->temporary_tiles = gtv->temporary_tiles_buffer;
         gtv->refine_tiles_parameters->final_tiles = gtv->final_tiles_uav;
         gtv->refine_tiles_parameters->IndirectArgs = gtv->indirect_args_buffer;
+
+        gtv->picking_parameters = nullptr;
     }
 };
 
@@ -336,7 +360,20 @@ FORCEINLINE uint32 GetTypeHash(const FGpuTerrainView& gpu_terrain_view) {
                     ),
                     HashCombine(
                         GetTypeHash(gpu_terrain_view.final_tiles_uav),
-                        GetTypeHash(gpu_terrain_view.final_tiles_srv)
+                        HashCombine(
+                            GetTypeHash(gpu_terrain_view.final_tiles_srv),
+                            HashCombine(
+                                GetTypeHash(
+                                    reinterpret_cast<UPTRINT>(
+                                        gpu_terrain_view.picking_data_buffer_pooled.
+                                        GetReference())
+                                ),
+                                HashCombine(
+                                    GetTypeHash(gpu_terrain_view.picking_data_buffer),
+                                    GetTypeHash(gpu_terrain_view.picking_data_uav)
+                                )
+                            )
+                        )
                     )
                 )
             )

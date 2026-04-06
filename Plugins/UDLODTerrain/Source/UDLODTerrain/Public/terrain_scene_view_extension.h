@@ -21,6 +21,7 @@ class FTerrainSceneViewExtension final : public FWorldSceneViewExtension {
     struct FPendingGpuProbe {
         uint64 submission_id = 0;
         uint32 view_key = 0;
+        TMap<uint32, FTileCoordinate> atlas_owner_snapshot;
         TUniquePtr<FRHIGPUBufferReadback> indirect_args_readback;
         TUniquePtr<FRHIGPUBufferReadback> prepass_state_readback;
         TUniquePtr<FRHIGPUBufferReadback> final_tiles_readback;
@@ -43,6 +44,12 @@ public:
         FSceneViewFamily& in_view_family
     ) override;
     virtual void PreRenderView_RenderThread(FRDGBuilder& gb, FSceneView& in_view) override;
+    virtual void PostRenderBasePassDeferred_RenderThread(
+        FRDGBuilder& gb,
+        FSceneView& in_view,
+        const FRenderTargetBindingSlots& render_targets,
+        TRDGUniformBufferRef<FSceneTextureUniformParameters> scene_textures
+    ) override;
 
     static FRDGTextureSRVRef CreateRDGTextureFromUTexture(
         FRDGBuilder& gb,
@@ -82,6 +89,7 @@ private:
     void enqueue_gpu_probe(
         FRDGBuilder& gb,
         const FTerrainViewSnapshot& view,
+        const FTileAtlas& tile_atlas,
         const FTileTree& tile_tree,
         const FGpuTerrain& gpu_terrain,
         const FGpuTerrainView& gpu_terrain_view,

@@ -30,6 +30,7 @@ bool should_probe_gpu_mesh() { return CVarUDLODMeshProbe.GetValueOnRenderThread(
 
 FTerrainSceneProxy::FTerrainSceneProxy(const UTerrain* component) : FPrimitiveSceneProxy(component),
     render_resources(component->render_resources),
+    bDebugWireframe(component->bDebugWireframe),
     vertex_factory(GMaxRHIFeatureLevel) {
     const UMaterialInterface* material_interface = component->material;
     if (material_interface == nullptr) {
@@ -98,12 +99,16 @@ void FTerrainSceneProxy::GetDynamicMeshElements(
                 }
 
                 mesh_builder.AddTriangles(cpu_view_state.indices);
+                FDynamicMeshBuilderSettings mesh_builder_settings;
+                mesh_builder_settings.bWireframe = bDebugWireframe;
+                mesh_builder_settings.bCanApplyViewModeOverrides = true;
+                mesh_builder_settings.CastShadow = IsShadowCast(view);
                 mesh_builder.GetMesh(
                     GetLocalToWorld(),
                     material_proxy,
                     SDPG_World,
-                    false,
-                    true,
+                    mesh_builder_settings,
+                    nullptr,
                     view_index,
                     collector
                 );
@@ -157,6 +162,7 @@ void FTerrainSceneProxy::GetDynamicMeshElements(
         mesh.bCanApplyViewModeOverrides = true;
         mesh.bUseForMaterial = true;
         mesh.bUseForDepthPass = true;
+        mesh.bWireframe = bDebugWireframe;
 
         if (terrain::scene_proxy::detail::should_probe_gpu_mesh()) {
             static bool logged_gpu_mesh_submission = false;

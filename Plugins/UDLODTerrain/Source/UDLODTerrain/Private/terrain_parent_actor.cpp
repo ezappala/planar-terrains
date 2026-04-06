@@ -11,6 +11,10 @@
 #include "Engine/World.h"
 
 namespace terrain {
+FTerrainDebugSettings make_default_debug_settings() {
+    return FTerrainDebugSettings{};
+}
+
 bool has_pending_load_flags(const UObject* object) {
     return IsValid(object) && object->HasAnyFlags(RF_NeedLoad | RF_NeedPostLoad);
 }
@@ -281,8 +285,42 @@ void ATerrainParentActor::BeginPlay() {
     VerifyInitializationState(false);
 }
 
+#if WITH_EDITOR
+void ATerrainParentActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) {
+    Super::PostEditChangeProperty(PropertyChangedEvent);
+
+    if (PropertyChangedEvent.Property == nullptr && PropertyChangedEvent.MemberProperty == nullptr) {
+        return;
+    }
+
+    const FName property_name = PropertyChangedEvent.Property != nullptr
+        ? PropertyChangedEvent.Property->GetFName()
+        : NAME_None;
+    const FName member_property_name = PropertyChangedEvent.MemberProperty != nullptr
+        ? PropertyChangedEvent.MemberProperty->GetFName()
+        : NAME_None;
+    if (
+        property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, terrain_config_path) ||
+        property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, terrain) ||
+        property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, settings) ||
+        property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, material)
+    ) {
+        VerifyInitializationState(true);
+        return;
+    }
+
+    if (
+        property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, debug_settings) ||
+        member_property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, debug_settings)
+    ) {
+        notify_runtime_debug_controls_changed();
+    }
+}
+#endif
+
 void ATerrainParentActor::ReloadTerrainConfig() {
     terrain = terrain::load_default_terrain_descriptor(terrain_config_path);
+    bRuntimeDebugControlsInitialized = false;
     VerifyInitializationState(true);
 }
 
@@ -341,6 +379,7 @@ void ATerrainParentActor::PreprocessTerrain() {
         FTerrainViewConfig{},
     };
 
+    bRuntimeDebugControlsInitialized = false;
     VerifyInitializationState(true);
 }
 
@@ -368,6 +407,78 @@ void ATerrainParentActor::VerifyInitializationState(const bool bForceRebuild) {
     }
 
     sync_runtime_state_from_spawned_terrain();
+}
+
+void ATerrainParentActor::ResetRuntimeDebugControls() {
+    debug_settings = terrain::make_default_debug_settings();
+    bRuntimeDebugControlsInitialized = false;
+    seed_runtime_debug_controls(true);
+    notify_runtime_debug_controls_changed();
+}
+
+void ATerrainParentActor::CyclePlanarGradientMode() {
+    const uint8 next_value = (static_cast<uint8>(debug_settings.planar_gradient_mode) + 1u) % 4u;
+    debug_settings.planar_gradient_mode = static_cast<ETerrainPlanarGradientMode>(next_value);
+    notify_runtime_debug_controls_changed();
+}
+
+void ATerrainParentActor::IncreaseRuntimeHeightScale() {
+    seed_runtime_debug_controls(false);
+    debug_settings.height_scale += 0.1f;
+    notify_runtime_debug_controls_changed();
+}
+
+void ATerrainParentActor::DecreaseRuntimeHeightScale() {
+    seed_runtime_debug_controls(false);
+    debug_settings.height_scale = FMath::Max(0.0f, debug_settings.height_scale - 0.1f);
+    notify_runtime_debug_controls_changed();
+}
+
+void ATerrainParentActor::IncreaseRuntimeBlendLoadDistance() {
+    seed_runtime_debug_controls(false);
+    const double step = 0.25 * get_debug_face_size();
+    debug_settings.blend_distance += step;
+    debug_settings.load_distance += step;
+    notify_runtime_debug_controls_changed();
+}
+
+void ATerrainParentActor::DecreaseRuntimeBlendLoadDistance() {
+    seed_runtime_debug_controls(false);
+    const double step = 0.25 * get_debug_face_size();
+    debug_settings.blend_distance = FMath::Max(step, debug_settings.blend_distance - step);
+    debug_settings.load_distance = FMath::Max(step, debug_settings.load_distance - step);
+    notify_runtime_debug_controls_changed();
+}
+
+void ATerrainParentActor::IncreaseRuntimeMorphDistance() {
+    seed_runtime_debug_controls(false);
+    const double step = get_debug_face_size();
+    debug_settings.morph_distance += step;
+    debug_settings.subdivision_distance += step;
+    notify_runtime_debug_controls_changed();
+}
+
+void ATerrainParentActor::DecreaseRuntimeMorphDistance() {
+    seed_runtime_debug_controls(false);
+    const double step = get_debug_face_size();
+    debug_settings.morph_distance = FMath::Max(step, debug_settings.morph_distance - step);
+    debug_settings.subdivision_distance = FMath::Max(
+        step,
+        debug_settings.subdivision_distance - step
+    );
+    notify_runtime_debug_controls_changed();
+}
+
+void ATerrainParentActor::IncreaseRuntimeGridSize() {
+    seed_runtime_debug_controls(false);
+    debug_settings.grid_size += 2;
+    notify_runtime_debug_controls_changed();
+}
+
+void ATerrainParentActor::DecreaseRuntimeGridSize() {
+    seed_runtime_debug_controls(false);
+    debug_settings.grid_size = FMath::Max(2, debug_settings.grid_size - 2);
+    notify_runtime_debug_controls_changed();
 }
 
 void ATerrainParentActor::RespawnFromSelectedBlueprint() {
@@ -444,8 +555,85 @@ void ATerrainParentActor::sync_runtime_state_from_spawned_terrain() {
         view_component = FTileTree{terrain_config, terrain_view_config};
     }
 
+    seed_runtime_debug_controls(false);
+    apply_runtime_debug_controls();
     spawned_terrain->UpdateBounds();
     spawned_terrain->MarkRenderStateDirty();
+}
+
+void ATerrainParentActor::seed_runtime_debug_controls(const bool bForceReset) {
+    if ((!view_component.IsSet() || !tile_atlas.IsSet()) && !terrain.IsSet()) { return; }
+    if (!bForceReset && bRuntimeDebugControlsInitialized) { return; }
+
+    const FTerrainViewConfig* base_view_config = terrain.IsSet()
+        ? &terrain->terrain_view_config
+        : nullptr;
+
+    if (tile_atlas.IsSet()) {
+        debug_settings.height_scale = tile_atlas->height_scale;
+    } else if (spawned_terrain != nullptr && spawned_terrain->atlas.IsSet()) {
+        debug_settings.height_scale = spawned_terrain->atlas->height_scale;
+    }
+
+    if (view_component.IsSet()) {
+        debug_settings.blend_distance = view_component->blend_distance;
+        debug_settings.load_distance = view_component->load_distance;
+        debug_settings.morph_distance = view_component->morph_distance;
+        debug_settings.subdivision_distance = view_component->subdivision_distance;
+        debug_settings.grid_size = static_cast<int32>(view_component->grid_size);
+    } else if (terrain.IsSet() && config.IsSet()) {
+        const double face_size = config->face_size;
+        debug_settings.blend_distance = base_view_config->blend_distance * face_size;
+        debug_settings.load_distance = base_view_config->blend_distance *
+            face_size *
+            (1.0 + base_view_config->load_tolerance);
+        debug_settings.morph_distance = base_view_config->morph_distance * face_size;
+        debug_settings.subdivision_distance = base_view_config->morph_distance *
+            face_size *
+            (1.0 + base_view_config->subdivision_tolerance);
+        debug_settings.grid_size = base_view_config->grid_size;
+    }
+
+    bRuntimeDebugControlsInitialized = true;
+}
+
+void ATerrainParentActor::apply_runtime_debug_controls() {
+    seed_runtime_debug_controls(false);
+
+    if (tile_atlas.IsSet()) {
+        tile_atlas->height_scale = debug_settings.height_scale;
+    }
+    if (spawned_terrain != nullptr) {
+        spawned_terrain->bDebugWireframe = debug_settings.bWireframe;
+        if (spawned_terrain->atlas.IsSet()) {
+            spawned_terrain->atlas->height_scale = debug_settings.height_scale;
+        }
+    }
+    if (view_component.IsSet()) {
+        view_component->blend_distance = FMath::Max(1.0, debug_settings.blend_distance);
+        view_component->load_distance = FMath::Max(1.0, debug_settings.load_distance);
+        view_component->morph_distance = FMath::Max(1.0, debug_settings.morph_distance);
+        view_component->subdivision_distance = FMath::Max(
+            1.0,
+            debug_settings.subdivision_distance
+        );
+        view_component->grid_size = static_cast<uint32>(FMath::Max(2, debug_settings.grid_size));
+    }
+}
+
+void ATerrainParentActor::notify_runtime_debug_controls_changed() {
+    apply_runtime_debug_controls();
+
+    if (!IsValid(spawned_terrain)) { return; }
+
+    spawned_terrain->UpdateBounds();
+    spawned_terrain->MarkRenderStateDirty();
+}
+
+double ATerrainParentActor::get_debug_face_size() const {
+    if (config.IsSet()) { return config->face_size; }
+    if (terrain.IsSet()) { return terrain->terrain_config.face_size; }
+    return 1.0;
 }
 
 void ATerrainParentActor::rebuild_terrains() {
@@ -520,6 +708,8 @@ void ATerrainParentActor::rebuild_terrains() {
     view_component = FTileTree{terrain_config, terrain_view_config};
 
     tile_atlas = new_terrain->atlas;
+    seed_runtime_debug_controls(false);
+    apply_runtime_debug_controls();
     if (bEnableTessellationFallback) {
         UTexture2D* const height_texture = terrain::create_fallback_height_texture(
             this,

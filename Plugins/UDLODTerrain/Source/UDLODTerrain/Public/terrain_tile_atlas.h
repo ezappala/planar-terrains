@@ -44,6 +44,7 @@ struct FTileAtlas {
 
     TMap<FString, FAttachment> attachments;
     TMap<FTileCoordinate, FTileLoadingState> tile_states;
+    TMap<uint32, FTileCoordinate> atlas_owners;
     TDeque<uint32> unused_indices;
     TSet<FTileCoordinate> existing_tiles;
     TSet<FTileCoordinate> pinned_tiles;
@@ -102,7 +103,6 @@ struct FTileAtlas {
     TileTreeEntry get_best_tile(
         const FTileCoordinate& tile_coordinate
     ) {
-        auto best_tile_coordinate = tile_coordinate;
         const auto default_tt = [] -> TileTreeEntry {
             TileTreeEntry tt;
             tt.atlas_index = MAX_uint32;
@@ -110,14 +110,12 @@ struct FTileAtlas {
             return tt;
         }();
 
+        if (!existing_tiles.Contains(tile_coordinate)) { return default_tt; }
+
+        auto best_tile_coordinate = tile_coordinate;
+
         while (true) {
             if (best_tile_coordinate == FTileCoordinate::INVALID()) { return default_tt; }
-
-            if (!existing_tiles.Contains(best_tile_coordinate)) {
-                best_tile_coordinate = best_tile_coordinate.parent().Get(
-                    FTileCoordinate::INVALID());
-                continue;
-            }
 
             const auto tile = tile_states.Find(best_tile_coordinate);
             if (tile != nullptr && tile->state.is_loaded) {
@@ -133,6 +131,14 @@ struct FTileAtlas {
 
     const FTileLoadingState* find_tile_state(const FTileCoordinate& tile_coordinate) const {
         return tile_states.Find(tile_coordinate);
+    }
+
+    TOptional<FTileCoordinate> find_owner_coordinate(const uint32 atlas_index) const {
+        if (const FTileCoordinate* owner_coordinate = atlas_owners.Find(atlas_index)) {
+            return *owner_coordinate;
+        }
+
+        return NullOpt;
     }
 
     bool is_pinned_tile(const FTileCoordinate& tile_coordinate) const {
@@ -158,6 +164,20 @@ struct FTileAtlas {
                 Warning,
                 "Ignoring loaded tile with no tracked state: {tc}",
                 tile.coordinate.to_string());
+            return;
+        }
+
+        if (const TOptional<FTileCoordinate> owner_coordinate = find_owner_coordinate(
+                tile_state->atlas_index);
+            owner_coordinate.IsSet() && owner_coordinate.GetValue() != tile.coordinate) {
+            UE_LOGFMT(
+                LogTemp,
+                Warning,
+                "Ignoring loaded tile with stale atlas ownership: tile={0}, atlas_index={1}, owner={2}",
+                tile.coordinate.to_string(),
+                tile_state->atlas_index,
+                owner_coordinate->to_string()
+            );
             return;
         }
 
@@ -321,11 +341,7 @@ struct FTileAtlas {
                     "No more space in the tile atlas!");
             }
 
-            ext::iter::retain(
-                tile_states,
-                [&atlas_index](const FTileCoordinate&, const FTileLoadingState& t) {
-                    return t.atlas_index != atlas_index;
-                });
+            reassign_atlas_index(atlas_index, tile_coordinate);
 
             tile_states.Emplace(
                 tile_coordinate,
@@ -338,6 +354,7 @@ struct FTileAtlas {
                     .requests = 1
                 }
             );
+            atlas_owners.Add(atlas_index, tile_coordinate);
 
             // UE_LOGFMT(
             //     LogTemp,
@@ -406,6 +423,32 @@ struct FTileAtlas {
     }
 
 private:
+    void reassign_atlas_index(const uint32 atlas_index, const FTileCoordinate& new_coordinate) {
+        if (const TOptional<FTileCoordinate> previous_owner_coordinate = find_owner_coordinate(
+                atlas_index);
+            previous_owner_coordinate.IsSet() && previous_owner_coordinate.GetValue() !=
+            new_coordinate) {
+            tile_states.Remove(previous_owner_coordinate.GetValue());
+        }
+
+        ext::iter::retain(
+            tile_states,
+            [&atlas_index](const FTileCoordinate&, const FTileLoadingState& tile_state) {
+                return tile_state.atlas_index != atlas_index;
+            }
+        );
+        ext::iter::retain(
+            uploading_tiles,
+            [&atlas_index](const FAttachmentTileWithData& tile) { return tile.atlas_index != atlas_index; }
+        );
+        ext::iter::retain(
+            downloading_tiles,
+            [&atlas_index](const FAttachmentTileWithData& tile) { return tile.atlas_index != atlas_index; }
+        );
+
+        atlas_owners.Add(atlas_index, new_coordinate);
+    }
+
     void initialize_pinned_tiles() {
         for (const FTileCoordinate& tile_coordinate : existing_tiles) {
             if (tile_coordinate.lod != 0u) { continue; }

@@ -100,6 +100,8 @@ BEGIN_SHADER_PARAMETER_STRUCT(TerrainView, UDLODTERRAIN_API)
     SHADER_PARAMETER(float, precision_distance)
     SHADER_PARAMETER(uint32, face)
     SHADER_PARAMETER(uint32, lod)
+    SHADER_PARAMETER(uint32, debug_flags)
+    SHADER_PARAMETER(uint32, planar_gradient_mode)
     SHADER_PARAMETER_ARRAY(FUintVector4, lod_tile_counts, [UE_UDLOD_MAX_SHADER_LOD_COUNT])
 // BUG: StructArrays are not yet supported as uniform buffer structs
 // As a workaround we've implemented this as a normal shader parameter struct
@@ -124,12 +126,21 @@ struct FTerrainViewUpload {
     float precision_distance = 0.0f;
     uint32 face = 0u;
     uint32 lod = 0u;
+    uint32 debug_flags = 0u;
+    uint32 planar_gradient_mode = 0u;
     FUintVector4 lod_tile_counts[UE_UDLOD_MAX_SHADER_LOD_COUNT]{};
     FViewCoordinateUpload coordinates[6]{};
     float height_scale = 0.0f;
     FVector3f world_position = FVector3f::ZeroVector;
     FVector4f half_spaces[6];
 };
+
+struct FTileTreeEntryUpload {
+    uint32 atlas_index = MAX_uint32;
+    uint32 atlas_lod = MAX_uint32;
+};
+
+static_assert(sizeof(FTileTreeEntryUpload) == sizeof(uint32) * 2, "Unexpected tile-tree entry upload size.");
 
 BEGIN_SHADER_PARAMETER_STRUCT(ApproximateHeight, UDLODTERRAIN_API)
     SHADER_PARAMETER(float, value)
@@ -250,7 +261,7 @@ class UDLODTERRAIN_API FTerrainVertexShader : public FGlobalShader {
         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
@@ -290,7 +301,7 @@ class UDLODTERRAIN_API FTerrainFragmentShader : public FGlobalShader {
         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
@@ -340,15 +351,11 @@ SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<TileTreeEntry>, tile_tree)
 END_SHADER_PARAMETER_STRUCT()
 
 BEGIN_SHADER_PARAMETER_STRUCT(GpuSampleProbe, UDLODTERRAIN_API)
-    SHADER_PARAMETER(uint32, atlas_index)
-    SHADER_PARAMETER(uint32, geometry_lod)
-    SHADER_PARAMETER(uint32, sampled_lod)
-    SHADER_PARAMETER(uint32, padding0)
+    SHADER_PARAMETER(FUintVector4, ids0)
+    SHADER_PARAMETER(FUintVector4, coords0)
+    SHADER_PARAMETER(FVector4f, scalars)
     SHADER_PARAMETER(FVector4f, albedo)
-    SHADER_PARAMETER(float, height)
-    SHADER_PARAMETER(float, approximate_height)
-    SHADER_PARAMETER(float, normal_z)
-    SHADER_PARAMETER(float, padding1)
+    SHADER_PARAMETER(FVector4f, extra)
 END_SHADER_PARAMETER_STRUCT()
 
 BEGIN_SHADER_PARAMETER_STRUCT(TerrainSampleProbeParameters, UDLODTERRAIN_API)
@@ -364,18 +371,37 @@ SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<GeometryTile>, geometry_tiles)
     SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<GpuSampleProbe>, output)
 END_SHADER_PARAMETER_STRUCT()
 
-// BEGIN_SHADER_PARAMETER_STRUCT(PickingData, UDLODTERRAIN_API)
-//     SHADER_PARAMETER(FVector2f, cursor_cords)
-//     SHADER_PARAMETER(float, depth)
-//     SHADER_PARAMETER(uint32, stencil)
-//     SHADER_PARAMETER(FMatrix44f, world_from_clip)
-// END_SHADER_PARAMETER_STRUCT()
+BEGIN_SHADER_PARAMETER_STRUCT(PickingData, UDLODTERRAIN_API)
+    SHADER_PARAMETER(FVector2f, cursor_coords)
+    SHADER_PARAMETER(float, depth)
+    SHADER_PARAMETER(uint32, stencil)
+    SHADER_PARAMETER(FMatrix44f, world_from_clip)
+    SHADER_PARAMETER(FIntVector, cell)
+    SHADER_PARAMETER(int32, cell_padding)
+END_SHADER_PARAMETER_STRUCT()
 
-// BEGIN_SHADER_PARAMETER_STRUCT(Picking, UDLODTERRAIN_API)
-//     SHADER_PARAMETER_RDG_BUFFER_UAV(PickingData, picking_data)
-//     SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DMS<float>, depth_texture)
-//     SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DMS<uint32>, stencil_texture)
-// END_SHADER_PARAMETER_STRUCT()
+struct FPickingDataUpload {
+    FVector2f cursor_coords = FVector2f::ZeroVector;
+    float depth = 0.0f;
+    uint32 stencil = 0u;
+    FMatrix44f world_from_clip = FMatrix44f::Identity;
+    FIntVector cell = FIntVector::ZeroValue;
+    int32 cell_padding = 0;
+};
+
+static_assert(sizeof(FPickingDataUpload) == 96u);
+
+BEGIN_SHADER_PARAMETER_STRUCT(Picking, UDLODTERRAIN_API)
+    SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<PickingData>, picking_data)
+    SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float>, depth_texture)
+    SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<uint32>, stencil_texture)
+END_SHADER_PARAMETER_STRUCT()
+
+BEGIN_SHADER_PARAMETER_STRUCT(DepthCopy, UDLODTERRAIN_API)
+    SHADER_PARAMETER_RDG_TEXTURE(Texture2D, depth_texture)
+    SHADER_PARAMETER_RDG_TEXTURE(Texture2DMS, depth_texture_ms)
+    RENDER_TARGET_BINDING_SLOTS()
+END_SHADER_PARAMETER_STRUCT()
 
 class UDLODTERRAIN_API FTerrainPrepassPrepareRootComputeShader : public FGlobalShader {
     DECLARE_GLOBAL_SHADER(FTerrainPrepassPrepareRootComputeShader);
@@ -401,7 +427,7 @@ class UDLODTERRAIN_API FTerrainPrepassPrepareRootComputeShader : public FGlobalS
         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
@@ -500,7 +526,7 @@ class UDLODTERRAIN_API FTerrainPrepassRefineTilesComputeShader : public FGlobalS
         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
@@ -540,33 +566,54 @@ class UDLODTERRAIN_API FTerrainSampleProbeComputeShader : public FGlobalShader {
     }
 };
 
-// class UDLODTERRAIN_API FTerrainPickingComputeShader : public FGlobalShader {
-//     DECLARE_GLOBAL_SHADER(FTerrainPickingComputeShader);
-//     SHADER_USE_PARAMETER_STRUCT(FTerrainPickingComputeShader, FGlobalShader);
-//     using FParameters = Picking;
-//
-//     static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& params) {
-//         const bool feature_level = IsFeatureLevelSupported(params.Platform, ERHIFeatureLevel::SM5);
-//         return feature_level;
-//     }
-//
-//     static void ModifyCompilationEnvironment(
-//         const FGlobalShaderPermutationParameters& params,
-//         FShaderCompilerEnvironment& out_environment
-//     ) {
-//         FGlobalShader::ModifyCompilationEnvironment(params, out_environment);
-//         out_environment.SetDefine(TEXT("PREPASS"), 1);
-//         out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 0);
-//         out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
-//         out_environment.SetDefine(TEXT("BLEND"), 0);
-//         out_environment.SetDefine(TEXT("MORPH"), 0);
-//         out_environment.SetDefine(TEXT("LIGHTING"), 0);
-//         out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
-//         out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
-//         out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
-//         out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 1);
-//         out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
-//         out_environment.SetDefine(TEXT("SHOW_UV"), 0);
-//         out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
-//     }
-// };
+class UDLODTERRAIN_API FTerrainPickingComputeShader : public FGlobalShader {
+    DECLARE_GLOBAL_SHADER(FTerrainPickingComputeShader);
+    SHADER_USE_PARAMETER_STRUCT(FTerrainPickingComputeShader, FGlobalShader);
+    using FParameters = Picking;
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& params) {
+        const bool feature_level = IsFeatureLevelSupported(params.Platform, ERHIFeatureLevel::SM5);
+        return feature_level;
+    }
+
+    static void ModifyCompilationEnvironment(
+        const FGlobalShaderPermutationParameters& params,
+        FShaderCompilerEnvironment& out_environment
+    ) {
+        FGlobalShader::ModifyCompilationEnvironment(params, out_environment);
+        out_environment.SetDefine(TEXT("PREPASS"), 1);
+        out_environment.SetDefine(TEXT("SAMPLE_GRAD"), 0);
+        out_environment.SetDefine(TEXT("TILE_TREE_LOD"), 1);
+        out_environment.SetDefine(TEXT("BLEND"), 0);
+        out_environment.SetDefine(TEXT("MORPH"), 0);
+        out_environment.SetDefine(TEXT("LIGHTING"), 0);
+        out_environment.SetDefine(TEXT("PBR_LIGHTING"), 0);
+        out_environment.SetDefine(TEXT("SHOW_DATA_LOD"), 0);
+        out_environment.SetDefine(TEXT("SHOW_GEOMETRY_LOD"), 0);
+        out_environment.SetDefine(TEXT("SHOW_TILE_TREE"), 0);
+        out_environment.SetDefine(TEXT("SHOW_PIXELS"), 0);
+        out_environment.SetDefine(TEXT("SHOW_UV"), 0);
+        out_environment.SetDefine(TEXT("SHOW_NORMALS"), 0);
+    }
+};
+
+class UDLODTERRAIN_API FTerrainDepthCopyPixelShader : public FGlobalShader {
+    DECLARE_GLOBAL_SHADER(FTerrainDepthCopyPixelShader);
+    SHADER_USE_PARAMETER_STRUCT(FTerrainDepthCopyPixelShader, FGlobalShader);
+
+public:
+    class FMSAASampleCount : SHADER_PERMUTATION_SPARSE_INT(
+        "MSAA_SAMPLE_COUNT",
+        1,
+        2,
+        4,
+        8
+    );
+    using FPermutationDomain = TShaderPermutationDomain<FMSAASampleCount>;
+    using FParameters = DepthCopy;
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& params) {
+        return IsFeatureLevelSupported(params.Platform, ERHIFeatureLevel::SM5) ||
+            MobileSupportsSM5MaterialNodes(params.Platform);
+    }
+};

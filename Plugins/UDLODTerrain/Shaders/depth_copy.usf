@@ -1,0 +1,20 @@
+#include "/Engine/Private/Common.ush"
+
+#if MSAA_SAMPLE_COUNT > 1
+Texture2DMS<float, MSAA_SAMPLE_COUNT> depth_texture_ms;
+#else
+Texture2D<float> depth_texture;
+#endif
+
+float depth_copy(
+    float4 position : SV_POSITION
+#if MSAA_SAMPLE_COUNT > 1
+    , uint sample_index : SV_SampleIndex
+#endif
+) : SV_DEPTH {
+#if MSAA_SAMPLE_COUNT > 1
+    return depth_texture_ms.Load(int2(position.xy), sample_index).x;
+#else
+    return depth_texture.Load(int3(position.xy, 0)).x;
+#endif
+}

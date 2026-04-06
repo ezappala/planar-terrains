@@ -94,7 +94,9 @@ inline void tile_tree_adjust_to_tile_atlas(
 
 inline void tile_tree_update_terrain_view_buffer(
     FRDGBuilder& gb,
-    FTileTree* tile_tree
+    FTileTree* tile_tree,
+    const uint32 debug_flags,
+    const uint32 planar_gradient_mode
 ) {
     const FRDGBufferDesc approximate_height_desc = FRDGBufferDesc::CreateStructuredDesc(
         sizeof(float),
@@ -130,6 +132,8 @@ inline void tile_tree_update_terrain_view_buffer(
     terrain_view->blend_range = tile_tree->blend_range;
     terrain_view->face = tile_tree->view_face;
     terrain_view->lod = tile_tree->view_lod;
+    terrain_view->debug_flags = debug_flags;
+    terrain_view->planar_gradient_mode = planar_gradient_mode;
 
     for (uint32 lod_index = 0; lod_index < UE_UDLOD_MAX_SHADER_LOD_COUNT; ++lod_index) {
         const FVector2d lod_tile_count = tile_tree->get_tile_count(lod_index);
@@ -186,7 +190,10 @@ inline void tile_tree_update_terrain_view_buffer(
 
     const auto tile_tree_entry_count = tile_tree->data.size();
     const FRDGBufferDesc tile_tree_desc =
-        FRDGBufferDesc::CreateStructuredDesc<TileTreeEntry>(tile_tree_entry_count);
+        FRDGBufferDesc::CreateStructuredDesc(
+            sizeof(FTileTreeEntryUpload),
+            tile_tree_entry_count
+        );
 
     AllocatePooledBuffer(
         tile_tree_desc,
@@ -199,16 +206,20 @@ inline void tile_tree_update_terrain_view_buffer(
         TEXT("UDLOD.TileTreeEntriesUploadBuffer")
     );
 
-    TileTreeEntry* tile_tree_entries = gb.AllocPODArray<TileTreeEntry>(tile_tree_entry_count);
+    FTileTreeEntryUpload* tile_tree_entries = gb.AllocPODArray<FTileTreeEntryUpload>(
+        tile_tree_entry_count
+    );
     const TArray<TileTreeEntry>& source_entries = tile_tree->data.get_storage();
     for (uint32 index = 0; index < tile_tree_entry_count; ++index) {
-        tile_tree_entries[index] = source_entries[static_cast<int32>(index)];
+        const TileTreeEntry& source_entry = source_entries[static_cast<int32>(index)];
+        tile_tree_entries[index].atlas_index = source_entry.atlas_index;
+        tile_tree_entries[index].atlas_lod = source_entry.atlas_lod;
     }
 
     gb.QueueBufferUpload(
         tile_tree->tile_tree_buffer,
         tile_tree_entries,
-        sizeof(TileTreeEntry) * tile_tree_entry_count
+        sizeof(FTileTreeEntryUpload) * tile_tree_entry_count
     );
 }
 

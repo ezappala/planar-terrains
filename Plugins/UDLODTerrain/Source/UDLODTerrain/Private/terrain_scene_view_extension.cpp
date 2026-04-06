@@ -5,6 +5,7 @@
 #include "RenderGraphUtils.h"
 #include "SystemTextures.h"
 #include "terrain_funcs.h"
+#include "terrain_picking.h"
 #include "terrain_render_state.h"
 #include "terrain_runtime_planar.h"
 #include "terrain_shaders.h"
@@ -14,6 +15,7 @@
 #include "Engine/Texture.h"
 #include "HAL/IConsoleManager.h"
 #include "Logging/StructuredLog.h"
+#include "PixelShaderUtils.h"
 #include "Runtime/Renderer/Private/SceneRendering.h"
 
 namespace {
@@ -37,6 +39,90 @@ bool should_use_cpu_mesh_builder() {
 
 bool should_probe_gpu_path() { return CVarUDLODGpuProbe.GetValueOnRenderThread() != 0; }
 
+void apply_runtime_debug_overrides(
+    const ATerrainParentActor& root_actor,
+    FTileTree& tile_tree,
+    FTileAtlas& tile_atlas
+) {
+    const FTerrainDebugSettings& debug_settings = root_actor.debug_settings;
+    tile_tree.grid_size = static_cast<uint32>(FMath::Max(2, debug_settings.grid_size));
+    tile_tree.blend_distance = FMath::Max(1.0, debug_settings.blend_distance);
+    tile_tree.load_distance = FMath::Max(1.0, debug_settings.load_distance);
+    tile_tree.morph_distance = FMath::Max(1.0, debug_settings.morph_distance);
+    tile_tree.subdivision_distance = FMath::Max(1.0, debug_settings.subdivision_distance);
+    tile_atlas.height_scale = FMath::Max(0.0f, debug_settings.height_scale);
+}
+
+FRDGTextureRef add_depth_copy_pass(
+    FRDGBuilder& gb,
+    const FViewInfo& view,
+    FRDGTextureRef source_depth_texture
+) {
+    if (source_depth_texture == nullptr) { return nullptr; }
+
+    const FRDGTextureDesc depth_copy_desc = FRDGTextureDesc::Create2D(
+        source_depth_texture->Desc.Extent,
+        PF_DepthStencil,
+        FClearValueBinding::DepthFar,
+        TexCreate_DepthStencilTargetable | TexCreate_ShaderResource
+    );
+    FRDGTextureRef copied_depth_texture = gb.CreateTexture(
+        depth_copy_desc,
+        TEXT("UDLOD.TerrainDepthCopy")
+    );
+
+    FTerrainDepthCopyPixelShader::FParameters* pass_parameters =
+        gb.AllocParameters<FTerrainDepthCopyPixelShader::FParameters>();
+    if (source_depth_texture->Desc.NumSamples > 1) {
+        pass_parameters->depth_texture_ms = source_depth_texture;
+    } else { pass_parameters->depth_texture = source_depth_texture; }
+    pass_parameters->RenderTargets.DepthStencil = FDepthStencilBinding(
+        copied_depth_texture,
+        ERenderTargetLoadAction::EClear,
+        ERenderTargetLoadAction::EClear,
+        FExclusiveDepthStencil::DepthWrite_StencilWrite
+    );
+
+    FTerrainDepthCopyPixelShader::FPermutationDomain permutation_vector;
+    permutation_vector.Set<FTerrainDepthCopyPixelShader::FMSAASampleCount>(
+        source_depth_texture->Desc.NumSamples
+    );
+    const TShaderMapRef<FTerrainDepthCopyPixelShader> pixel_shader(
+        view.ShaderMap,
+        permutation_vector
+    );
+
+    FRHIDepthStencilState* depth_stencil_state = TStaticDepthStencilState<
+        true,
+        CF_Always,
+        true,
+        CF_Always,
+        SO_Zero,
+        SO_Zero,
+        SO_Zero,
+        true,
+        CF_Always,
+        SO_Zero,
+        SO_Zero,
+        SO_Zero
+    >::GetRHI();
+
+    FPixelShaderUtils::AddFullscreenPass(
+        gb,
+        view.ShaderMap,
+        RDG_EVENT_NAME("UDLOD.DepthCopy"),
+        pixel_shader,
+        pass_parameters,
+        view.ViewRect,
+        nullptr,
+        nullptr,
+        depth_stencil_state,
+        0u
+    );
+
+    return copied_depth_texture;
+}
+
 struct FPrepassStateProbe {
     uint32 tile_count = 0;
     int32 counter = 0;
@@ -47,18 +133,14 @@ struct FPrepassStateProbe {
 static_assert(sizeof(FPrepassStateProbe) == sizeof(uint32) * 4u);
 
 struct FGpuSampleProbeReadback {
-    uint32 atlas_index = 0xFFFFFFFFu;
-    uint32 geometry_lod = 0;
-    uint32 sampled_lod = 0;
-    uint32 padding0 = 0;
+    FUintVector4 ids0 = FUintVector4(0xFFFFFFFFu, 0u, 0u, 0u);
+    FUintVector4 coords0 = FUintVector4(0u, 0u, 0u, 0u);
+    FVector4f scalars = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
     FVector4f albedo = FVector4f(-1.0f, -1.0f, -1.0f, -1.0f);
-    float height = 0.0f;
-    float approximate_height = 0.0f;
-    float normal_z = 0.0f;
-    float padding1 = 0.0f;
+    FVector4f extra = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
 };
 
-static_assert(sizeof(FGpuSampleProbeReadback) == 48u);
+static_assert(sizeof(FGpuSampleProbeReadback) == 80u);
 
 constexpr uint32 GpuProbeTileSampleLimit = 4u;
 
@@ -68,8 +150,8 @@ FVector3d compute_planar_world_position(
     const FVector2d& face_uv
 ) {
     const FVector local_position{
-        static_cast<double>((face_uv.X - 0.5) * config.side_length),
-        static_cast<double>((face_uv.Y - 0.5) * config.side_length),
+        ((face_uv.X - 0.5) * config.side_length),
+        ((face_uv.Y - 0.5) * config.side_length),
         0.0
     };
     return FVector3d(terrain_transform.TransformPosition(local_position));
@@ -83,7 +165,7 @@ void log_gpu_probe_tile_details(
     const uint32 sampled_tile_count,
     const FTileTree& tile_tree,
     const FTerrainConfig& config,
-    const FTransform& terrain_transform
+    const FTransform& terrain_tf
 ) {
     const uint32 tile_count = FMath::Min(sampled_tile_count, final_index);
     for (uint32 tile_index = 0; tile_index < tile_count; ++tile_index) {
@@ -97,13 +179,18 @@ void log_gpu_probe_tile_details(
             static_cast<double>(tile.xy.X + 1u) / lod_tile_count.X,
             static_cast<double>(tile.xy.Y + 1u) / lod_tile_count.Y
         };
-        const FVector3d world_min = compute_planar_world_position(config, terrain_transform, uv_min);
-        const FVector3d world_max = compute_planar_world_position(config, terrain_transform, uv_max);
+        const FVector3d world_min = compute_planar_world_position(config, terrain_tf, uv_min);
+        const FVector3d world_max = compute_planar_world_position(config, terrain_tf, uv_max);
 
         UE_LOG(
             LogTemp,
             Display,
-            TEXT("[UDLOD.GpuProbeTile] submission=%llu view=%u tile[%u]={face=%u, lod=%u, xy=(%u,%u), uv_min=(%.6f,%.6f), uv_max=(%.6f,%.6f), world_min=(%.3f,%.3f,%.3f), world_max=(%.3f,%.3f,%.3f), view_distances=(%.3f,%.3f,%.3f,%.3f)}"),
+            TEXT(
+                "[UDLOD.GpuProbeTile] submission=%llu view=%u tile[%u]={face=%u, "
+                "lod=%u, xy=(%u,%u), uv_min=(%.6f,%.6f), uv_max=(%.6f,%.6f), "
+                "world_min=(%.3f,%.3f,%.3f), world_max=(%.3f,%.3f,%.3f), "
+                "view_distances=(%.3f,%.3f,%.3f,%.3f)}"
+            ),
             submission_id,
             view_key,
             tile_index,
@@ -149,19 +236,19 @@ void log_gpu_probe_atlas_state(
     }
 
     const FTileLoadingState* tile_state = tile_atlas.find_tile_state(root_tile);
-    const uint32 storage_x = root_tile.xy.X % tile_tree.tree_size;
-    const uint32 storage_y = root_tile.xy.Y % tile_tree.tree_size;
-    const TileTreeEntry root_entry = tile_tree.data(
-        root_tile.face,
-        root_tile.lod,
-        storage_x,
-        storage_y
-    );
+    const uint32 sx = root_tile.xy.X % tile_tree.tree_size;
+    const uint32 sy = root_tile.xy.Y % tile_tree.tree_size;
+    const TileTreeEntry root_entry = tile_tree.data(root_tile.face, root_tile.lod, sx, sy);
 
     UE_LOG(
         LogTemp,
         Display,
-        TEXT("[UDLOD.AtlasProbe] submission=%llu view=%u root={coord=%s, pinned=%s, present=%s, loaded=%s, loading=%u, requests=%u, atlas_index=%u} tile_tree_entry={atlas_index=%u, atlas_lod=%u}"),
+        TEXT(
+            "[UDLOD.AtlasProbe] submission=%llu view=%u "
+            "root={coord=%s, pinned=%s, present=%s, loaded=%s, loading=%u, "
+            "requests=%u, atlas_index=%u} "
+            "tile_tree_entry={atlas_index=%u, atlas_lod=%u}"
+        ),
         submission_id,
         view_key,
         *root_tile.to_string(),
@@ -174,6 +261,53 @@ void log_gpu_probe_atlas_state(
         root_entry.atlas_index,
         root_entry.atlas_lod
     );
+}
+
+void log_gpu_probe_cpu_tile_tree_entry(
+    const uint64 submission_id,
+    const uint32 view_key,
+    const FTileTree& tile_tree,
+    const FGpuSampleProbeReadback& sample_probe
+) {
+    const uint32 face = sample_probe.ids0.W;
+    const uint32 lod = sample_probe.ids0.Y;
+    if (face >= tile_tree.tiles.get_dim0() || lod >= tile_tree.tiles.get_dim1()) { return; }
+
+    const uint32 slot_x = sample_probe.coords0.X % tile_tree.tree_size;
+    const uint32 slot_y = sample_probe.coords0.Y % tile_tree.tree_size;
+    const FTileState& tile_state = tile_tree.tiles(face, lod, slot_x, slot_y);
+    const TileTreeEntry& tile_tree_entry = tile_tree.data(face, lod, slot_x, slot_y);
+
+    UE_LOG(
+        LogTemp,
+        Display,
+        TEXT(
+            "[UDLOD.GpuProbeCpuTileTree] submission=%llu view=%u "
+            "geometry={face=%u,lod=%u,xy=(%u,%u)} slot={x=%u,y=%u} "
+            "stored_tile={coord=%s, requested=%s} "
+            "entry={atlas_index=%u, atlas_lod=%u}"
+        ),
+        submission_id,
+        view_key,
+        face,
+        lod,
+        sample_probe.coords0.X,
+        sample_probe.coords0.Y,
+        slot_x,
+        slot_y,
+        *tile_state.coordinate.to_string(),
+        tile_state.request_state == ERequestState::Requested ? TEXT("true") : TEXT("false"),
+        tile_tree_entry.atlas_index,
+        tile_tree_entry.atlas_lod
+    );
+}
+
+TOptional<FTileCoordinate> find_atlas_owner_coordinate(
+    const FTileAtlas& tile_atlas,
+    const uint32 atlas_index
+) {
+    if (atlas_index == 0xFFFFFFFFu) { return NullOpt; }
+    return tile_atlas.find_owner_coordinate(atlas_index);
 }
 
 struct FCpuAttachmentLookup {
@@ -210,11 +344,7 @@ TOptional<FCpuAttachmentLookup> find_best_loaded_attachment(
          sampled_coordinate = sampled_coordinate.parent().Get(FTileCoordinate::INVALID())) {
         const FAttachmentTile key{sampled_coordinate, label};
         if (const FAttachmentTileData* data = tile_atlas.loaded_tile_data.Find(key)) {
-            return FCpuAttachmentLookup{
-                sampled_coordinate,
-                attachment,
-                data
-            };
+            return FCpuAttachmentLookup{sampled_coordinate, attachment, data};
         }
     }
 
@@ -301,8 +431,9 @@ float sample_scalar_tile(
     const float clamped_v = FMath::Clamp(static_cast<float>(sampled_local_uv.Y), 0.0f, 1.0f);
     const float sample_x = static_cast<float>(border_size) + clamped_u * static_cast<float>(
         center_size);
-    const float sample_y = static_cast<float>(border_size) + clamped_v * static_cast<float>(
-        center_size);
+    const float sample_y = static_cast<float>(border_size) +
+        clamped_v *
+        static_cast<float>(center_size);
 
     const int32 x0 = FMath::Clamp(
         FMath::FloorToInt(sample_x),
@@ -312,6 +443,7 @@ float sample_scalar_tile(
         FMath::FloorToInt(sample_y),
         0,
         static_cast<int32>(texture_size) - 1);
+
     const int32 x1 = FMath::Clamp(x0 + 1, 0, static_cast<int32>(texture_size) - 1);
     const int32 y1 = FMath::Clamp(y0 + 1, 0, static_cast<int32>(texture_size) - 1);
     const float frac_x = FMath::Frac(sample_x);
@@ -758,7 +890,10 @@ void FTerrainSceneViewExtension::BeginRenderViewFamily(FSceneViewFamily& in_view
         UE_LOG(
             LogTemp,
             Display,
-            TEXT("[UDLOD] Multiple eligible views found in a family; caching only the largest one to avoid editor helper passes clobbering terrain state.")
+            TEXT(
+                "[UDLOD] Multiple eligible views found in a family; caching only the largest one "
+                "to avoid editor helper passes clobbering terrain state."
+            )
         );
     }
 
@@ -782,7 +917,7 @@ void FTerrainSceneViewExtension::PreInitViews_RenderThread(FRDGBuilder& gb) {
     process_gpu_probe_results();
 
     TArray<FTerrainViewSnapshot> render_views;
-    uint32 render_view_frame_number = MAX_uint32;
+    uint32 render_view_frame_number;
     {
         FReadScopeLock _{cached_views_guard};
         render_views = cached_views;
@@ -832,6 +967,70 @@ void FTerrainSceneViewExtension::PreRenderView_RenderThread(FRDGBuilder& gb, FSc
     // noop
 }
 
+void FTerrainSceneViewExtension::PostRenderBasePassDeferred_RenderThread(
+    FRDGBuilder& gb,
+    FSceneView& in_view,
+    const FRenderTargetBindingSlots& render_targets,
+    TRDGUniformBufferRef<FSceneTextureUniformParameters> scene_textures
+) {
+    (void)render_targets;
+    (void)scene_textures;
+
+    ATerrainParentActor* root_actor = root.Get();
+    if (!IsValid(root_actor) || !IsValid(root_actor->spawned_terrain)) { return; }
+
+    const uint32 view_key = in_view.GetViewKey();
+    if (!render_tile_trees.Contains(view_key)) { return; }
+
+    TOptional<FGpuTerrainView>* gpu_terrain_view_opt = render_gpu_terrain_views.Find(view_key);
+    if (gpu_terrain_view_opt == nullptr || !gpu_terrain_view_opt->IsSet()) { return; }
+
+    FGpuTerrainView& gpu_terrain_view = gpu_terrain_view_opt->GetValue();
+    if (gpu_terrain_view.picking_data_buffer == nullptr) { return; }
+    if (in_view.CursorPos.X < 0 || in_view.CursorPos.Y < 0) { return; }
+
+    const FViewInfo& view_info = static_cast<const FViewInfo&>(in_view);
+    const FSceneTextures* scene_textures_ptr = view_info.GetSceneTexturesChecked();
+    if (scene_textures_ptr == nullptr) { return; }
+
+    FRDGTextureRef picking_depth_texture = scene_textures_ptr->Depth.Resolve;
+    if (picking_depth_texture != nullptr) {
+        if (FRDGTextureRef copied_depth_texture = add_depth_copy_pass(
+            gb,
+            view_info,
+            picking_depth_texture
+        )) {
+            picking_depth_texture = copied_depth_texture;
+        }
+    }
+
+    if (picking_depth_texture == nullptr) { return; }
+
+    const FRDGTextureSRVRef picking_depth_texture_srv = gb.CreateSRV(picking_depth_texture);
+
+    gpu_terrain_view.picking_parameters = build_picking_parameters(
+        gb,
+        in_view,
+        gpu_terrain_view.picking_data_buffer,
+        picking_depth_texture_srv,
+        scene_textures_ptr->Stencil,
+        picking_depth_texture->Desc.Extent
+    );
+    if (gpu_terrain_view.picking_parameters == nullptr) { return; }
+
+    const FGlobalShaderMap* global_shader_map = GetGlobalShaderMap(GMaxRHIFeatureLevel);
+    const TShaderMapRef<FTerrainPickingComputeShader> picking_cs(global_shader_map);
+
+    FComputeShaderUtils::AddPass(
+        gb,
+        RDG_EVENT_NAME("UDLOD.Picking"),
+        ERDGPassFlags::NeverCull | ERDGPassFlags::Compute,
+        picking_cs,
+        gpu_terrain_view.picking_parameters,
+        FIntVector(1, 1, 1)
+    );
+}
+
 FRDGTextureSRVRef FTerrainSceneViewExtension::CreateRDGTextureFromUTexture(
     FRDGBuilder& gb,
     UTexture* texture,
@@ -845,16 +1044,6 @@ FRDGTextureSRVRef FTerrainSceneViewExtension::CreateRDGTextureFromUTexture(
     FRHITexture* rhi_texture = texture_resource->TextureRHI;
     return gb.CreateSRV(gb.RegisterExternalTexture(CreateRenderTarget(rhi_texture, name)));
 }
-
-// FRDGTextureSRVRef FTerrainSceneViewExtension::CreateUTextureFromFilePath(
-//     FRDGBuilder& gb,
-//     const FString& path,
-//     const TCHAR* name
-// ) {
-//     UTexture2D* tex = FImageUtils::ImportFileAsTexture2D(path);
-//     if (tex == nullptr) { return GetDefaultWhiteTexture(gb); }
-//     return CreateRDGTextureFromUTexture(gb, tex, name);
-// }
 
 FRDGTextureSRVRef FTerrainSceneViewExtension::GetDefaultWhiteTexture(FRDGBuilder& gb) {
     return gb.CreateSRV(GSystemTextures.GetWhiteDummy(gb));
@@ -894,17 +1083,26 @@ void FTerrainSceneViewExtension::draw_terrain(
         return;
     }
 
-    tile_tree_compute_requests(
-        tile_tree,
-        root_actor->spawned_terrain->GetComponentTransform(),
-        view.view_world_position,
-        view.view_from_world,
-        view.clip_from_view
-    );
+    apply_runtime_debug_overrides(*root_actor, *tile_tree, *tile_atlas);
+
+    if (!root_actor->debug_settings.bFreezeView) {
+        tile_tree_compute_requests(
+            tile_tree,
+            root_actor->spawned_terrain->GetComponentTransform(),
+            view.view_world_position,
+            view.view_from_world,
+            view.clip_from_view
+        );
+    }
     tile_atlas_update(tile_tree, tile_atlas);
     terrain::tile_loader::pump_tile_loads(tile_atlas);
     tile_tree_adjust_to_tile_atlas(tile_tree, tile_atlas);
-    tile_tree_update_terrain_view_buffer(gb, tile_tree);
+    tile_tree_update_terrain_view_buffer(
+        gb,
+        tile_tree,
+        pack_terrain_runtime_debug_flags(root_actor->debug_settings),
+        static_cast<uint32>(root_actor->debug_settings.planar_gradient_mode)
+    );
 
     if (!root_actor->spawned_terrain->IsValidLowLevel() || !root_actor->spawned_terrain->
         IsRegistered()) {
@@ -1144,6 +1342,7 @@ void FTerrainSceneViewExtension::draw_tile_tree(
     enqueue_gpu_probe(
         gb,
         view,
+        *tile_atlas,
         *tile_tree,
         gpu_terrain->GetValue(),
         gpu_terrain_view.GetValue(),
@@ -1176,14 +1375,14 @@ FTileTree* FTerrainSceneViewExtension::find_or_add_tile_tree(
         return existing_tile_tree;
     }
 
-    if (root_actor.terrain.IsSet()) {
-        const auto& [terrain_config, terrain_view_config] = root_actor.terrain.GetValue();
-        render_tile_trees.Add(view_key, FTileTree{terrain_config, terrain_view_config});
+    if (root_actor.view_component.IsSet()) {
+        render_tile_trees.Add(view_key, root_actor.view_component.GetValue());
         return render_tile_trees.Find(view_key);
     }
 
-    if (root_actor.view_component.IsSet()) {
-        render_tile_trees.Add(view_key, root_actor.view_component.GetValue());
+    if (root_actor.terrain.IsSet()) {
+        const auto& [terrain_config, terrain_view_config] = root_actor.terrain.GetValue();
+        render_tile_trees.Add(view_key, FTileTree{terrain_config, terrain_view_config});
         return render_tile_trees.Find(view_key);
     }
 
@@ -1236,14 +1435,15 @@ void FTerrainSceneViewExtension::process_gpu_probe_results() const {
 
     for (int32 probe_index = pending_gpu_probes.Num() - 1; probe_index >= 0; --probe_index) {
         auto& [
-            submission_id,
-            view_key,
-            indirect_args_readback,
-            prepass_state_readback,
-            final_tiles_readback,
-            sample_probe_readback,
-            final_tiles_sample_count
-        ] =
+                submission_id,
+                view_key,
+                atlas_owner_snapshot,
+                indirect_args_readback,
+                prepass_state_readback,
+                final_tiles_readback,
+                sample_probe_readback,
+                final_tiles_sample_count
+            ] =
             pending_gpu_probes[probe_index];
         if (!indirect_args_readback.IsValid() || !prepass_state_readback.IsValid() ||
             !sample_probe_readback.IsValid() ||
@@ -1299,26 +1499,38 @@ void FTerrainSceneViewExtension::process_gpu_probe_results() const {
                     prepass_state->child_index,
                     prepass_state->final_index
                 );
-                UE_LOGFMT(
+                UE_LOG(
                     LogTemp,
                     Display,
-                    "[UDLOD.GpuProbeSample] submission={0} view={1} sample={{atlas_index={2}, geometry_lod={3}, sampled_lod={4}, height={5}, approximate_height={6}, normal_z={7}, albedo=({8},{9},{10},{11})}}",
+                    TEXT(
+                        "[UDLOD.GpuProbeSample] submission=%llu view=%u "
+                        "sample={atlas_index=%u, geometry_face=%u, geometry_lod=%u, "
+                        "geometry_xy=(%u,%u), sampled_lod=%u, sampled_xy=(%u,%u), "
+                        "sampled_uv=(%.6f,%.6f), height=%.6f, approximate_height=%.6f, "
+                        "normal_z=%.6f, albedo=(%.6f,%.6f,%.6f,%.6f)}"
+                    ),
                     submission_id,
                     view_key,
-                    sample_probe->atlas_index,
-                    sample_probe->geometry_lod,
-                    sample_probe->sampled_lod,
-                    sample_probe->height,
-                    sample_probe->approximate_height,
-                    sample_probe->normal_z,
+                    sample_probe->ids0.X,
+                    sample_probe->ids0.W,
+                    sample_probe->ids0.Y,
+                    sample_probe->coords0.X,
+                    sample_probe->coords0.Y,
+                    sample_probe->ids0.Z,
+                    sample_probe->coords0.Z,
+                    sample_probe->coords0.W,
+                    sample_probe->scalars.X,
+                    sample_probe->scalars.Y,
+                    sample_probe->scalars.Z,
+                    sample_probe->scalars.W,
+                    sample_probe->extra.X,
                     sample_probe->albedo.X,
                     sample_probe->albedo.Y,
                     sample_probe->albedo.Z,
                     sample_probe->albedo.W
                 );
 
-                if (ATerrainParentActor* root_actor = root.Get();
-                    IsValid(root_actor) &&
+                if (ATerrainParentActor* root_actor = root.Get(); IsValid(root_actor) &&
                     IsValid(root_actor->spawned_terrain) &&
                     root_actor->tile_atlas.IsSet()) {
                     if (const FTileTree* probe_tile_tree = render_tile_trees.Find(view_key)) {
@@ -1328,6 +1540,39 @@ void FTerrainSceneViewExtension::process_gpu_probe_results() const {
                             root_actor->tile_atlas.GetValue(),
                             *probe_tile_tree
                         );
+                        log_gpu_probe_cpu_tile_tree_entry(
+                            submission_id,
+                            view_key,
+                            *probe_tile_tree,
+                            *sample_probe
+                        );
+
+                        const FTileCoordinate* atlas_owner_coordinate_ptr =
+                            atlas_owner_snapshot.Find(sample_probe->ids0.X);
+                        const TOptional<FTileCoordinate> atlas_owner_coordinate =
+                            atlas_owner_coordinate_ptr != nullptr
+                            ? TOptional<FTileCoordinate>{*atlas_owner_coordinate_ptr}
+                            : NullOpt;
+                        if (atlas_owner_coordinate.IsSet()) {
+                            UE_LOGFMT(
+                                LogTemp,
+                                Display,
+                                "[UDLOD.GpuProbeAtlasOwner] submission={0} view={1} atlas_index={2} owner={{coord={3}}}",
+                                submission_id,
+                                view_key,
+                                sample_probe->ids0.X,
+                                atlas_owner_coordinate->to_string()
+                            );
+                        } else {
+                            UE_LOGFMT(
+                                LogTemp,
+                                Display,
+                                "[UDLOD.GpuProbeAtlasOwner] submission={0} view={1} atlas_index={2} owner={{missing=true}}",
+                                submission_id,
+                                view_key,
+                                sample_probe->ids0.X
+                            );
+                        }
                     }
 
                     if (!gpu_probe_logged_attachment_state) {
@@ -1363,9 +1608,12 @@ void FTerrainSceneViewExtension::process_gpu_probe_results() const {
                         );
                     }
 
-                    if (const FTileTree* probe_tile_tree = render_tile_trees.Find(view_key);
-                        final_tiles != nullptr && prepass_state->final_index > 0 &&
-                        probe_tile_tree != nullptr) {
+                    if (
+                        const FTileTree* probe_tile_tree =
+                            render_tile_trees.Find(view_key); final_tiles != nullptr &&
+                        prepass_state->final_index > 0 &&
+                        probe_tile_tree != nullptr
+                    ) {
                         log_gpu_probe_tile_details(
                             submission_id,
                             view_key,
@@ -1402,6 +1650,7 @@ void FTerrainSceneViewExtension::process_gpu_probe_results() const {
 void FTerrainSceneViewExtension::enqueue_gpu_probe(
     FRDGBuilder& gb,
     const FTerrainViewSnapshot& view,
+    const FTileAtlas& tile_atlas,
     const FTileTree& tile_tree,
     const FGpuTerrain& gpu_terrain,
     const FGpuTerrainView& gpu_terrain_view,
@@ -1419,17 +1668,19 @@ void FTerrainSceneViewExtension::enqueue_gpu_probe(
     if (pending_gpu_probes.Num() >= max_pending_gpu_probes) { return; }
 
     auto& [
-        submission_id,
-        view_key,
-        indirect_args_readback,
-        prepass_state_readback,
-        final_tiles_readback,
-        sample_probe_readback,
-        final_tiles_sample_count
-    ] =
+            submission_id,
+            view_key,
+            atlas_owner_snapshot,
+            indirect_args_readback,
+            prepass_state_readback,
+            final_tiles_readback,
+            sample_probe_readback,
+            final_tiles_sample_count
+        ] =
         pending_gpu_probes.Emplace_GetRef();
     submission_id = ++gpu_probe_submission_id;
     view_key = view.view_key;
+    atlas_owner_snapshot = tile_atlas.atlas_owners;
     indirect_args_readback = MakeUnique<FRHIGPUBufferReadback>(
         TEXT("UDLOD.GpuProbe.IndirectArgs")
     );

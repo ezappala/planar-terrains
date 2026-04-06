@@ -3,7 +3,12 @@
 #include "terrain_shaders.h"
 #include "terrain_tile_tree.h"
 
-inline FRDGBufferRef terrain_view_from_tile_tree(FRDGBuilder& gb, const FTileTree* tile_tree) {
+inline FRDGBufferRef terrain_view_from_tile_tree(
+    FRDGBuilder& gb,
+    const FTileTree* tile_tree,
+    const uint32 debug_flags,
+    const uint32 planar_gradient_mode
+) {
     FTerrainViewUpload* terrain_view = gb.AllocPOD<FTerrainViewUpload>();
     terrain_view->tree_size = tile_tree->tree_size;
     terrain_view->geometry_tile_count = tile_tree->geometry_tile_count;
@@ -19,6 +24,8 @@ inline FRDGBufferRef terrain_view_from_tile_tree(FRDGBuilder& gb, const FTileTre
     terrain_view->blend_range = tile_tree->blend_range;
     terrain_view->face = tile_tree->view_face;
     terrain_view->lod = tile_tree->view_lod;
+    terrain_view->debug_flags = debug_flags;
+    terrain_view->planar_gradient_mode = planar_gradient_mode;
 
     for (uint32 lod_index = 0; lod_index < UE_UDLOD_MAX_SHADER_LOD_COUNT; ++lod_index) {
         const FVector2d lod_tile_count = tile_tree->get_tile_count(lod_index);
@@ -68,14 +75,24 @@ inline FRDGBufferRef terrain_view_from_tile_tree(FRDGBuilder& gb, const FTileTre
 }
 
 inline FRDGBufferRef tile_tree_from_cpu_tree(FRDGBuilder& gb, const FTileTree* tile_tree) {
-    // const auto tile_tree_params = gb.AllocParameters<TileTree>();
+    const uint32 tile_tree_entry_count = tile_tree->data.size();
+    FTileTreeEntryUpload* upload_entries = gb.AllocPODArray<FTileTreeEntryUpload>(
+        tile_tree_entry_count
+    );
+    const TArray<TileTreeEntry>& source_entries = tile_tree->data.get_storage();
+    for (uint32 index = 0; index < tile_tree_entry_count; ++index) {
+        const TileTreeEntry& source_entry = source_entries[static_cast<int32>(index)];
+        upload_entries[index].atlas_index = source_entry.atlas_index;
+        upload_entries[index].atlas_lod = source_entry.atlas_lod;
+    }
+
     const auto data = CreateStructuredBuffer(
         gb,
         TEXT("UDLOD.TileTreeEntriesUploadBuffer"),
-        sizeof(TileTreeEntry),
-        tile_tree->data.size(),
-        tile_tree->data.get_storage().GetData(),
-        tile_tree->data.get_storage().GetAllocatedSize(),
+        sizeof(FTileTreeEntryUpload),
+        tile_tree_entry_count,
+        upload_entries,
+        sizeof(FTileTreeEntryUpload) * tile_tree_entry_count,
         ERDGInitialDataFlags::None);
     return data;
 }
