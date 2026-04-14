@@ -7,6 +7,7 @@
 #include "preprocess_fill.h"
 #include "preprocess_reproject.h"
 #include "preprocess_split.h"
+#include "preprocess_stitch.h"
 #include "terrain_settings.h"
 
 using namespace preprocess;
@@ -646,6 +647,69 @@ bool FPreprocessFillNoDataPreservesRgbaCenterTest::RunTest(const FString& Parame
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FPreprocessStitchCornersWritesFullBorderBlockTest,
+    "UDLODPreprocessor.Preprocess.Stitch.CornersWriteFullBorderBlock",
+    TestFlags)
+
+bool FPreprocessStitchCornersWritesFullBorderBlockTest::RunTest(const FString& Parameters) {
+    GDALAllRegister();
+
+    const FString root = make_unique_test_root(TEXT("StitchCornersWriteFullBorderBlock"));
+    ON_SCOPE_EXIT { delete_tree(root); };
+
+    FPreprocessContext context = make_context(root, EAttachmentFormat::R32F, 8, 2);
+
+    const FTileCoordinate tile{0u, 0u, FIntPoint{0, 0}};
+    auto tile_dataset_result = create_tile_dataset<float>(tile, context);
+    TestTrue(TEXT("Tile dataset is created"), tile_dataset_result.has_value());
+    if (!tile_dataset_result.has_value()) { return false; }
+
+    GDALDatasetRef tile_dataset = MoveTemp(tile_dataset_result.value());
+    auto* raster = tile_dataset->GetRasterBand(1);
+    TestNotNull(TEXT("Tile raster exists"), raster);
+    if (raster == nullptr) { return false; }
+
+    auto write_pixel = [this, raster](const TCHAR* what, const isize_c window, const float value) {
+        ext::Buffer<float> buffer{{value}, {1, 1}};
+        const auto write_result = write<float>(raster, window, {1, 1}, buffer);
+        TestTrue(what, write_result.has_value());
+        return write_result.has_value();
+    };
+
+    if (!write_pixel(TEXT("Corner center seed writes"), {2, 2}, 3.0f)) { return false; }
+    if (!write_pixel(TEXT("Corner left seed writes"), {1, 2}, 6.0f)) { return false; }
+    if (!write_pixel(TEXT("Corner top seed writes"), {2, 1}, 9.0f)) { return false; }
+    tile_dataset->FlushCache();
+
+    const auto border_size = static_cast<ext::types::isize>(context.attachment.border_size);
+    const auto offset_size = static_cast<ext::types::isize>(context.attachment.offset_size());
+    const TStaticArray<isize_c, NUM_NEIGHBORS> dst_offsets = {
+        isize_c{border_size, 0},
+        isize_c{offset_size, border_size},
+        isize_c{border_size, offset_size},
+        isize_c{0, border_size},
+        isize_c{0, 0},
+        isize_c{offset_size, 0},
+        isize_c{offset_size, offset_size},
+        isize_c{0, offset_size}
+    };
+
+    const auto stitch_result = stitch_corners<float>(tile_dataset, dst_offsets, 4u, context);
+    TestTrue(TEXT("Corner stitch succeeds"), stitch_result.has_value());
+    if (!stitch_result.has_value()) { return false; }
+
+    const auto read_result = read_as<float>(raster, {0, 0}, {2, 2}, {2, 2});
+    TestTrue(TEXT("Corner block can be read"), read_result.has_value());
+    if (!read_result.has_value()) { return false; }
+
+    for (const float value : read_result.value().data()) {
+        TestEqual(TEXT("Each corner border pixel receives the averaged value"), value, 6.0f);
+    }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FPreprocessReprojectPlanarUpdatesLodCountTest,
     "UDLODPreprocessor.Preprocess.Reproject.PlanarUpdatesLodCount",
     TestFlags)
@@ -714,15 +778,13 @@ bool FPreprocessReprojectPlanarUsesPresetLodCountAsCapTest::RunTest(const FStrin
 
     TestEqual(TEXT("Face uses capped max LOD"), static_cast<int32>(face_info->lod), 3);
     TestEqual(
-        TEXT("Face width is downsampled to the capped quadtree size"),
-        face_info->pixel_end.Get<0>(),
-        static_cast<ext::types::isize>(4064)
-    );
-
+        TEXT("Planar face keeps the local face origin"),
+        static_cast<int64>(face_info->pixel_start.Get<0>()),
+        int64{0});
     TestEqual(
-        TEXT("Face height keeps aspect ratio when capped"),
-        face_info->pixel_end.Get<1>(),
-        static_cast<ext::types::isize>(2032));
+        TEXT("Planar face keeps the local face origin"),
+        static_cast<int64>(face_info->pixel_start.Get<1>()),
+        int64{0});
 
     GDALDatasetRef reprojected_face = GDALDatasetRef{
         GDALDataset::Open(TCHAR_TO_UTF8(*face_info->path), GA_ReadOnly)
@@ -731,37 +793,56 @@ bool FPreprocessReprojectPlanarUsesPresetLodCountAsCapTest::RunTest(const FStrin
     if (reprojected_face.Get() == nullptr) { return false; }
 
     TestEqual(
-        TEXT("Downsampled face width matches the capped size"),
+        TEXT("Face width matches the written dataset"),
         reprojected_face->GetRasterXSize(),
-        4064);
+        static_cast<int32>(face_info->pixel_end.Get<0>()));
     TestEqual(
-        TEXT("Downsampled face height matches the capped size"),
+        TEXT("Face height matches the written dataset"),
         reprojected_face->GetRasterYSize(),
-        2032);
+        static_cast<int32>(face_info->pixel_end.Get<1>()));
 
     double reprojected_geotransform[6]{};
     TestEqual(
         TEXT("Downsampled face geotransform is readable"),
         reprojected_face->GetGeoTransform(reprojected_geotransform),
         CE_None);
+    const double pixel_width = reprojected_geotransform[1];
+    const double pixel_height = FMath::Abs(reprojected_geotransform[5]);
+    const double min_x = reprojected_geotransform[0];
+    const double max_x = min_x + pixel_width * static_cast<double>(reprojected_face->GetRasterXSize());
+    const double max_y = reprojected_geotransform[3];
+    const double min_y = max_y - pixel_height * static_cast<double>(reprojected_face->GetRasterYSize());
+
     TestTrue(
-        TEXT("Origin X is preserved"),
-        FMath::IsNearlyEqual(reprojected_geotransform[0], 100.0, KINDA_SMALL_NUMBER));
+        TEXT("Anchoring snaps origin X to the quadtree sample grid"),
+        reprojected_geotransform[0] <= 100.0 &&
+            (100.0 - reprojected_geotransform[0]) < pixel_width + KINDA_SMALL_NUMBER);
     TestTrue(
-        TEXT("Origin Y is preserved"),
-        FMath::IsNearlyEqual(reprojected_geotransform[3], 200.0, KINDA_SMALL_NUMBER));
+        TEXT("Anchoring snaps origin Y to the quadtree sample grid"),
+        reprojected_geotransform[3] >= 200.0 &&
+            (reprojected_geotransform[3] - 200.0) < pixel_height + KINDA_SMALL_NUMBER);
     TestTrue(
-        TEXT("Pixel width expands to preserve extent"),
+        TEXT("Pixel width still reflects the capped quadtree resolution"),
         FMath::IsNearlyEqual(
             reprojected_geotransform[1],
             4096.0 / 4064.0,
             KINDA_SMALL_NUMBER));
     TestTrue(
-        TEXT("Pixel height expands to preserve extent"),
+        TEXT("Pixel height still reflects the capped quadtree resolution"),
         FMath::IsNearlyEqual(
             reprojected_geotransform[5],
             -2048.0 / 2032.0,
             KINDA_SMALL_NUMBER));
+    TestTrue(
+        TEXT("Anchored output still covers the full source X extent"),
+        min_x <= 100.0 &&
+            max_x >= 4196.0 &&
+            (max_x - 4196.0) < pixel_width + KINDA_SMALL_NUMBER);
+    TestTrue(
+        TEXT("Anchored output still covers the full source Y extent"),
+        max_y >= 200.0 &&
+            min_y <= -1848.0 &&
+            (-1848.0 - min_y) < pixel_height + KINDA_SMALL_NUMBER);
 
     return true;
 }

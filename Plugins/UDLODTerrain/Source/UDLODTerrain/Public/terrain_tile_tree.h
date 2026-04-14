@@ -133,7 +133,6 @@ struct FTileTree {
 
     FRDGBufferRef tile_tree_buffer;
     FRDGBufferRef terrain_view_buffer;
-    // FRDGUniformBufferRef terrain_view_buffer;
     FRDGBufferRef approximate_height_buffer;
     TRefCountPtr<FRDGPooledBuffer> tile_tree_buffer_pooled;
     TRefCountPtr<FRDGPooledBuffer> terrain_view_buffer_pooled;

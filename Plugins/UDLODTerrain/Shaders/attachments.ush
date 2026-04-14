@@ -22,8 +22,8 @@ inline SampleUV compute_sample_uv(AtlasTile tile, AttachmentConfig attachment) {
             length(tile.coordinate.uv_dy)
         ));
     float scale = exp2(max(1.5f * tile.blend_ratio - lod, 0.0f));
-    float dx = tile.coordinate.uv_dx * scale;
-    float dy = tile.coordinate.uv_dy * scale;
+    float2 dx = tile.coordinate.uv_dx * scale;
+    float2 dy = tile.coordinate.uv_dy * scale;
 
     return sample_uv(uv, dx, dy);
 }

@@ -81,11 +81,9 @@ inline float2 get_lod_tile_count_f(uint lod) { return max(float2(get_lod_tile_co
 inline WorldCoordinate compute_world_coordinate(Coordinate coordinate, float height) {
     float2 uv = (float2(coordinate.xy) + coordinate.uv) / get_lod_tile_count_f(coordinate.lod);
 
-    // Bevy's planar terrain lives on XZ with +Y as the height axis. The runtime planar helpers in
-    // this Unreal port already place the terrain on XY with +Z as the local height axis, so keep
-    // the same position basis here and make the normal transform explicit instead of reconstructing
-    // it from the world matrix columns.
     float3 unit_position = float3(uv.x - 0.5f, uv.y - 0.5f, 0.0f);
+    // NOTE: The live planar runtime uses local XY with +Z height, matching
+    // terrain_runtime_planar.h.
     float3 unit_normal = float3(0.0f, 0.0f, 1.0f);
 
     float4x4 position_world_from_unit = affine3_to_square(terrain.world_from_unit);
@@ -153,6 +151,20 @@ inline TangentSpace compute_tangent_space(float3 world_position, float3 world_no
 
 inline float3 apply_height(WorldCoordinate world_coordinate, float height) {
     return world_coordinate.position + height * world_coordinate.normal;
+}
+
+inline WorldCoordinate compute_surface_world_coordinate(
+    Coordinate coordinate,
+    float height,
+    float view_distance
+) {
+    WorldCoordinate world_coordinate = compute_world_coordinate(
+        coordinate,
+        height,
+        view_distance
+    );
+    world_coordinate.position = apply_height(world_coordinate, height);
+    return world_coordinate;
 }
 
 inline float compute_morph(uint lod, float view_distance) {

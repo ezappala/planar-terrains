@@ -137,10 +137,12 @@ struct FGpuSampleProbeReadback {
     FUintVector4 coords0 = FUintVector4(0u, 0u, 0u, 0u);
     FVector4f scalars = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
     FVector4f albedo = FVector4f(-1.0f, -1.0f, -1.0f, -1.0f);
+    FVector4f base_world = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+    FVector4f displaced_world = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
     FVector4f extra = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
 };
 
-static_assert(sizeof(FGpuSampleProbeReadback) == 80u);
+static_assert(sizeof(FGpuSampleProbeReadback) == 112u);
 
 constexpr uint32 GpuProbeTileSampleLimit = 4u;
 
@@ -390,6 +392,86 @@ bool try_build_height_samples(const FAttachmentTileData& data, TArray<float>& ou
     }
 
     return false;
+}
+
+TOptional<FVector2f> try_compute_height_range(const FAttachmentTileData& data) {
+    TArray<float> samples;
+    if (!try_build_height_samples(data, samples) || samples.IsEmpty()) { return NullOpt; }
+
+    float min_value = MAX_flt;
+    float max_value = -MAX_flt;
+    for (const float sample : samples) {
+        min_value = FMath::Min(min_value, sample);
+        max_value = FMath::Max(max_value, sample);
+    }
+
+    return FVector2f(min_value, max_value);
+}
+
+void log_gpu_probe_cpu_height_attachment(
+    const uint64 submission_id,
+    const uint32 view_key,
+    const FTileAtlas& tile_atlas,
+    const TOptional<FTileCoordinate>& atlas_owner_coordinate
+) {
+    if (!atlas_owner_coordinate.IsSet()) { return; }
+
+    const TOptional<FString> height_label = find_attachment_label(tile_atlas, TEXT("height"));
+    if (!height_label.IsSet()) { return; }
+
+    const FAttachment* attachment = tile_atlas.attachments.Find(height_label.GetValue());
+    if (attachment == nullptr) { return; }
+
+    const FAttachmentTile key{atlas_owner_coordinate.GetValue(), height_label.GetValue()};
+    const FAttachmentTileData* height_data = tile_atlas.loaded_tile_data.Find(key);
+    if (height_data == nullptr) {
+        UE_LOG(
+            LogTemp,
+            Display,
+            TEXT(
+                "[UDLOD.HeightProbeCpu] submission=%llu view=%u coord=%s loaded=false"
+            ),
+            submission_id,
+            view_key,
+            *atlas_owner_coordinate->to_string()
+        );
+        return;
+    }
+
+    const TOptional<FVector2f> range = try_compute_height_range(*height_data);
+    if (!range.IsSet()) {
+        UE_LOG(
+            LogTemp,
+            Display,
+            TEXT(
+                "[UDLOD.HeightProbeCpu] submission=%llu view=%u coord=%s loaded=true range={unavailable=true}"
+            ),
+            submission_id,
+            view_key,
+            *atlas_owner_coordinate->to_string()
+        );
+        return;
+    }
+
+    UE_LOG(
+        LogTemp,
+        Display,
+        TEXT(
+            "[UDLOD.HeightProbeCpu] submission=%llu view=%u coord=%s attachment={texture_size=%u, center_size=%u, border_size=%u, mask=%s} range={min=%.6f, max=%.6f} runtime={height_scale=%.6f, min_height=%.6f, max_height=%.6f}"
+        ),
+        submission_id,
+        view_key,
+        *atlas_owner_coordinate->to_string(),
+        attachment->texture_size,
+        attachment->center_size,
+        attachment->border_size,
+        attachment->mask ? TEXT("true") : TEXT("false"),
+        range->X,
+        range->Y,
+        tile_atlas.height_scale,
+        tile_atlas.min_height,
+        tile_atlas.max_height
+    );
 }
 
 bool try_build_color_samples(const FAttachmentTileData& data, TArray<FColor>& out_samples) {
@@ -1507,7 +1589,10 @@ void FTerrainSceneViewExtension::process_gpu_probe_results() const {
                         "sample={atlas_index=%u, geometry_face=%u, geometry_lod=%u, "
                         "geometry_xy=(%u,%u), sampled_lod=%u, sampled_xy=(%u,%u), "
                         "sampled_uv=(%.6f,%.6f), height=%.6f, approximate_height=%.6f, "
-                        "normal_z=%.6f, albedo=(%.6f,%.6f,%.6f,%.6f)}"
+                        "normal=(%.6f,%.6f,%.6f), "
+                        "base_world=(%.6f,%.6f,%.6f), displaced_world=(%.6f,%.6f,%.6f), "
+                        "sample_height_range=(%.6f,%.6f), height_delta=%.6f, "
+                        "albedo=(%.6f,%.6f,%.6f,%.6f)}"
                     ),
                     submission_id,
                     view_key,
@@ -1524,6 +1609,17 @@ void FTerrainSceneViewExtension::process_gpu_probe_results() const {
                     sample_probe->scalars.Z,
                     sample_probe->scalars.W,
                     sample_probe->extra.X,
+                    sample_probe->extra.Y,
+                    sample_probe->extra.Z,
+                    sample_probe->base_world.X,
+                    sample_probe->base_world.Y,
+                    sample_probe->base_world.Z,
+                    sample_probe->displaced_world.X,
+                    sample_probe->displaced_world.Y,
+                    sample_probe->displaced_world.Z,
+                    sample_probe->base_world.W,
+                    sample_probe->displaced_world.W,
+                    sample_probe->extra.W,
                     sample_probe->albedo.X,
                     sample_probe->albedo.Y,
                     sample_probe->albedo.Z,
@@ -1562,6 +1658,13 @@ void FTerrainSceneViewExtension::process_gpu_probe_results() const {
                                 view_key,
                                 sample_probe->ids0.X,
                                 atlas_owner_coordinate->to_string()
+                            );
+
+                            log_gpu_probe_cpu_height_attachment(
+                                submission_id,
+                                view_key,
+                                root_actor->tile_atlas.GetValue(),
+                                atlas_owner_coordinate
                             );
                         } else {
                             UE_LOGFMT(

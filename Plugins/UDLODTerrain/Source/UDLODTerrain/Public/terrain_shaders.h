@@ -355,6 +355,8 @@ BEGIN_SHADER_PARAMETER_STRUCT(GpuSampleProbe, UDLODTERRAIN_API)
     SHADER_PARAMETER(FUintVector4, coords0)
     SHADER_PARAMETER(FVector4f, scalars)
     SHADER_PARAMETER(FVector4f, albedo)
+    SHADER_PARAMETER(FVector4f, base_world)
+    SHADER_PARAMETER(FVector4f, displaced_world)
     SHADER_PARAMETER(FVector4f, extra)
 END_SHADER_PARAMETER_STRUCT()
 

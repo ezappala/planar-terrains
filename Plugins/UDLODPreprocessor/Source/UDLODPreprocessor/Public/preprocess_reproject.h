@@ -3,6 +3,8 @@
 #include "preprocess_dataset.h"
 #include "preprocess_gdal_extended.h"
 #include "preprocess_result.h"
+#include "preprocess_util.h"
+#include "gdalwarper.h"
 
 namespace preprocess {
 inline int32 derive_planar_lod_count(
@@ -72,6 +74,150 @@ inline GeoTransformRef scale_geo_transform(
     return transform;
 }
 
+inline FVector2d apply_geo_transform(
+    const GeoTransformRef& transform,
+    const double pixel_x,
+    const double pixel_y
+) {
+    return {
+        transform[0] + pixel_x * transform[1] + pixel_y * transform[2],
+        transform[3] + pixel_x * transform[4] + pixel_y * transform[5]
+    };
+}
+
+struct FPlanarAnchoredOutput {
+    FUint64Point size;
+    GeoTransformRef transform;
+};
+
+inline FPlanarAnchoredOutput anchor_planar_output_grid(
+    GeoTransformRef transform,
+    const FUint64Point size
+) {
+    if (!transform || size.X == 0 || size.Y == 0) {
+        return {
+            .size = size,
+            .transform = MoveTemp(transform)
+        };
+    }
+
+    if (!FMath::IsNearlyZero(transform[2], UE_DOUBLE_SMALL_NUMBER) ||
+        !FMath::IsNearlyZero(transform[4], UE_DOUBLE_SMALL_NUMBER)) {
+        return {
+            .size = size,
+            .transform = MoveTemp(transform)
+        };
+    }
+
+    const double pixel_width = FMath::Abs(transform[1]);
+    const double pixel_height = FMath::Abs(transform[5]);
+    if (pixel_width <= UE_DOUBLE_SMALL_NUMBER || pixel_height <= UE_DOUBLE_SMALL_NUMBER) {
+        return {
+            .size = size,
+            .transform = MoveTemp(transform)
+        };
+    }
+
+    const FVector2d corners[4] = {
+        apply_geo_transform(transform, 0.0, 0.0),
+        apply_geo_transform(transform, static_cast<double>(size.X), 0.0),
+        apply_geo_transform(transform, 0.0, static_cast<double>(size.Y)),
+        apply_geo_transform(transform, static_cast<double>(size.X), static_cast<double>(size.Y))
+    };
+
+    double min_x = corners[0].X;
+    double max_x = corners[0].X;
+    double min_y = corners[0].Y;
+    double max_y = corners[0].Y;
+    for (const FVector2d& corner : corners) {
+        min_x = FMath::Min(min_x, corner.X);
+        max_x = FMath::Max(max_x, corner.X);
+        min_y = FMath::Min(min_y, corner.Y);
+        max_y = FMath::Max(max_y, corner.Y);
+    }
+
+    const int64 pixel_start_x = static_cast<int64>(FMath::FloorToDouble(min_x / pixel_width));
+    const int64 pixel_end_x = static_cast<int64>(FMath::CeilToDouble(max_x / pixel_width));
+    const int64 pixel_start_y = static_cast<int64>(FMath::FloorToDouble(min_y / pixel_height));
+    const int64 pixel_end_y = static_cast<int64>(FMath::CeilToDouble(max_y / pixel_height));
+
+    FPlanarAnchoredOutput output{
+        .size = {
+            static_cast<uint64>(FMath::Max<int64>(1, pixel_end_x - pixel_start_x)),
+            static_cast<uint64>(FMath::Max<int64>(1, pixel_end_y - pixel_start_y))
+        },
+        .transform = MoveTemp(transform)
+    };
+
+    output.transform[0] = output.transform[1] >= 0.0
+        ? static_cast<double>(pixel_start_x) * pixel_width
+        : static_cast<double>(pixel_end_x) * pixel_width;
+    output.transform[3] = output.transform[5] >= 0.0
+        ? static_cast<double>(pixel_start_y) * pixel_height
+        : static_cast<double>(pixel_end_y) * pixel_height;
+
+    return output;
+}
+
+inline PreprocessResult<void> warp_planar_dataset(
+    const GDALDatasetRef& src_dataset,
+    const GDALDatasetRef& dst_dataset,
+    const FPreprocessContext& context
+) {
+    const int32 band_count = src_dataset->GetRasterCount();
+    TArray<int> bands;
+    bands.Reserve(band_count);
+    for (int32 band_index = 0; band_index < band_count; ++band_index) {
+        bands.Add(band_index + 1);
+    }
+
+    TArray<double> src_no_data;
+    if (const TOptional<double> src_no_data_value = util::get_no_data_value(src_dataset);
+        src_no_data_value.IsSet()) {
+        src_no_data.Init(src_no_data_value.GetValue(), band_count);
+    }
+
+    TArray<double> dst_no_data;
+    if (context.no_data_value.IsSet()) {
+        dst_no_data.Init(context.no_data_value.GetValue(), band_count);
+    }
+
+    GDALWarpOptions* options = GDALCreateWarpOptions();
+    if (options == nullptr) { return std::unexpected{FPreprocessError::Gdal(CPLE_OutOfMemory)}; }
+
+    options->hSrcDS = src_dataset.Get();
+    options->hDstDS = dst_dataset.Get();
+    options->eResampleAlg = GRA_Bilinear;
+    options->dfWarpMemoryLimit = 1024.0 * 1024.0 * 8.0;
+    options->eWorkingDataType = static_cast<GDALDataType>(context.data_type);
+    options->nBandCount = band_count;
+    options->panSrcBands = bands.GetData();
+    options->panDstBands = bands.GetData();
+    options->padfSrcNoDataReal = src_no_data.IsEmpty() ? nullptr : src_no_data.GetData();
+    options->padfDstNoDataReal = dst_no_data.IsEmpty() ? nullptr : dst_no_data.GetData();
+
+    const CPLErr rv = GDALReprojectImage(
+        src_dataset.Get(),
+        nullptr,
+        dst_dataset.Get(),
+        nullptr,
+        GRA_Bilinear,
+        options->dfWarpMemoryLimit,
+        0.0,
+        GDALDummyProgress,
+        nullptr,
+        options);
+
+    options->panSrcBands = nullptr;
+    options->panDstBands = nullptr;
+    options->padfSrcNoDataReal = nullptr;
+    options->padfDstNoDataReal = nullptr;
+    GDALDestroyWarpOptions(options);
+
+    if (rv != CE_None) { return std::unexpected{FPreprocessError::Gdal(rv)}; }
+    return {};
+}
+
 template <typename T>
     requires GdalType<T> && Copy<T>
 PreprocessResult<TMap<uint32, FaceInfo>> reproject_planar(
@@ -83,16 +229,18 @@ PreprocessResult<TMap<uint32, FaceInfo>> reproject_planar(
     const auto height = static_cast<uint64>(src_dataset->GetRasterYSize());
     const int32 lod_count = resolve_planar_lod_count(width, height, context);
     const uint32 max_lod = static_cast<uint32>(lod_count - 1);
-    const FUint64Point dst_size = resolve_planar_output_size(width, height, context, lod_count);
-    const bool bNeedsResample = dst_size.X != width || dst_size.Y != height;
     context.lod_count = lod_count;
 
+    const FUint64Point requested_size = resolve_planar_output_size(width, height, context, lod_count);
     GeoTransformRef dst_transform = geo_transform(src_dataset);
-    if (bNeedsResample) {
-        const double scale_x = static_cast<double>(width) / static_cast<double>(dst_size.X);
-        const double scale_y = static_cast<double>(height) / static_cast<double>(dst_size.Y);
+    if (requested_size.X != width || requested_size.Y != height) {
+        const double scale_x = static_cast<double>(width) / static_cast<double>(requested_size.X);
+        const double scale_y = static_cast<double>(height) / static_cast<double>(requested_size.Y);
         dst_transform = scale_geo_transform(MoveTemp(dst_transform), scale_x, scale_y);
     }
+    auto anchored_output = anchor_planar_output_grid(MoveTemp(dst_transform), requested_size);
+    const FUint64Point dst_size = anchored_output.size;
+    dst_transform = MoveTemp(anchored_output.transform);
 
     PreprocessResult<GDALDatasetRef> dst_dataset_result =
         create_empty_dataset<T>(
@@ -104,64 +252,16 @@ PreprocessResult<TMap<uint32, FaceInfo>> reproject_planar(
     if (!dst_dataset_result.has_value()) { return std::unexpected{dst_dataset_result.error()}; }
     const auto dst_dataset = MoveTemp(dst_dataset_result.value());
 
-    const auto band_count = src_dataset->GetRasterCount();
-    constexpr uint64 TargetChunkBytes = 64ull * 1024ull * 1024ull;
-    constexpr uint64 MaxChunkRows = 1024ull;
-    const uint64 bytes_per_row = FMath::Max<uint64>(1ull, dst_size.X * sizeof(T));
-    const uint64 chunk_size = FMath::Clamp<uint64>(
-        TargetChunkBytes / bytes_per_row,
-        1ull,
-        FMath::Min<uint64>(dst_size.Y, MaxChunkRows));
-
-    for (ext::types::usize band = 0; band < band_count; ++band) {
-        auto* src_band = src_dataset->GetRasterBand(band + 1);
-        auto* dst_band = dst_dataset->GetRasterBand(band + 1);
-
-        for (uint64 chunk_start = 0; chunk_start < dst_size.Y; chunk_start += chunk_size) {
-            const auto chunk_height = FMath::Min(chunk_size, dst_size.Y - chunk_start);
-            const uint64 chunk_end = chunk_start + chunk_height;
-            const uint64 src_y_start = bNeedsResample
-                ? FMath::Min<uint64>(
-                    height - 1,
-                    static_cast<uint64>(FMath::FloorToDouble(
-                        static_cast<double>(chunk_start) * static_cast<double>(height) /
-                        static_cast<double>(dst_size.Y))))
-                : chunk_start;
-            const uint64 src_y_end = bNeedsResample
-                ? FMath::Min<uint64>(
-                    height,
-                    static_cast<uint64>(FMath::CeilToDouble(
-                        static_cast<double>(chunk_end) * static_cast<double>(height) /
-                        static_cast<double>(dst_size.Y))))
-                : chunk_end;
-            const uint64 src_chunk_height = FMath::Max<uint64>(1ull, src_y_end - src_y_start);
-
-            ext::BufferResult<T> src_band_result = read_as<T>(
-                src_band,
-                {0, static_cast<ext::types::isize>(src_y_start)},
-                {width, src_chunk_height},
-                {dst_size.X, chunk_height},
-                bNeedsResample
-                    ? TOptional<GDALRIOResampleAlg>{GRIORA_Bilinear}
-                    : NullOpt);
-
-            if (!src_band_result.has_value()) {
-                return std::unexpected{FPreprocessError::Gdal(src_band_result.error())};
-            }
-
-            auto buffer = src_band_result.value();
-
-            auto dst_band_result = write<T>(
-                dst_band,
-                {0, static_cast<ext::types::isize>(chunk_start)},
-                {static_cast<ext::types::usize>(dst_size.X), chunk_height},
-                buffer);
-
-            if (!dst_band_result.has_value()) {
-                return std::unexpected{FPreprocessError::From(dst_band_result.error())};
-            }
+    const char* projection = src_dataset->GetProjectionRef();
+    if (projection != nullptr && projection[0] != '\0') {
+        const CPLErr projection_result = dst_dataset->SetProjection(projection);
+        if (projection_result != CE_None) {
+            return std::unexpected{FPreprocessError::Gdal(projection_result)};
         }
     }
+
+    const auto warp_result = warp_planar_dataset(src_dataset, dst_dataset, context);
+    if (!warp_result.has_value()) { return std::unexpected{warp_result.error()}; }
 
     if (context.attachment_label.ToLower() == "height") {
         TStaticArray<double, 2> min_max{0., 0.};

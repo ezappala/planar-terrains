@@ -36,7 +36,7 @@ struct FTileAtlas {
         lod_count{static_cast<uint32>(config.lod_count)},
         max_height{config.max_height},
         min_height{config.min_height},
-        height_scale{1280.},
+        height_scale{128000.0f},
         side_length{config.side_length},
         instance_id{GTileAtlasInstanceCounter.fetch_add(1u, std::memory_order_relaxed)} {
         initialize_pinned_tiles();
@@ -168,8 +168,8 @@ struct FTileAtlas {
         }
 
         if (const TOptional<FTileCoordinate> owner_coordinate = find_owner_coordinate(
-                tile_state->atlas_index);
-            owner_coordinate.IsSet() && owner_coordinate.GetValue() != tile.coordinate) {
+                tile_state->atlas_index); owner_coordinate.IsSet() && owner_coordinate.GetValue() !=
+            tile.coordinate) {
             UE_LOGFMT(
                 LogTemp,
                 Warning,
@@ -424,12 +424,10 @@ struct FTileAtlas {
 
 private:
     void reassign_atlas_index(const uint32 atlas_index, const FTileCoordinate& new_coordinate) {
-        if (const TOptional<FTileCoordinate> previous_owner_coordinate = find_owner_coordinate(
-                atlas_index);
-            previous_owner_coordinate.IsSet() && previous_owner_coordinate.GetValue() !=
-            new_coordinate) {
-            tile_states.Remove(previous_owner_coordinate.GetValue());
-        }
+        if (const auto previous_owner_coordinate = find_owner_coordinate(atlas_index);
+            previous_owner_coordinate.IsSet() &&
+            previous_owner_coordinate.GetValue() !=
+            new_coordinate) { tile_states.Remove(previous_owner_coordinate.GetValue()); }
 
         ext::iter::retain(
             tile_states,
@@ -437,13 +435,19 @@ private:
                 return tile_state.atlas_index != atlas_index;
             }
         );
+
         ext::iter::retain(
             uploading_tiles,
-            [&atlas_index](const FAttachmentTileWithData& tile) { return tile.atlas_index != atlas_index; }
+            [&atlas_index](const FAttachmentTileWithData& tile) {
+                return tile.atlas_index != atlas_index;
+            }
         );
+
         ext::iter::retain(
             downloading_tiles,
-            [&atlas_index](const FAttachmentTileWithData& tile) { return tile.atlas_index != atlas_index; }
+            [&atlas_index](const FAttachmentTileWithData& tile) {
+                return tile.atlas_index != atlas_index;
+            }
         );
 
         atlas_owners.Add(atlas_index, new_coordinate);

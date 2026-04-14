@@ -125,8 +125,9 @@ PreprocessResult<void> downsample(
                     }
 
                     GDALRasterBand* child_raster = child_raster_result.value();
+                    GDALRasterBand* tile_raster = tile_rasters[band_index];
                     int has_no_data_value = 0;
-                    const auto raw_no_data_value = child_raster->GetNoDataValue(
+                    const auto raw_no_data_value = tile_raster->GetNoDataValue(
                         &has_no_data_value);
                     const TOptional<T> no_data_value = has_no_data_value
                         ? TOptional<T>{T(raw_no_data_value)}

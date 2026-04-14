@@ -74,7 +74,10 @@ PreprocessResult<void> stitch_corners(
         const auto write_result = write<T>(
             raster,
             dst_offset,
-            {1, 1},
+            {
+                static_cast<ext::types::usize>(border_size),
+                static_cast<ext::types::usize>(border_size)
+            },
             buffer);
 
         if (!write_result.has_value()) {

@@ -2,6 +2,7 @@
 
 #include "terrain_config.h"
 #include "terrain_render_state.h"
+#include "terrain_scene_proxy.h"
 #include "terrain_settings.h"
 #include "terrain_tile_atlas.h"
 #include "Components/MeshComponent.h"

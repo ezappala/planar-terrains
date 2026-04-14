@@ -10,6 +10,8 @@ struct GpuSampleProbe {
     uint4 coords0;
     float4 scalars;
     float4 albedo;
+    float4 base_world;
+    float4 displaced_world;
     float4 extra;
 };
 RWStructuredBuffer<GpuSampleProbe> output;
@@ -49,14 +51,45 @@ void probe_samples(uint3 id : SV_DispatchThreadID) {
         tile.coordinate.xy.y
     );
     probe.scalars.xy = tile.coordinate.uv;
+    probe.base_world = float4(world_coordinate.position, world_coordinate.view_distance);
+    probe.displaced_world = float4(world_coordinate.position, 0.0f);
+    probe.extra.xyz = world_coordinate.normal;
 
     if (tile.index != 0xFFFFFFFFu) {
         probe.scalars.z = sample_height(tile);
         probe.albedo = sample_albedo(tile);
+
+        AtlasTile sample_tile = tile;
+        float min_height = probe.scalars.z;
+        float max_height = probe.scalars.z;
+
+        sample_tile.coordinate.uv = float2(0.0f, 0.0f);
+        float corner00 = sample_height(sample_tile);
+        min_height = min(min_height, corner00);
+        max_height = max(max_height, corner00);
+
+        sample_tile.coordinate.uv = float2(1.0f, 0.0f);
+        float corner10 = sample_height(sample_tile);
+        min_height = min(min_height, corner10);
+        max_height = max(max_height, corner10);
+
+        sample_tile.coordinate.uv = float2(0.0f, 1.0f);
+        float corner01 = sample_height(sample_tile);
+        min_height = min(min_height, corner01);
+        max_height = max(max_height, corner01);
+
+        sample_tile.coordinate.uv = float2(1.0f, 1.0f);
+        float corner11 = sample_height(sample_tile);
+        min_height = min(min_height, corner11);
+        max_height = max(max_height, corner11);
+
+        const float3 displaced_world_position = apply_height(world_coordinate, probe.scalars.z);
+        probe.displaced_world = float4(displaced_world_position, max_height);
+        probe.base_world.w = min_height;
     }
 
     probe.scalars.w = approximate_height[0];
-    probe.extra.x = world_coordinate.normal.z;
+    probe.extra.w = probe.scalars.z - probe.scalars.w;
 
     output[0] = probe;
 }
