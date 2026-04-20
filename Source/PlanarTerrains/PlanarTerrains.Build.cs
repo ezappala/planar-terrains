@@ -1,5 +1,6 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
+using System.Collections.Generic;
 using UnrealBuildTool;
 
 public class PlanarTerrains : ModuleRules {
@@ -8,6 +9,9 @@ public class PlanarTerrains : ModuleRules {
         CppStandard = CppStandardVersion.Cpp23;
         IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
         IWYUSupport = IWYUSupport.Full;
+        CppCompileWarningSettings = new CppCompileWarnings(this, Logger);
+        bWarningsAsErrors = true;
+        bUseUnity = false;
 
         PublicIncludePaths.AddRange(new[]
             { "PlanarTerrains/Public" });

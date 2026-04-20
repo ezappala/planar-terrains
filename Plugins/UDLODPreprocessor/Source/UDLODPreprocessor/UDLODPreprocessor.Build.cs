@@ -8,6 +8,9 @@ public class UDLODPreprocessor : ModuleRules {
         CppStandard = CppStandardVersion.Cpp23;
         IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
         IWYUSupport = IWYUSupport.Full;
+        CppCompileWarningSettings = new CppCompileWarnings(this, Logger);
+        bWarningsAsErrors = true;
+        bUseUnity = false;
 
         PublicIncludePaths.AddRange(
             new string[] {

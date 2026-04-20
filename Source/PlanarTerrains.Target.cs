@@ -1,6 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
+using System.Collections.Generic;
 using UnrealBuildTool;
+using System.Linq;
+using EpicGames.Core;
+using Microsoft.Extensions.Logging;
 
 public class PlanarTerrainsTarget : TargetRules {
     public PlanarTerrainsTarget(TargetInfo Target) : base(Target) {
@@ -9,6 +13,37 @@ public class PlanarTerrainsTarget : TargetRules {
         CppStandard = CppStandardVersion.Cpp23;
         IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
         bEnforceIWYU = true;
+        StaticAnalyzer = StaticAnalyzer.Clang;
+        StaticAnalyzerOutputType = StaticAnalyzerOutputType.Text;
+        bStaticAnalyzerProjectOnly = true;
+        bStaticAnalyzerIncludeGenerated = false;
+        StaticAnalyzerMode = StaticAnalyzerMode.Deep;
+        var checkers = new HashSet<string> {
+                "core",
+                "cplusplus",
+                "deadcode",
+                "nullability",
+                "optin.core",
+                "optin.cplusplus",
+                "optin.performance",
+                "optin.taint",
+                "security",
+                "alpha.clone",
+                "alpha.core",
+                "alpha.cplusplus",
+                "alpha.deadcode",
+                "alpha.llvm",
+                "alpha.security",
+            }
+            .Select(selector: static s => "-StaticAnalyzerChecker=" + s)
+            .ToArray();
+
+        if (Target != null) {
+            if (Target.Arguments != null) Target.Arguments.Append(checkers);
+            else Target.Arguments = new CommandLineArguments(checkers);
+        } else Logger.LogError("Target did not exist!");
+
+        bUseUnityBuild = false;
 
         ExtraModuleNames.AddRange(new[] { "PlanarTerrains", "UDLODExt",
             "UDLODPreprocessor", "UDLODTerrain" });
