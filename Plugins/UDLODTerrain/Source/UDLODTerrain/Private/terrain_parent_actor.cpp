@@ -1,7 +1,6 @@
 #include "terrain_parent_actor.h"
 
 #include "ext_logging.h"
-#include "GPUTessellationComponent.h"
 #include "terrain_debug_bridge.h"
 #include "terrain_preprocess_runner.h"
 #include "terrain_tile_loader.h"
@@ -208,51 +207,51 @@ UTexture2D* create_fallback_height_texture(
     return height_texture;
 }
 
-UGPUTessellationComponent* spawn_tessellation_fallback(
-    ATerrainParentActor& owner,
-    const FTerrainConfig& config,
-    UMaterialInterface* material,
-    UTexture2D* height_texture
-) {
-    if (height_texture == nullptr || owner.root == nullptr) { return nullptr; }
-
-    const FName component_name = MakeUniqueObjectName(
-        &owner,
-        UGPUTessellationComponent::StaticClass(),
-        TEXT("TerrainFallback")
-    );
-    auto* fallback_component = NewObject<UGPUTessellationComponent>(
-        &owner,
-        component_name,
-        RF_Transient
-    );
-    if (!IsValid(fallback_component)) { return nullptr; }
-
-    fallback_component->bAutoUpdate = false;
-    fallback_component->TessellationSettings.TessellationFactor = FMath::Clamp(
-        owner.tessellation_fallback_factor,
-        1,
-        128
-    );
-    fallback_component->TessellationSettings.PlaneSizeX = static_cast<float>(config.side_length);
-    fallback_component->TessellationSettings.PlaneSizeY = static_cast<float>(config.side_length);
-    fallback_component->TessellationSettings.DisplacementIntensity = FMath::Max(
-        config.max_height - config.min_height,
-        1.0f
-    );
-    fallback_component->TessellationSettings.DisplacementOffset = config.min_height;
-    fallback_component->TessellationSettings.bUseSineWaveDisplacement = false;
-    fallback_component->TessellationSettings.LODMode = EGPUTessellationLODMode::Disabled;
-    fallback_component->DisplacementTexture = height_texture;
-    fallback_component->Material = material;
-    fallback_component->AttachToComponent(
-        owner.root,
-        FAttachmentTransformRules::KeepRelativeTransform);
-    fallback_component->RegisterComponent();
-    fallback_component->UpdateBounds();
-    fallback_component->UpdateTessellatedMesh();
-    return fallback_component;
-}
+// UGPUTessellationComponent* spawn_tessellation_fallback(
+//     ATerrainParentActor& owner,
+//     const FTerrainConfig& config,
+//     UMaterialInterface* material,
+//     UTexture2D* height_texture
+// ) {
+//     if (height_texture == nullptr || owner.root == nullptr) { return nullptr; }
+//
+//     const FName component_name = MakeUniqueObjectName(
+//         &owner,
+//         UGPUTessellationComponent::StaticClass(),
+//         TEXT("TerrainFallback")
+//     );
+//     auto* fallback_component = NewObject<UGPUTessellationComponent>(
+//         &owner,
+//         component_name,
+//         RF_Transient
+//     );
+//     if (!IsValid(fallback_component)) { return nullptr; }
+//
+//     fallback_component->bAutoUpdate = false;
+//     fallback_component->TessellationSettings.TessellationFactor = FMath::Clamp(
+//         owner.tessellation_fallback_factor,
+//         1,
+//         128
+//     );
+//     fallback_component->TessellationSettings.PlaneSizeX = static_cast<float>(config.side_length);
+//     fallback_component->TessellationSettings.PlaneSizeY = static_cast<float>(config.side_length);
+//     fallback_component->TessellationSettings.DisplacementIntensity = FMath::Max(
+//         config.max_height - config.min_height,
+//         1.0f
+//     );
+//     fallback_component->TessellationSettings.DisplacementOffset = config.min_height;
+//     fallback_component->TessellationSettings.bUseSineWaveDisplacement = false;
+//     fallback_component->TessellationSettings.LODMode = EGPUTessellationLODMode::Disabled;
+//     fallback_component->DisplacementTexture = height_texture;
+//     fallback_component->Material = material;
+//     fallback_component->AttachToComponent(
+//         owner.root,
+//         FAttachmentTransformRules::KeepRelativeTransform);
+//     fallback_component->RegisterComponent();
+//     fallback_component->UpdateBounds();
+//     fallback_component->UpdateTessellatedMesh();
+//     return fallback_component;
+// }
 }
 
 ATerrainParentActor::ATerrainParentActor() {
@@ -717,13 +716,13 @@ void ATerrainParentActor::rebuild_terrains() {
         if (height_texture != nullptr) {
             fallback_height_texture = height_texture;
 
-            if (UGPUTessellationComponent* const fallback_component =
-                terrain::spawn_tessellation_fallback(
-                    *this,
-                    terrain_config,
-                    material,
-                    height_texture
-                )) { spawned_fallback_component = fallback_component; }
+            // if (UGPUTessellationComponent* const fallback_component =
+            //     terrain::spawn_tessellation_fallback(
+            //         *this,
+            //         terrain_config,
+            //         material,
+            //         height_texture
+            //     )) { spawned_fallback_component = fallback_component; }
         }
     }
     UE_LOGFMT(
