@@ -121,7 +121,7 @@ bool FUDLODExtIterZipAndMapHelpersTest::RunTest(const FString& Parameters) {
     static_input[0] = 1;
     static_input[1] = 2;
     static_input[2] = 3;
-    const auto mapped_static = ext::iter::map(
+    const auto mapped_static = ext::iter::map<int32, 3, int32(*)(int32)>(
         static_input,
         [](const int32 value) { return value * value; });
     TestEqual(TEXT("Static map first element"), mapped_static[0], 1);
@@ -150,7 +150,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FUDLODExtIterRangeAndOrderHelpersTest::RunTest(const FString& Parameters) {
     const TArray<int32> array_range = ext::iter::range<TArray<int32>>(2, 5);
-    TestTrue(TEXT("Array range is half-open"), array_range == TArray<int32>{2, 3, 4});
+    TestTrue(TEXT("Array range is half-open"), array_range == TArray{2, 3, 4});
 
     const TSet<int32> set_range = ext::iter::range<TSet<int32>>(2, 5);
     TestEqual(TEXT("Set range count"), set_range.Num(), 3);
