@@ -43,9 +43,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     TestFlags)
 
 bool FUDLODExtIterZipAndMapHelpersTest::RunTest(const FString& Parameters) {
-    const TArray<int32> numbers{1, 2, 3};
+    const TArray numbers{1, 2, 3};
     const TArray<FString> words{TEXT("one"), TEXT("two")};
-    const TArray<bool> flags{true, false, true};
+    const TArray flags{true, false, true};
     const auto number_view = MakeArrayView(numbers);
     const auto word_view = MakeArrayView(words);
     const auto flag_view = MakeArrayView(flags);
@@ -94,21 +94,21 @@ bool FUDLODExtIterZipAndMapHelpersTest::RunTest(const FString& Parameters) {
     TestEqual(TEXT("Product last pair number"), product.Last().Get<0>(), 3);
     TestEqual(TEXT("Product last pair letter"), product.Last().Get<1>(), FString(TEXT("B")));
 
-    const TArray<int32> offsets{10, 20, 30, 40};
+    const TArray offsets{10, 20, 30, 40};
     const TArray<int32> zip_mapped = ext::iter::zip_map(
         number_view,
         MakeArrayView(offsets),
         [](const int32 a, const int32 b) { return a + b; });
     TestTrue(
         TEXT("zip_map combines paired values"),
-        zip_mapped == TArray<int32>{11, 22, 33});
+        zip_mapped == TArray{11, 22, 33});
 
-    TArray<int32> mapped_into{999};
+    TArray mapped_into{999};
     ext::iter::map_into<int32, int32>(
         number_view,
         mapped_into,
         [](const int32 value) { return value * 2; });
-    TestTrue(TEXT("map_into replaces prior contents"), mapped_into == TArray<int32>{2, 4, 6});
+    TestTrue(TEXT("map_into replaces prior contents"), mapped_into == TArray{2, 4, 6});
 
     const TArray<FString> mapped = ext::iter::map(
         number_view,
@@ -133,9 +133,7 @@ bool FUDLODExtIterZipAndMapHelpersTest::RunTest(const FString& Parameters) {
     map_input.Add(TEXT("two"), 2);
     const auto mapped_map = ext::iter::map(
         map_input,
-        [](const FString& key, const int32 value) {
-            return std::pair{value * 10, key.ToUpper()};
-        });
+        [](const FString& key, const int32 value) { return std::pair{value * 10, key.ToUpper()}; });
     TestTrue(TEXT("Mapped TMap contains transformed first key"), mapped_map.Contains(10));
     TestTrue(TEXT("Mapped TMap contains transformed second key"), mapped_map.Contains(20));
     TestEqual(TEXT("Mapped TMap first value"), mapped_map[10], FString(TEXT("ONE")));
@@ -161,12 +159,16 @@ bool FUDLODExtIterRangeAndOrderHelpersTest::RunTest(const FString& Parameters) {
     TestTrue(TEXT("Set range contains 4"), set_range.Contains(4));
 
     const TDeque<int32> deque_range = ext::iter::range<TDeque<int32>>(2, 5);
-    const bool deque_range_ok = check_deque_equals(*this, TEXT("Deque range"), deque_range, {2, 3, 4});
+    const bool deque_range_ok = check_deque_equals(
+        *this,
+        TEXT("Deque range"),
+        deque_range,
+        {2, 3, 4});
 
     const TArray<int32> inclusive_array = ext::iter::range_inclusive<TArray<int32>>(2, 4);
     TestTrue(
         TEXT("Inclusive array range includes the end value"),
-        inclusive_array == TArray<int32>{2, 3, 4});
+        inclusive_array == TArray{2, 3, 4});
 
     const TSet<int32> inclusive_set = ext::iter::range_inclusive<TSet<int32>>(7, 8);
     TestEqual(TEXT("Inclusive set count"), inclusive_set.Num(), 2);
@@ -184,7 +186,9 @@ bool FUDLODExtIterRangeAndOrderHelpersTest::RunTest(const FString& Parameters) {
         1,
         4,
         [](const int32 value) { return value * value; });
-    TestTrue(TEXT("map_range transforms each generated value"), map_range == TArray<int32>{1, 4, 9});
+    TestTrue(
+        TEXT("map_range transforms each generated value"),
+        map_range == TArray{1, 4, 9});
 
     const TArray<int32> map_range_inclusive = ext::iter::map_range_inclusive(
         1,
@@ -192,17 +196,17 @@ bool FUDLODExtIterRangeAndOrderHelpersTest::RunTest(const FString& Parameters) {
         [](const int32 value) { return value * value; });
     TestTrue(
         TEXT("map_range_inclusive includes the end value"),
-        map_range_inclusive == TArray<int32>{1, 4, 9});
+        map_range_inclusive == TArray{1, 4, 9});
 
     const TArray<int32> reversed = ext::iter::rev(MakeArrayView(array_range));
-    TestTrue(TEXT("rev flips array order"), reversed == TArray<int32>{4, 3, 2});
+    TestTrue(TEXT("rev flips array order"), reversed == TArray{4, 3, 2});
 
     const TArray<int32> map_reversed = ext::iter::map_rev(
         MakeArrayView(array_range),
         [](const int32 value) { return value * 10; });
     TestTrue(
         TEXT("map_rev iterates from the back"),
-        map_reversed == TArray<int32>{40, 30, 20});
+        map_reversed == TArray{40, 30, 20});
 
     const TArray<int32> map_range_reversed = ext::iter::map_range_rev(
         1,
@@ -210,7 +214,7 @@ bool FUDLODExtIterRangeAndOrderHelpersTest::RunTest(const FString& Parameters) {
         [](const int32 value) { return value; });
     TestTrue(
         TEXT("map_range_rev yields descending values"),
-        map_range_reversed == TArray<int32>{3, 2, 1});
+        map_range_reversed == TArray{3, 2, 1});
 
     const TArray<int32> map_range_inclusive_reversed = ext::iter::map_range_inclusive_rev(
         1,
@@ -218,10 +222,12 @@ bool FUDLODExtIterRangeAndOrderHelpersTest::RunTest(const FString& Parameters) {
         [](const int32 value) { return value; });
     TestTrue(
         TEXT("map_range_inclusive_rev yields descending inclusive values"),
-        map_range_inclusive_reversed == TArray<int32>{3, 2, 1});
+        map_range_inclusive_reversed == TArray{3, 2, 1});
 
     const TArray<int32> stepped = ext::iter::step_by(0, 10, 3);
-    TestTrue(TEXT("step_by advances by the requested stride"), stepped == TArray<int32>{0, 3, 6, 9});
+    TestTrue(
+        TEXT("step_by advances by the requested stride"),
+        stepped == TArray{0, 3, 6, 9});
 
     const auto enumerated = ext::iter::enumerate(MakeArrayView(array_range));
     TestEqual(TEXT("Enumerate preserves count"), enumerated.Num(), 3);
@@ -239,7 +245,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     TestFlags)
 
 bool FUDLODExtIterIndexAndFilterHelpersTest::RunTest(const FString& Parameters) {
-    const TArray<int32> raster{10, 11, 12, 13, 14, 15};
+    const TArray raster{10, 11, 12, 13, 14, 15};
     const ext::types::usize_c shape{3u, 2u};
     const auto raster_view = MakeArrayView(raster);
 
@@ -270,14 +276,20 @@ bool FUDLODExtIterIndexAndFilterHelpersTest::RunTest(const FString& Parameters) 
             TEXT("2,1=15")
         });
 
-    ext::Buffer<int32> buffer(TArray<int32>{10, 11, 12, 13, 14, 15}, shape);
+    const ext::Buffer buffer(TArray{10, 11, 12, 13, 14, 15}, shape);
     const auto indexed_buffer = ext::iter::indexed_iter(buffer);
     TestEqual(TEXT("indexed_iter(Buffer) count"), indexed_buffer.Num(), 6);
-    TestEqual(TEXT("indexed_iter(Buffer) last x"), indexed_buffer.Last().Get<0>(), static_cast<SIZE_T>(2));
-    TestEqual(TEXT("indexed_iter(Buffer) last y"), indexed_buffer.Last().Get<1>(), static_cast<SIZE_T>(1));
+    TestEqual(
+        TEXT("indexed_iter(Buffer) last x"),
+        indexed_buffer.Last().Get<0>(),
+        static_cast<SIZE_T>(2));
+    TestEqual(
+        TEXT("indexed_iter(Buffer) last y"),
+        indexed_buffer.Last().Get<1>(),
+        static_cast<SIZE_T>(1));
     TestEqual(TEXT("indexed_iter(Buffer) last value"), indexed_buffer.Last().Get<2>(), 15);
 
-    TArray<int32> filter_mapped_into{999};
+    TArray filter_mapped_into{999};
     ext::iter::filter_map_into<int32, int32>(
         raster_view,
         filter_mapped_into,
@@ -287,7 +299,7 @@ bool FUDLODExtIterIndexAndFilterHelpersTest::RunTest(const FString& Parameters) 
         });
     TestTrue(
         TEXT("filter_map_into replaces the output with mapped matches"),
-        filter_mapped_into == TArray<int32>{5, 6, 7});
+        filter_mapped_into == TArray{5, 6, 7});
 
     const auto filter_mapped = ext::iter::filter_map<int32, FString>(
         raster_view,
@@ -302,14 +314,16 @@ bool FUDLODExtIterIndexAndFilterHelpersTest::RunTest(const FString& Parameters) 
     const auto filtered = ext::iter::filter(
         raster_view,
         [](const int32 value) { return value % 2 == 1; });
-    TestTrue(TEXT("filter keeps elements matching the predicate"), filtered == TArray<int32>{11, 13, 15});
+    TestTrue(
+        TEXT("filter keeps elements matching the predicate"),
+        filtered == TArray{11, 13, 15});
 
-    TArray<int32> filtered_into{999};
+    TArray filtered_into{999};
     ext::iter::filter_into(
         raster_view,
         filtered_into,
         [](const int32 value) { return value < 13; });
-    TestTrue(TEXT("filter_into replaces the output"), filtered_into == TArray<int32>{10, 11, 12});
+    TestTrue(TEXT("filter_into replaces the output"), filtered_into == TArray{10, 11, 12});
 
     const TSet<int32> unique = ext::iter::filter_map_unique<int32, int32>(
         raster_view,
@@ -330,7 +344,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     TestFlags)
 
 bool FUDLODExtIterCollectDrainAndRetainTest::RunTest(const FString& Parameters) {
-    const TArray<int32> ok_input{1, 2, 3};
+    const TArray ok_input{1, 2, 3};
     const auto collected = ext::iter::map_try_collect(
         MakeArrayView(ok_input),
         [](const int32 value) -> std::expected<FString, FString> {
@@ -343,7 +357,7 @@ bool FUDLODExtIterCollectDrainAndRetainTest::RunTest(const FString& Parameters) 
         collected.value() == TArray<FString>{TEXT("2"), TEXT("4"), TEXT("6")});
 
     int32 calls = 0;
-    const TArray<int32> fail_input{1, 2, 3, 4};
+    const TArray fail_input{1, 2, 3, 4};
     const auto failed = ext::iter::map_try_collect(
         MakeArrayView(fail_input),
         [&calls](const int32 value) -> std::expected<int32, FString> {
@@ -353,30 +367,33 @@ bool FUDLODExtIterCollectDrainAndRetainTest::RunTest(const FString& Parameters) 
         });
     TestFalse(TEXT("map_try_collect surfaces the first error"), failed.has_value());
     if (failed.has_value()) { return false; }
-    TestEqual(TEXT("map_try_collect preserves the failing error"), failed.error(), FString(TEXT("boom")));
+    TestEqual(
+        TEXT("map_try_collect preserves the failing error"),
+        failed.error(),
+        FString(TEXT("boom")));
     TestEqual(TEXT("map_try_collect stops at the first error"), calls, 3);
 
-    TArray<int32> array_to_drain{1, 2, 3};
+    TArray array_to_drain{1, 2, 3};
     const TArray<int32> drained_array = ext::iter::drain(array_to_drain);
-    TestTrue(TEXT("drain(TArray) returns all elements"), drained_array == TArray<int32>{1, 2, 3});
+    TestTrue(TEXT("drain(TArray) returns all elements"), drained_array == TArray{1, 2, 3});
     TestTrue(TEXT("drain(TArray) empties the source"), array_to_drain.IsEmpty());
 
     TDeque<int32> deque_to_drain;
     deque_to_drain.EmplaceLast(4);
     deque_to_drain.EmplaceLast(5);
     const TArray<int32> drained_deque = ext::iter::drain(deque_to_drain);
-    const bool drained_deque_ok = drained_deque == TArray<int32>{4, 5};
+    const bool drained_deque_ok = drained_deque == TArray{4, 5};
     TestTrue(TEXT("drain(TDeque) preserves element order"), drained_deque_ok);
     TestEqual(TEXT("drain(TDeque) empties the source"), deque_to_drain.Num(), 0);
 
-    TSet<int32> set_to_drain{7, 8};
+    TSet set_to_drain{7, 8};
     const TArray<int32> drained_set = ext::iter::drain<TSet<int32>, int32>(set_to_drain);
     TestEqual(TEXT("Generic drain returns every set element"), drained_set.Num(), 2);
     TestTrue(TEXT("Generic drain empties the set"), set_to_drain.IsEmpty());
     TestTrue(TEXT("Generic drain keeps 7"), drained_set.Contains(7));
     TestTrue(TEXT("Generic drain keeps 8"), drained_set.Contains(8));
 
-    const TArray<int32> fold_input{1, 2, 3};
+    const TArray fold_input{1, 2, 3};
     const int32 folded = ext::iter::fold(
         MakeArrayView(fold_input),
         10,
@@ -384,12 +401,12 @@ bool FUDLODExtIterCollectDrainAndRetainTest::RunTest(const FString& Parameters) 
     TestEqual(TEXT("fold threads the accumulator left-to-right"), folded, 16);
 
     const TArray<int32> flattened = ext::iter::flatten(
-        TArray<TArray<int32>>{
-            TArray<int32>{1, 2},
-            TArray<int32>{3},
+        TArray{
+            TArray{1, 2},
+            TArray{3},
             TArray<int32>{}
         });
-    TestTrue(TEXT("flatten concatenates subarrays"), flattened == TArray<int32>{1, 2, 3});
+    TestTrue(TEXT("flatten concatenates subarrays"), flattened == TArray{1, 2, 3});
 
     TDeque<int32> deque_to_retain;
     deque_to_retain.EmplaceLast(1);
@@ -417,11 +434,13 @@ bool FUDLODExtIterCollectDrainAndRetainTest::RunTest(const FString& Parameters) 
     TestTrue(TEXT("retain(TMap) keeps accepted key"), map_to_retain.Contains(TEXT("two")));
     TestTrue(TEXT("retain(TMap) keeps accepted key"), map_to_retain.Contains(TEXT("three")));
 
-    TArray<int32> array_to_retain{1, 2, 3, 4, 5};
+    TArray array_to_retain{1, 2, 3, 4, 5};
     ext::iter::retain(
         array_to_retain,
         [](const int32 value) { return value % 2 == 1; });
-    TestTrue(TEXT("retain(TArray) preserves kept order"), array_to_retain == TArray<int32>{1, 3, 5});
+    TestTrue(
+        TEXT("retain(TArray) preserves kept order"),
+        array_to_retain == TArray{1, 3, 5});
 
     return drained_deque_ok && retained_deque_ok;
 }
@@ -432,13 +451,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     TestFlags)
 
 bool FUDLODExtIterParallelHelpersTest::RunTest(const FString& Parameters) {
-    const TArray<int32> numbers{1, 2, 3, 4};
+    const TArray numbers{1, 2, 3, 4};
     const TArray<int32> mapped_array = ext::iter::parallel::par_map(
         MakeArrayView(numbers),
         [](const int32 value) { return value * 2; });
-    TestTrue(TEXT("par_map on arrays preserves input order"), mapped_array == TArray<int32>{2, 4, 6, 8});
+    TestTrue(
+        TEXT("par_map on arrays preserves input order"),
+        mapped_array == TArray{2, 4, 6, 8});
 
-    const TSet<int32> input_set{1, 2, 3};
+    const TSet input_set{1, 2, 3};
     const TSet<int32> mapped_set = ext::iter::parallel::par_map(
         input_set,
         [](const int32 value) { return value * 3; });
@@ -472,31 +493,25 @@ bool FUDLODExtIterParallelHelpersTest::RunTest(const FString& Parameters) {
     TestEqual(TEXT("par_map(TMap) value for key 1"), mapped_map[1], 1);
     TestEqual(TEXT("par_map(TMap) value for key 2"), mapped_map[2], 2);
 
-    std::atomic<int32> array_sum{0};
+    std::atomic array_sum{0};
     ext::iter::parallel::par_for_each(
         MakeArrayView(numbers),
-        [&array_sum](const int32 value) {
-            array_sum.fetch_add(value, std::memory_order_relaxed);
-        });
+        [&array_sum](const int32 value) { array_sum.fetch_add(value, std::memory_order_relaxed); });
     TestEqual(TEXT("par_for_each(TArray) visits every value"), array_sum.load(), 10);
 
-    std::atomic<int32> set_sum{0};
+    std::atomic set_sum{0};
     ext::iter::parallel::par_for_each(
         input_set,
-        [&set_sum](const int32 value) {
-            set_sum.fetch_add(value, std::memory_order_relaxed);
-        });
+        [&set_sum](const int32 value) { set_sum.fetch_add(value, std::memory_order_relaxed); });
     TestEqual(TEXT("par_for_each(TSet) visits every value"), set_sum.load(), 6);
 
-    std::atomic<int32> deque_sum{0};
+    std::atomic deque_sum{0};
     ext::iter::parallel::par_for_each(
         input_deque,
-        [&deque_sum](const int32 value) {
-            deque_sum.fetch_add(value, std::memory_order_relaxed);
-        });
+        [&deque_sum](const int32 value) { deque_sum.fetch_add(value, std::memory_order_relaxed); });
     TestEqual(TEXT("par_for_each(TDeque) visits every value"), deque_sum.load(), 18);
 
-    std::atomic<int32> map_sum{0};
+    std::atomic map_sum{0};
     ext::iter::parallel::par_for_each(
         input_map,
         [&map_sum](const FString&, const int32 value) {
