@@ -287,8 +287,7 @@ void ATerrainParentActor::BeginPlay() {
 
 #if WITH_EDITOR
 void ATerrainParentActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) {
-    Super::PostEditChangeProperty(PropertyChangedEvent);
-
+    // Super::PostEditChangeProperty(PropertyChangedEvent);
     if (PropertyChangedEvent.Property == nullptr && PropertyChangedEvent.MemberProperty == nullptr) {
         return;
     }
@@ -299,15 +298,15 @@ void ATerrainParentActor::PostEditChangeProperty(FPropertyChangedEvent& Property
     const FName member_property_name = PropertyChangedEvent.MemberProperty != nullptr
         ? PropertyChangedEvent.MemberProperty->GetFName()
         : NAME_None;
-    if (
-        property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, terrain_config_path) ||
-        property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, terrain) ||
-        property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, settings) ||
-        property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, material)
-    ) {
-        VerifyInitializationState(true);
-        return;
-    }
+    // if (
+    //     property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, terrain_config_path) ||
+    //     property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, terrain) ||
+    //     property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, settings) ||
+    //     property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, material)
+    // ) {
+    //     VerifyInitializationState(true);
+    //     return;
+    // }
 
     if (
         property_name == GET_MEMBER_NAME_CHECKED(ATerrainParentActor, debug_settings) ||
@@ -320,7 +319,7 @@ void ATerrainParentActor::PostEditChangeProperty(FPropertyChangedEvent& Property
 
 void ATerrainParentActor::ReloadTerrainConfig() {
     terrain = terrain::load_default_terrain_descriptor(terrain_config_path);
-    bRuntimeDebugControlsInitialized = false;
+    runtime_debug_controls_initialized = false;
     VerifyInitializationState(true);
 }
 
@@ -379,7 +378,7 @@ void ATerrainParentActor::PreprocessTerrain() {
         FTerrainViewConfig{},
     };
 
-    bRuntimeDebugControlsInitialized = false;
+    runtime_debug_controls_initialized = false;
     VerifyInitializationState(true);
 }
 
@@ -411,7 +410,7 @@ void ATerrainParentActor::VerifyInitializationState(const bool bForceRebuild) {
 
 void ATerrainParentActor::ResetRuntimeDebugControls() {
     debug_settings = terrain::make_default_debug_settings();
-    bRuntimeDebugControlsInitialized = false;
+    runtime_debug_controls_initialized = false;
     seed_runtime_debug_controls(true);
     notify_runtime_debug_controls_changed();
 }
@@ -563,7 +562,7 @@ void ATerrainParentActor::sync_runtime_state_from_spawned_terrain() {
 
 void ATerrainParentActor::seed_runtime_debug_controls(const bool bForceReset) {
     if ((!view_component.IsSet() || !tile_atlas.IsSet()) && !terrain.IsSet()) { return; }
-    if (!bForceReset && bRuntimeDebugControlsInitialized) { return; }
+    if (!bForceReset && runtime_debug_controls_initialized) { return; }
 
     const FTerrainViewConfig* base_view_config = terrain.IsSet()
         ? &terrain->terrain_view_config
@@ -594,7 +593,7 @@ void ATerrainParentActor::seed_runtime_debug_controls(const bool bForceReset) {
         debug_settings.grid_size = base_view_config->grid_size;
     }
 
-    bRuntimeDebugControlsInitialized = true;
+    runtime_debug_controls_initialized = true;
 }
 
 void ATerrainParentActor::apply_runtime_debug_controls() {
@@ -710,7 +709,7 @@ void ATerrainParentActor::rebuild_terrains() {
     tile_atlas = new_terrain->atlas;
     seed_runtime_debug_controls(false);
     apply_runtime_debug_controls();
-    if (bEnableTessellationFallback) {
+    if (enable_tessellation_fallback) {
         UTexture2D* const height_texture = terrain::create_fallback_height_texture(
             this,
             terrain_config,

@@ -248,13 +248,13 @@ public:
     TOptional<FGpuTerrainView> gpu_terrain_view = NullOpt;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="UDLOD|Fallback")
-    bool bEnableTessellationFallback = false;
+    bool enable_tessellation_fallback = false;
 
     UPROPERTY(
         EditAnywhere,
         BlueprintReadWrite,
         Category="UDLOD|Fallback",
-        meta=(ClampMin="1", ClampMax="128", EditCondition="bEnableTessellationFallback",
+        meta=(ClampMin="1", ClampMax="128", EditCondition="enable_tessellation_fallback",
             EditConditionHides))
     int32 tessellation_fallback_factor = 32;
 
@@ -272,7 +272,7 @@ private:
     bool auto_spawned_by_world_subsystem = false;
 
     UPROPERTY(Transient)
-    bool bRuntimeDebugControlsInitialized = false;
+    bool runtime_debug_controls_initialized = false;
 
 public:
     void set_auto_spawned_by_world_subsystem(bool bInAutoSpawned);
