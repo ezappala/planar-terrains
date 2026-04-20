@@ -39,7 +39,6 @@ public class UDLODTerrain : ModuleRules {
                 "Landscape",
                 "ShaderCompilerCommon",
                 "ShaderPreprocessor",
-                "ExtendedGraphicsProgramming",
                 "GDAL",
                 "UnrealGDAL",
                 "Imath",
@@ -56,7 +55,6 @@ public class UDLODTerrain : ModuleRules {
                 "Projects", "RiderLink", "RiderSourceCodeAccess",
                 "RiderShaderInfo", "RiderBlueprint", "RiderDebuggerSupport",
                 "RiderGameControl", "RiderLogging", "RiderLC",
-                "GPURuntimeTessellation",
             }
         );
 

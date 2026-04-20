@@ -19,7 +19,7 @@ public class PlanarTerrains : ModuleRules {
             "GDAL", "UnrealGDAL", "RenderCore", "Renderer", "RHI", "RHICore",
             "DynamicMesh", "MeshUtilities", "CustomMeshComponent",
             "MaterialUtilities", "Landscape", "ShaderCompilerCommon",
-            "ShaderPreprocessor", "ExtendedGraphicsProgramming", "Imath", "Json",
+            "ShaderPreprocessor", "Imath", "Json",
             "UDLODPreprocessor", "UDLODExt", "DebugViewer"
         });
 
@@ -27,7 +27,6 @@ public class PlanarTerrains : ModuleRules {
             "Projects", "RiderLink", "RiderSourceCodeAccess",
             "RiderShaderInfo", "RiderBlueprint", "RiderDebuggerSupport",
             "RiderGameControl", "RiderLogging", "RiderLC",
-            "GPURuntimeTessellation"
         });
 
         // Uncomment if you are using Slate UI
