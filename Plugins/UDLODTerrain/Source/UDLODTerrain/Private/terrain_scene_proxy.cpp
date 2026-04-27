@@ -66,75 +66,6 @@ void FTerrainSceneProxy::DestroyRenderThreadResources() {
     FPrimitiveSceneProxy::DestroyRenderThreadResources();
 }
 
-// float GTerrainIndirectArgsPoolBlockSizeFactor = 2.0;
-// int32 GTerrainIndirectArgsPoolMinSize = 256;
-// const ERHIAccess FTerrainSceneProxy::INDIRECT_ARGS_DEFAULT_STATE = ERHIAccess::IndirectArgs |
-//     ERHIAccess::SRVMask;
-
-// FTerrainSceneProxy::FIndirectArgSlot FTerrainSceneProxy::add_draw_indirect(
-//     FRHICommandListBase& cmd,
-//     const uint32 instance_count_buffer_offset,
-//     const uint32 num_indices_per_instance,
-//     const uint32 start_index_location,
-//     const bool culled,
-//     const ETerrainGpuComputeTickStage::Type ready_tick_stage) {
-//     UE::TScopeLock _(add_draw_indirect_guard);
-//
-//     auto info = FTerrainDrawIndirectArgGenTaskInfo{
-//         instance_count_buffer_offset,
-//         num_indices_per_instance,
-//         start_index_location};
-//
-//     auto* slot_info = draw_indirect_args_map.Find(info);
-//     if (slot_info == nullptr) {
-//         auto* pool_entry = draw_indirect_pool.Num() > 0 ? draw_indirect_pool.Last().Get() : nullptr;
-//         if (pool_entry == nullptr || pool_entry->used_entries_total >= pool_entry->
-//             allocated_entries) {
-//             auto new_entry = MakeUnique<FIndirectArgsPoolEntry>();
-//             new_entry->allocated_entries = pool_entry != nullptr
-//                 ? static_cast<uint32>(pool_entry->allocated_entries *
-//                     GTerrainIndirectArgsPoolBlockSizeFactor)
-//                 : static_cast<uint32>(GTerrainIndirectArgsPoolMinSize);
-//
-//             TResourceArray<uint32> init_data;
-//             init_data.AddZeroed(new_entry->allocated_entries * TERRAIN_DRAW_INDIRECT_ARGS_SIZE);
-//             new_entry->buffer.Initialize(
-//                 cmd,
-//                 TEXT("TerrainGgpuDrawIndirectArgs"),
-//                 sizeof(uint32),
-//                 new_entry->allocated_entries * TERRAIN_DRAW_INDIRECT_ARGS_SIZE,
-//                 PF_R32_UINT,
-//                 INDIRECT_ARGS_DEFAULT_STATE,
-//                 BUF_Static |
-//                 BUF_DrawIndirect,
-//                 &init_data);
-//
-//             pool_entry = new_entry.Get();
-//             draw_indirect_pool.Emplace(MoveTemp(new_entry));
-//         }
-//
-//         info.indirect_args_buffer_offset = pool_entry->used_entries_total *
-//             TERRAIN_DRAW_INDIRECT_ARGS_SIZE;
-//         pool_entry->used_entries_total += 1;
-//         slot_info = &draw_indirect_args_map.Add(info);
-//         slot_info->pool_idx = draw_indirect_pool.Num() - 1;
-//         slot_info->buffer_offset = info.indirect_args_buffer_offset * sizeof(uint32);
-//
-//         const ETerrainGpuCountUpdatePhase::Type count_phase = ready_tick_stage ==
-//             ETerrainGpuComputeTickStage::PostOpaqueRender
-//             ? ETerrainGpuCountUpdatePhase::PostOpaque
-//             : ETerrainGpuCountUpdatePhase::PreOpaque;
-//         draw_indirect_arg_gen_tasks[count_phase].Add(info);
-//         pool_entry->used_entries[count_phase] += 1;
-//     }
-//
-//     return {
-//         draw_indirect_pool[slot_info->pool_idx]->buffer.Buffer,
-//         draw_indirect_pool[slot_info->pool_idx]->buffer.SRV,
-//         slot_info->buffer_offset
-//     };
-// }
-
 void FTerrainSceneProxy::GetDynamicMeshElements(
     const TArray<const FSceneView*>& views,
     const FSceneViewFamily& view_family,
@@ -160,14 +91,7 @@ void FTerrainSceneProxy::GetDynamicMeshElements(
 
                 for (const auto& [position, uv, tangent_x, tangent_y, tangent_z, color] :
                      cpu_view_state.vertices) {
-                    mesh_builder.AddVertex(
-                        position,
-                        uv,
-                        tangent_x,
-                        tangent_y,
-                        tangent_z,
-                        color
-                    );
+                    mesh_builder.AddVertex(position, uv, tangent_x, tangent_y, tangent_z, color );
                 }
 
                 mesh_builder.AddTriangles(cpu_view_state.indices);
@@ -220,14 +144,13 @@ void FTerrainSceneProxy::GetDynamicMeshElements(
         auto& user_data = collector.AllocateOneFrameResource<FTerrainMeshBatchElementUserData>();
         user_data = view_state;
 
-        auto& dynamic_primitive_uniform_buffer =
+        auto& dyn_primitive_uniform_buf =
             collector.AllocateOneFrameResource<FDynamicPrimitiveUniformBuffer>();
         FPrimitiveUniformShaderParametersBuilder builder;
         BuildUniformShaderParameters(builder);
-        dynamic_primitive_uniform_buffer.Set(collector.GetRHICommandList(), builder);
+        dyn_primitive_uniform_buf.Set(collector.GetRHICommandList(), builder);
 
-        batch_element.PrimitiveUniformBufferResource = &dynamic_primitive_uniform_buffer
-            .UniformBuffer;
+        batch_element.PrimitiveUniformBufferResource = &dyn_primitive_uniform_buf.UniformBuffer;
         batch_element.FirstIndex = 0;
         batch_element.MinVertexIndex = 0;
         batch_element.MaxVertexIndex = view_state.max_vertex_index;
@@ -239,20 +162,6 @@ void FTerrainSceneProxy::GetDynamicMeshElements(
         batch_element.BaseVertexIndex = 0;
         batch_element.PrimitiveUniformBuffer = nullptr;
         batch_element.PrimitiveIdMode = PrimID_ForceZero;
-
-        // auto compute_dispatch_interface = get_compute_dispatch_interface();
-        // check(compute_dispatch_interface);
-        // auto& count_manager = compute_dispatch_interface->get_gpu_instance_counter_manager();
-        // auto indirect_draw = count_manager.AddDrawIndirecct();
-
-        // auto indirect_draw = add_draw_indirect(
-        //     collector.GetRHICommandList(),
-        //     INDEX_NONE,
-        //     0,
-        //     batch_element.FirstIndex,
-        //     false,
-        //     ETerrainGpuComputeTickStage::PreInitViews
-        // );
         batch_element.IndirectArgsBuffer = view_state.indirect_args_buffer->GetRHI();
         batch_element.IndirectArgsOffset = view_state.indirect_args_offset;
 

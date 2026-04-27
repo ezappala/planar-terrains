@@ -8,7 +8,9 @@ CompileFlags:
 Diagnostics:
   # Tweak Clang-Tidy checks.
   ClangTidy:
-    Add: [performance*, modernize*, readability*]
+    Add: [performance*, modernize*, readability*, cppcoreguildelines*, google*,
+    clang-analyzer-core*, clang-analyzer-cplusplus, clang-analyzer-nullability*,
+    clang-analyzer-optin.core*, clang-analyzer-optin.cplusplus, clang-analyzer-security*]
     Remove: [modernize-use-trailing-return-type]
     CheckOptions:
       readability-identifier-naming.VariableCase:

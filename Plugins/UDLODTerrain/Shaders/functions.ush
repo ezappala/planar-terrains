@@ -172,12 +172,11 @@ inline float compute_morph(uint lod, float view_distance) {
         float target_lod = log2(terrain_view[0].morph_distance / view_distance);
         return select(
             lod == 0u,
-            /*true*/
             0.0f,
-            /*false*/
             saturate(1.0f - (target_lod - float(lod)) / terrain_view[0].morph_range)
         );
-    } else { return 0.0; }
+    }
+    return 0.0;
 }
 
 inline Blend compute_blend(float view_distance) {

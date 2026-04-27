@@ -94,10 +94,7 @@ FTerrainVertexInfo compute_terrain_vertex_info(FVertexFactoryInput input) {
     FTerrainVertexInfo info;
     info.tile_index = input.VertexId / terrain_view[0].vertices_per_tile;
     info.coordinate = compute_coordinate(input.VertexId);
-    info.world_coordinate = compute_world_coordinate(
-        info.coordinate,
-        info.tile_index,
-        info.coordinate.uv);
+    info.world_coordinate = compute_world_coordinate( info.coordinate, info.tile_index, info.coordinate.uv);
     info.blend = compute_blend(info.world_coordinate.view_distance);
     return info;
 }
@@ -369,43 +366,6 @@ FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput in
     return intermediates;
 }
 
-// FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput input) {
-//     FTerrainVertexInfo terrain_info = compute_terrain_vertex_info(input);
-//     AtlasTile tile = lookup_tile(terrain_info.coordinate, terrain_info.blend);
-//     float height = sample_height(tile);
-//
-//     FVertexFactoryIntermediates intermediates;
-//     intermediates.tile_index = terrain_info.tile_index;
-// #if VF_USE_PRIMITIVE_SCENE_DATA
-//     intermediates.primitive_id = input.PrimitiveId;
-// #else
-//     intermediates.primitive_id = 0u;
-// #endif
-//     intermediates.world_position = apply_height(terrain_info.world_coordinate, height);
-//     intermediates.world_normal = terrain_info.world_coordinate.normal;
-//     intermediates.world_tangent_x = build_world_tangent(intermediates.world_normal);
-//     intermediates.world_tangent_y = normalize(
-//         cross(intermediates.world_normal, intermediates.world_tangent_x));
-//     intermediates.tile_uv = terrain_info.coordinate.uv;
-//
-//     float height_range = max(terrain.max_height - terrain.min_height, 1.0f);
-//     float normalized_height = saturate((height - terrain.min_height) / height_range);
-//     float normalized_distance = saturate(
-//         terrain_info.world_coordinate.view_distance / max(terrain_view[0].load_distance, 1.0f)
-//     );
-//     float normalized_lod = ((float)terrain_info.coordinate.lod + 1.0f) /
-//         max((float)terrain.lod_count, 1.0f);
-//     intermediates.debug_uv = float2(normalized_height, normalized_distance);
-//     intermediates.vertex_color = float4(
-//         normalized_lod,
-//         terrain_info.blend.ratio,
-//         normalized_height,
-//         1.0f);
-//     intermediates.height = height;
-//     intermediates.view_distance = terrain_info.world_coordinate.view_distance;
-//     return intermediates;
-// }
-
 half3x3 VertexFactoryGetTangentToLocal(
     FVertexFactoryInput input,
     FVertexFactoryIntermediates intermediates
@@ -562,8 +522,7 @@ FMaterialVertexParameters GetMaterialVertexParameters(
 }
 
 FMaterialPixelParameters GetMaterialPixelParameters(
-    FVertexFactoryInterpolantsVSToPS interpolants,
-    float4 sv_position
+    FVertexFactoryInterpolantsVSToPS interpolants, float4 sv_position
 ) {
     FMaterialPixelParameters result = MakeInitializedMaterialPixelParameters();
 
@@ -580,10 +539,7 @@ FMaterialPixelParameters GetMaterialPixelParameters(
     Coordinate coordinate = compute_coordinate(tile_index, interpolants.TerrainTileUV);
 
     WorldCoordinate world_coordinate = compute_world_coordinate(
-        coordinate,
-        height,
-        interpolants.TerrainViewDistance
-    );
+        coordinate, height, interpolants.TerrainViewDistance);
     world_coordinate.position = interpolants.TerrainWorldPosition;
     world_coordinate.normal = interpolants.TerrainWorldNormal;
 
@@ -598,9 +554,7 @@ FMaterialPixelParameters GetMaterialPixelParameters(
     // float3 surface_gradient = sample_surface_gradient(tile, tangent_space);
 
     TangentSpace tangent_space = compute_tangent_space(
-        interpolants.TerrainWorldPosition,
-        interpolants.TerrainWorldNormal
-    );
+        interpolants.TerrainWorldPosition, interpolants.TerrainWorldNormal);
     float3 surface_gradient = sample_surface_gradient(tile, tangent_space);
 #else
     float3 surface_gradient = float3(0.0f, 0.0f, 0.0f);
@@ -614,11 +568,7 @@ FMaterialPixelParameters GetMaterialPixelParameters(
     result.UnMirrored = 1.0f;
     result.TwoSidedSign = 1.0f;
     result.VertexColor = evaluate_surface_color(
-        coordinate,
-        world_coordinate,
-        blend,
-        tile,
-        surface_gradient);
+        coordinate, world_coordinate, blend, tile, surface_gradient);
     result.Particle.Color = half4(1.0f, 1.0f, 1.0f, 1.0f);
     FDFVector3 absolute_world_position = DFPromote(interpolants.TerrainWorldPosition);
     FDFVector3 translated_world_position =

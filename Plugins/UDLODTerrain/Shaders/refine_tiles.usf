@@ -223,7 +223,9 @@ void refine_tiles(uint3 id : SV_DispatchThreadID) {
 
     if (cull(coordinate, world_coordinate)) { return; }
 
-    if (should_be_divided(coordinate, world_coordinate)) { subdivide(tile); } else {
+    if (should_be_divided(coordinate, world_coordinate)) {
+        subdivide(tile);
+    } else {
         final_tiles[final_index()] = prepare_tile(tile);
     }
 }
