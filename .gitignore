@@ -1,3 +1,6 @@
+db/
+ql/
+
 # Visual Studio 2015 user specific files
 .vscode/
 .vs/
