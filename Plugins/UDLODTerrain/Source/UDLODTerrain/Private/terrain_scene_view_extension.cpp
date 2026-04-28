@@ -1,5 +1,6 @@
 #include "terrain_scene_view_extension.h"
 
+#include "PixelShaderUtils.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphEvent.h"
 #include "RenderGraphUtils.h"
@@ -15,7 +16,6 @@
 #include "Engine/Texture.h"
 #include "HAL/IConsoleManager.h"
 #include "Logging/StructuredLog.h"
-#include "PixelShaderUtils.h"
 #include "Runtime/Renderer/Private/SceneRendering.h"
 
 namespace {
@@ -56,7 +56,7 @@ void apply_runtime_debug_overrides(
 FRDGTextureRef add_depth_copy_pass(
     FRDGBuilder& gb,
     const FViewInfo& view,
-    FRDGTextureRef source_depth_texture
+    const FRDGTextureRef source_depth_texture
 ) {
     if (source_depth_texture == nullptr) { return nullptr; }
 
@@ -66,10 +66,7 @@ FRDGTextureRef add_depth_copy_pass(
         FClearValueBinding::DepthFar,
         TexCreate_DepthStencilTargetable | TexCreate_ShaderResource
     );
-    FRDGTextureRef copied_depth_texture = gb.CreateTexture(
-        depth_copy_desc,
-        TEXT("UDLOD.TerrainDepthCopy")
-    );
+    const auto coppied_depth_tex = gb.CreateTexture(depth_copy_desc, TEXT("UDLOD.TerrainDepthCopy"));
 
     FTerrainDepthCopyPixelShader::FParameters* pass_parameters =
         gb.AllocParameters<FTerrainDepthCopyPixelShader::FParameters>();
@@ -77,7 +74,7 @@ FRDGTextureRef add_depth_copy_pass(
         pass_parameters->depth_texture_ms = source_depth_texture;
     } else { pass_parameters->depth_texture = source_depth_texture; }
     pass_parameters->RenderTargets.DepthStencil = FDepthStencilBinding(
-        copied_depth_texture,
+        coppied_depth_tex,
         ERenderTargetLoadAction::EClear,
         ERenderTargetLoadAction::EClear,
         FExclusiveDepthStencil::DepthWrite_StencilWrite
@@ -120,7 +117,7 @@ FRDGTextureRef add_depth_copy_pass(
         0u
     );
 
-    return copied_depth_texture;
+    return coppied_depth_tex;
 }
 
 struct FPrepassStateProbe {
@@ -133,7 +130,7 @@ struct FPrepassStateProbe {
 static_assert(sizeof(FPrepassStateProbe) == sizeof(uint32) * 4u);
 
 struct FGpuSampleProbeReadback {
-    FUintVector4 ids0 = FUintVector4(0xFFFFFFFFu, 0u, 0u, 0u);
+    FUintVector4 ids0 = FUintVector4(UINT32_MAX, 0u, 0u, 0u);
     FUintVector4 coords0 = FUintVector4(0u, 0u, 0u, 0u);
     FVector4f scalars = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
     FVector4f albedo = FVector4f(-1.0f, -1.0f, -1.0f, -1.0f);
@@ -304,11 +301,11 @@ void log_gpu_probe_cpu_tile_tree_entry(
     );
 }
 
-TOptional<FTileCoordinate> find_atlas_owner_coordinate(
+[[maybe_unused]] TOptional<FTileCoordinate> find_atlas_owner_coordinate(
     const FTileAtlas& tile_atlas,
     const uint32 atlas_index
 ) {
-    if (atlas_index == 0xFFFFFFFFu) { return NullOpt; }
+    if (atlas_index == UINT32_MAX) { return NullOpt; }
     return tile_atlas.find_owner_coordinate(atlas_index);
 }
 
@@ -1055,14 +1052,15 @@ void FTerrainSceneViewExtension::PostRenderBasePassDeferred_RenderThread(
     const FRenderTargetBindingSlots& render_targets,
     TRDGUniformBufferRef<FSceneTextureUniformParameters> scene_textures
 ) {
-    (void)render_targets;
-    (void)scene_textures;
-
-    ATerrainParentActor* root_actor = root.Get();
+    const ATerrainParentActor* root_actor = root.Get();
     if (!IsValid(root_actor) || !IsValid(root_actor->spawned_terrain)) { return; }
 
     const uint32 view_key = in_view.GetViewKey();
     if (!render_tile_trees.Contains(view_key)) { return; }
+
+    // for (auto& [key, t] : render_tile_trees) {
+    //     FTileTree::approximate_height_readback(gb, &t);
+    // }
 
     TOptional<FGpuTerrainView>* gpu_terrain_view_opt = render_gpu_terrain_views.Find(view_key);
     if (gpu_terrain_view_opt == nullptr || !gpu_terrain_view_opt->IsSet()) { return; }
@@ -1075,20 +1073,16 @@ void FTerrainSceneViewExtension::PostRenderBasePassDeferred_RenderThread(
     const FSceneTextures* scene_textures_ptr = view_info.GetSceneTexturesChecked();
     if (scene_textures_ptr == nullptr) { return; }
 
-    FRDGTextureRef picking_depth_texture = scene_textures_ptr->Depth.Resolve;
-    if (picking_depth_texture != nullptr) {
-        if (FRDGTextureRef copied_depth_texture = add_depth_copy_pass(
-            gb,
-            view_info,
-            picking_depth_texture
-        )) {
-            picking_depth_texture = copied_depth_texture;
+    FRDGTextureRef picking_depth_tex = scene_textures_ptr->Depth.Resolve;
+    if (picking_depth_tex != nullptr) {
+        if (const auto coppied_depth_tex = add_depth_copy_pass(gb, view_info, picking_depth_tex)) {
+            picking_depth_tex = coppied_depth_tex;
         }
     }
 
-    if (picking_depth_texture == nullptr) { return; }
+    if (picking_depth_tex == nullptr) { return; }
 
-    const FRDGTextureSRVRef picking_depth_texture_srv = gb.CreateSRV(picking_depth_texture);
+    const FRDGTextureSRVRef picking_depth_texture_srv = gb.CreateSRV(picking_depth_tex);
 
     gpu_terrain_view.picking_parameters = build_picking_parameters(
         gb,
@@ -1096,7 +1090,7 @@ void FTerrainSceneViewExtension::PostRenderBasePassDeferred_RenderThread(
         gpu_terrain_view.picking_data_buffer,
         picking_depth_texture_srv,
         scene_textures_ptr->Stencil,
-        picking_depth_texture->Desc.Extent
+        picking_depth_tex->Desc.Extent
     );
     if (gpu_terrain_view.picking_parameters == nullptr) { return; }
 
@@ -1332,7 +1326,7 @@ void FTerrainSceneViewExtension::draw_tile_tree(
         albedo_attachment_ptr = height_attachment_ptr;
     }
 
-    const Terrain terrain_uniform = new_terrain(
+    const Terrain terrain_uniform = terrain_comp(
         tile_atlas->lod_count,
         terrain::runtime::planar::scale(tile_atlas->side_length),
         tile_atlas->min_height,
@@ -1647,7 +1641,7 @@ void FTerrainSceneViewExtension::process_gpu_probe_results() const {
                             atlas_owner_snapshot.Find(sample_probe->ids0.X);
                         const TOptional<FTileCoordinate> atlas_owner_coordinate =
                             atlas_owner_coordinate_ptr != nullptr
-                            ? TOptional<FTileCoordinate>{*atlas_owner_coordinate_ptr}
+                            ? TOptional{*atlas_owner_coordinate_ptr}
                             : NullOpt;
                         if (atlas_owner_coordinate.IsSet()) {
                             UE_LOGFMT(

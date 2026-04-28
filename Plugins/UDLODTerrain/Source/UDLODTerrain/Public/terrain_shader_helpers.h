@@ -6,7 +6,7 @@
 #include "terrain_runtime_planar.h"
 #include "terrain_shaders.h"
 
-inline Terrain new_terrain(
+inline Terrain terrain_comp(
     const uint32 lod_count,
     const FVector3f& scale,
     const float min_height,

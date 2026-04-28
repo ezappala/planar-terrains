@@ -17,7 +17,7 @@ struct FTerrainViewConfig {
     int32 refinement_count = 30;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin="1"))
-    int32 grid_size = 16;
+    int32 grid_size = 256;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     float morph_range = 0.2;
@@ -26,10 +26,10 @@ struct FTerrainViewConfig {
     float blend_range = 0.2;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    double morph_distance = 40.0;
+    double morph_distance = 4000.0;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    double blend_distance = 5.0;
+    double blend_distance = 500.0;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     double subdivision_tolerance = 0.1;

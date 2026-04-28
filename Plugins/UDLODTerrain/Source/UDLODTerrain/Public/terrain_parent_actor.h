@@ -82,6 +82,7 @@ public:
     virtual void PostLoad() override;
     virtual void PostRegisterAllComponents() override;
     virtual void OnConstruction(const FTransform& tf) override;
+    virtual void Tick(float delta_time) override;
     virtual void BeginPlay() override;
 
 #if WITH_EDITOR

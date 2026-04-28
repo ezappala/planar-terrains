@@ -284,7 +284,7 @@ struct FTileTree {
         );
 
         view_face = view_coordinate.face;
-        // WARN: Assert face count is 0;
+        // BUG: Asserts that face count is 0 (a single face)
         view_coordinates[0] = view_coordinate;
         auto lods = range<TArray<int32>, int32>(0, lod_count);
         for (const auto& lod : lods) {
