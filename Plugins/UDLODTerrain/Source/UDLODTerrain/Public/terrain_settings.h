@@ -310,12 +310,26 @@ struct FTerrainSettings {
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain", DisplayName="Attachments")
     TArray<FString> attachments = {"height", "albedo"};
 
-    uint32 atlas_size = 1028;
+    UPROPERTY(
+        EditAnywhere,
+        BlueprintReadWrite,
+        Category="Terrain",
+        DisplayName="Atlas Size",
+        meta=(ClampMin="1"))
+    int32 atlas_size = 1028;
 
     FString ToString() const {
         return FString::Printf(
-            TEXT("attachments=[%s], atlas_size=%u"),
+            TEXT("attachments=[%s], atlas_size=%d"),
             *FString::Join(attachments, TEXT(", ")),
             atlas_size);
+    }
+
+    friend bool operator==(const FTerrainSettings& a, const FTerrainSettings& b) {
+        return a.attachments == b.attachments && a.atlas_size == b.atlas_size;
+    }
+
+    friend bool operator!=(const FTerrainSettings& a, const FTerrainSettings& b) {
+        return !(a == b);
     }
 };

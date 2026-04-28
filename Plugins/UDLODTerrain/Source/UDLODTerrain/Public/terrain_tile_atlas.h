@@ -7,6 +7,7 @@
 #include "terrain_shader_helpers.h"
 #include "terrain_tile_state.h"
 #include "Logging/StructuredLog.h"
+#include "Math/UnrealMathUtility.h"
 
 inline static std::atomic<uint64> GTileAtlasInstanceCounter = 1;
 
@@ -30,13 +31,16 @@ struct FTileAtlas {
                 })
         },
         unused_indices{
-            ext::iter::range<TDeque<uint32>, uint32>(0u, settings.atlas_size)
+            ext::iter::range<TDeque<uint32>, uint32>(
+                0u,
+                static_cast<uint32>(FMath::Max(1, settings.atlas_size))
+            )
         },
         existing_tiles{config.tiles},
         lod_count{static_cast<uint32>(config.lod_count)},
         max_height{config.max_height},
         min_height{config.min_height},
-        height_scale{128000.0f},
+        height_scale{128.0f},
         side_length{config.side_length},
         instance_id{GTileAtlasInstanceCounter.fetch_add(1u, std::memory_order_relaxed)} {
         initialize_pinned_tiles();

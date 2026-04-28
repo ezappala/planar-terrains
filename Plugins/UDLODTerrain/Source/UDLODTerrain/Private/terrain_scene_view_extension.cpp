@@ -929,7 +929,11 @@ FTerrainMeshViewState build_mesh_view_state(
 void FTerrainSceneViewExtension::BeginRenderViewFamily(FSceneViewFamily& in_view_family) {
     if (const UWorld* world = GetWorld()) {
         if (UTerrainWorldSubsystem* subsystem = world->GetSubsystem<UTerrainWorldSubsystem>()) {
-            root = subsystem->resolve_terrain_root(true);
+            ATerrainParentActor* resolved_root = subsystem->resolve_terrain_root(true);
+            if (root.Get() != resolved_root) {
+                root = resolved_root;
+                invalidate_cached_runtime_views();
+            }
         }
     }
 
@@ -1017,10 +1021,14 @@ void FTerrainSceneViewExtension::PreInitViews_RenderThread(FRDGBuilder& gb) {
     }
 
     if (ATerrainParentActor* root_actor = root.Get(); root_actor != nullptr) {
+        const uint64 runtime_settings_revision = root_actor->GetRuntimeSettingsRevision();
+        if (cached_runtime_settings_revision != runtime_settings_revision) {
+            invalidate_cached_runtime_views();
+            cached_runtime_settings_revision = runtime_settings_revision;
+        }
         prune_stale_render_views(render_views, *root_actor);
     } else {
-        render_tile_trees.Reset();
-        render_gpu_terrain_views.Reset();
+        invalidate_cached_runtime_views();
     }
 
     for (const FTerrainViewSnapshot& render_view : render_views) { draw_terrain(gb, render_view); }
@@ -1230,7 +1238,7 @@ void FTerrainSceneViewExtension::draw_tile_tree(
     auto* gpu_terrain = &root_actor->gpu_terrain;
     TOptional<FGpuTerrainView>& gpu_terrain_view = render_gpu_terrain_views.
         FindOrAdd(view.view_key);
-    const FTerrainSettings terrain_settings = root_actor->settings;
+    const FTerrainSettings terrain_settings = root_actor->runtime_settings.render_settings;
 
     FGpuTileAtlas::initialize(gb, *gpu_tile_atlas, *tile_atlas, terrain_settings);
     FGpuTileAtlas::extract(*tile_atlas, *gpu_tile_atlas);
@@ -1456,13 +1464,29 @@ FTileTree* FTerrainSceneViewExtension::find_or_add_tile_tree(
         return render_tile_trees.Find(view_key);
     }
 
-    if (root_actor.terrain.IsSet()) {
-        const auto& [terrain_config, terrain_view_config] = root_actor.terrain.GetValue();
-        render_tile_trees.Add(view_key, FTileTree{terrain_config, terrain_view_config});
+    if (root_actor.runtime_settings.has_loaded_terrain_config()) {
+        render_tile_trees.Add(
+            view_key,
+            FTileTree{
+                root_actor.runtime_settings.terrain_config,
+                root_actor.runtime_settings.terrain_view_config
+            }
+        );
         return render_tile_trees.Find(view_key);
     }
 
     return nullptr;
+}
+
+void FTerrainSceneViewExtension::invalidate_cached_runtime_views() const {
+    render_tile_trees.Reset();
+    render_gpu_terrain_views.Reset();
+    pending_gpu_probes.Reset();
+    cached_runtime_settings_revision = 0;
+    error_spam_buffer = 0;
+    stopped_error_spam = false;
+    gpu_probe_has_last_sample = false;
+    gpu_probe_logged_attachment_state = false;
 }
 
 void FTerrainSceneViewExtension::prune_stale_render_views(

@@ -17,7 +17,7 @@ struct FTerrainViewConfig {
     int32 refinement_count = 30;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin="1"))
-    int32 grid_size = 256;
+    int32 grid_size = 16;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     float morph_range = 0.2;
@@ -26,13 +26,13 @@ struct FTerrainViewConfig {
     float blend_range = 0.2;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    double morph_distance = 4000.0;
+    double morph_distance = 40.0;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    double blend_distance = 500.0;
+    double blend_distance = 5.0;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    double subdivision_tolerance = 0.1;
+    double subdivision_tolerance = 0.0;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     double load_tolerance = 0.2;
@@ -67,5 +67,25 @@ struct FTerrainViewConfig {
             view_lod,
             order
         );
+    }
+
+    friend bool operator==(const FTerrainViewConfig& a, const FTerrainViewConfig& b) {
+        return a.tree_size == b.tree_size &&
+            a.geometry_tile_count == b.geometry_tile_count &&
+            a.refinement_count == b.refinement_count &&
+            a.grid_size == b.grid_size &&
+            a.morph_range == b.morph_range &&
+            a.blend_range == b.blend_range &&
+            a.morph_distance == b.morph_distance &&
+            a.blend_distance == b.blend_distance &&
+            a.subdivision_tolerance == b.subdivision_tolerance &&
+            a.load_tolerance == b.load_tolerance &&
+            a.precision_distance == b.precision_distance &&
+            a.view_lod == b.view_lod &&
+            a.order == b.order;
+    }
+
+    friend bool operator!=(const FTerrainViewConfig& a, const FTerrainViewConfig& b) {
+        return !(a == b);
     }
 };

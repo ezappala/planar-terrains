@@ -15,13 +15,14 @@
 
 struct FTerrains;
 class UTexture2D;
+class UMaterialInterface;
 
 namespace terrain {
 bool has_pending_load_flags(const UObject* object);
 
-TOptional<FTerrains> load_default_terrain_descriptor(const FFilePath& terrain_config);
+TOptional<FTerrainConfig> load_terrain_config(const FFilePath& terrain_config);
 
-TOptional<FTerrains> load_default_terrain_descriptor(const FDirectoryPath& terrain_config_path);
+TOptional<FTerrainConfig> load_terrain_config(const FDirectoryPath& terrain_config_path);
 
 TOptional<FString> find_attachment_label(
     const FTerrainConfig& config,
@@ -67,6 +68,64 @@ struct FTerrains {
             TEXT("terrain_config: {%s}, terrain_view_config: {%s}"),
             *terrain_config.to_string(),
             *terrain_view_config.to_string());
+    }
+};
+
+USTRUCT(BlueprintType)
+struct FTerrainActorSettings {
+    GENERATED_BODY()
+
+    UPROPERTY(
+        EditAnywhere,
+        BlueprintReadWrite,
+        Category = "UDLOD|Runtime",
+        DisplayName="Terrain Config Path",
+        meta=(FilePathFilter = "json"))
+    FFilePath terrain_config_path{
+        FPaths::ProjectContentDir() / TEXT("terrains/earth/config.json")
+    };
+
+    UPROPERTY(
+        VisibleAnywhere,
+        BlueprintReadOnly,
+        Category = "UDLOD|Runtime",
+        DisplayName="Loaded Terrain Config")
+    FTerrainConfig terrain_config;
+
+    UPROPERTY(
+        EditAnywhere,
+        BlueprintReadWrite,
+        Category = "UDLOD|Runtime",
+        DisplayName="View")
+    FTerrainViewConfig terrain_view_config;
+
+    UPROPERTY(
+        EditAnywhere,
+        BlueprintReadWrite,
+        Category = "UDLOD|Runtime",
+        DisplayName="Render")
+    FTerrainSettings render_settings;
+
+    UPROPERTY(
+        EditAnywhere,
+        BlueprintReadOnly,
+        Category = "UDLOD|Runtime",
+        DisplayName="Material")
+    UMaterialInterface* material = nullptr;
+
+    bool has_loaded_terrain_config() const {
+        return !terrain_config.path.IsEmpty() ||
+            !terrain_config.attachments.IsEmpty() ||
+            !terrain_config.tiles.IsEmpty();
+    }
+
+    FString to_string() const {
+        return FString::Printf(
+            TEXT("config_path=%s, terrain_config={%s}, terrain_view_config={%s}, render_settings={%s}"),
+            *terrain_config_path.FilePath,
+            *terrain_config.to_string(),
+            *terrain_view_config.to_string(),
+            *render_settings.ToString());
     }
 };
 
@@ -131,6 +190,8 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "UDLOD")
     void VerifyInitializationState(bool bForceRebuild = false);
+
+    uint64 GetRuntimeSettingsRevision() const;
 
     UFUNCTION(
         CallInEditor,
@@ -217,29 +278,26 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UDLOD")
     FTerrainPreprocessSettings terrain_preprocess_settings;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UDLOD|Runtime")
-    TOptional<FTerrains> terrain;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UDLOD")
-    UMaterialInterface* material;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UDLOD")
+    FTerrainActorSettings runtime_settings;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UDLOD|Editor")
     TSubclassOf<ATerrainParentActor> replacement_actor_class;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UDLOD|Runtime")
-    FTerrainSettings settings;
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Transient, Category = "UDLOD|Debug")
     FTerrainDebugSettings debug_settings;
 
-    UPROPERTY(
-        EditAnywhere,
-        BlueprintReadWrite,
-        Category = "UDLOD|Runtime",
-        DisplayName="Terrain Config Path",
-        meta=(FilePathFilter = "json")
-    )
-    FFilePath terrain_config_path;
+    UPROPERTY()
+    TOptional<FTerrains> terrain_DEPRECATED;
+
+    UPROPERTY()
+    UMaterialInterface* material_DEPRECATED = nullptr;
+
+    UPROPERTY()
+    FTerrainSettings settings_DEPRECATED;
+
+    UPROPERTY()
+    FFilePath terrain_config_path_DEPRECATED;
 
     TOptional<FTerrainConfig> config = NullOpt;
     TOptional<FTileTree> view_component = NullOpt;
@@ -275,6 +333,9 @@ private:
     UPROPERTY(Transient)
     bool runtime_debug_controls_initialized = false;
 
+    uint64 runtime_settings_revision = 1;
+    uint64 applied_runtime_settings_revision = 0;
+
 public:
     void set_auto_spawned_by_world_subsystem(bool bInAutoSpawned);
     bool is_auto_spawned_by_world_subsystem() const;
@@ -282,6 +343,9 @@ public:
 private:
     bool has_pending_runtime_load() const;
     bool needs_runtime_rebuild() const;
+    bool ensure_runtime_terrain_config_loaded(bool bForceReload = false);
+    void migrate_deprecated_runtime_settings();
+    void invalidate_runtime_settings(bool bResetDebugControls = true);
     void sync_runtime_state_from_spawned_terrain();
     void seed_runtime_debug_controls(bool bForceReset = false);
     void apply_runtime_debug_controls();

@@ -115,7 +115,7 @@ struct UDLODTERRAIN_API FTerrainDebugSettings {
     )
     // WARN: Keep this aligned with FTileAtlas's runtime default so the render-thread debug override
     // cannot accidentally flatten terrain before the actor seeds its transient controls.
-    float height_scale = 128000.0f;
+    float height_scale = 128.0f;
 
     UPROPERTY(
         EditAnywhere,
@@ -151,7 +151,7 @@ struct UDLODTERRAIN_API FTerrainDebugSettings {
         Category = "UDLOD|Debug|Runtime",
         meta = (ClampMin = "1.0")
     )
-    double subdivision_distance = 1.0;
+    double subdivision_distance = 0.0;
 
     UPROPERTY(
         EditAnywhere,
@@ -160,7 +160,7 @@ struct UDLODTERRAIN_API FTerrainDebugSettings {
         Category = "UDLOD|Debug|Runtime",
         meta = (ClampMin = "2")
     )
-    int32 grid_size = 2;
+    int32 grid_size = 16;
 };
 
 FORCEINLINE uint32 pack_terrain_runtime_debug_flags(

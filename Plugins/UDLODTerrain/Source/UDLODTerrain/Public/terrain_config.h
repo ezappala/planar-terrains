@@ -24,7 +24,7 @@ struct FTerrainConfig {
     TMap<FString, FAttachmentConfig> attachments{};
     TArray<FTileCoordinate> tiles{};
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    double side_length = 86400.0;
+    double side_length = 1.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
     int32 face_count = 1;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly)

@@ -46,7 +46,7 @@ struct FGpuAttachment {
             to_pixel_format(buffer_info.format),
             FClearValueBinding::Transparent,
             ETextureCreateFlags::ShaderResource | ETextureCreateFlags::UAV,
-            static_cast<uint16>(settings.atlas_size),
+            static_cast<uint16>(FMath::Max(1, settings.atlas_size)),
             mip_count
         );
         AllocatePooledTexture(texture_desc, atlas_texture_pooled, *label);

@@ -38,12 +38,6 @@ public:
     virtual void OnUnregister() override;
 #pragma endregion
 
-#if WITH_EDITOR
-#pragma region UObject_interface
-    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-#pragma endregion
-#endif
-
     virtual void SetMaterial(int32 ElementIndex, UMaterialInterface* Material) override;
     virtual void UpdateBounds() override;
     // ReSharper disable once CppHidingFunction
