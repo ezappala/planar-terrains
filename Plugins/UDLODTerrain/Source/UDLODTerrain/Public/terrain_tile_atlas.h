@@ -187,22 +187,9 @@ struct FTileAtlas {
 
         if (tile_state->state.loading == 1) {
             tile_state->state = FLoadingState{true, 0};
-            // UE_LOGFMT(
-            //     LogTemp,
-            //     Log,
-            //     "Tile loaded: {tc}, atlas index: {ai}",
-            //     tile.coordinate.to_string(),
-            //     tile_state->atlas_index);
         } else if (
             const auto& n = tile_state->state.loading; n > 1) {
             tile_state->state.loading = n - 1;
-            // UE_LOGFMT(
-            //     LogTemp,
-            //     Log,
-            //     "Tile loaded: {tc}, atlas index: {ai}, remaining loading count: {n}",
-            //     tile.coordinate.to_string(),
-            //     tile_state->atlas_index,
-            //     tile_state->state.loading);
         } else {
             UE_LOGFMT(
                 LogTemp,
@@ -213,12 +200,6 @@ struct FTileAtlas {
         }
 
         loaded_tile_data.Add(tile, data);
-        // UE_LOGFMT(
-        //     LogTemp,
-        //     Log,
-        //     "Added loaded tile data to atlas for tile {tc}, label: {label}",
-        //     tile.coordinate.to_string(),
-        //     tile.label);
         uploading_tiles.Push(
             FAttachmentTileWithData{
                 tile_state->atlas_index,
@@ -226,13 +207,6 @@ struct FTileAtlas {
                 data
             }
         );
-        // UE_LOGFMT(
-        //     LogTemp,
-        //     Log,
-        //     "Scheduled tile for upload for tile {tc}, label: {label}, atlas index: {ai}",
-        //     tile.coordinate.to_string(),
-        //     tile.label,
-        //     tile_state->atlas_index);
     }
 
     FString to_string() {
@@ -354,12 +328,6 @@ struct FTileAtlas {
         if (state->requests == min_requests) { return; }
 
         state->requests -= 1;
-        // UE_LOGFMT(
-        //     LogTemp,
-        //     Log,
-        //     "Releasing tile {tc}, remaining requests: {n}",
-        //     tile_coordinate.to_string(),
-        //     state->requests);
         if (state->requests == 0) { unused_indices.PushLast(state->atlas_index); }
     }
 
