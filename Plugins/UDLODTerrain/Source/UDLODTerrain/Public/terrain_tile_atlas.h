@@ -40,7 +40,7 @@ struct FTileAtlas {
         lod_count{static_cast<uint32>(config.lod_count)},
         max_height{config.max_height},
         min_height{config.min_height},
-        height_scale{128.0f},
+        height_scale{128.0f * 4},
         side_length{config.side_length},
         instance_id{GTileAtlasInstanceCounter.fetch_add(1u, std::memory_order_relaxed)} {
         initialize_pinned_tiles();
@@ -209,6 +209,42 @@ struct FTileAtlas {
         );
     }
 
+    // Can be called to braodcast a debug list of loaded tiles periodicaly (every n ticks, per se)
+    void broadcast_loaded_tiles() {
+        using Lod = uint32;
+        using Count = uint32;
+        using XCount = uint32;
+        using YCount = uint32;
+        TMap<Lod, TTuple<Count, XCount, YCount>> existing_tiles_count;
+        // For all existing tiles, count how many tiles of each LOD we have, and the max X and Y
+        // indices for each LOD
+        for (const auto& tile : existing_tiles) {
+            auto& [count, x_count, y_count] = existing_tiles_count.FindOrAdd(tile.lod);
+            count += 1;
+            x_count = FMath::Max(x_count, static_cast<uint32>(tile.xy.X) + 1);
+            y_count = FMath::Max(y_count, static_cast<uint32>(tile.xy.Y) + 1);
+        }
+
+        FString loaded_tiles_str;
+        for (const auto& [lod, tuple] : existing_tiles_count) {
+            const auto& [count, x_count, y_count] = tuple;
+            loaded_tiles_str += FString::Printf(
+                TEXT("LOD %d: count=%d, x_count=%d, y_count=%d; "),
+                lod,
+                count,
+                x_count,
+                y_count
+            );
+        }
+        UE_LOGFMT(
+            LogTemp,
+            Log,
+            "Loaded tiles in atlas {id}: {tiles}",
+            instance_id,
+            *loaded_tiles_str
+        );
+    }
+
     FString to_string() {
         FString attachments_str;
         for (const auto& [key, value] : attachments) {
@@ -289,9 +325,7 @@ struct FTileAtlas {
 
             TArray<FString> keys;
             attachments.GetKeys(keys);
-            for (const auto& label : keys) {
-                to_load.Emplace(tile_coordinate, label);
-            }
+            for (const auto& label : keys) { to_load.Emplace(tile_coordinate, label); }
         }
     }
 

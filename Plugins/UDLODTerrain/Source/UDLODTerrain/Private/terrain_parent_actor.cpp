@@ -465,6 +465,16 @@ void ATerrainParentActor::RespawnAsAutoSpawnedInstance() {
     }
 }
 
+void ATerrainParentActor::DoBroadcastLoadedTileInfo() {
+    if (IsValid(spawned_terrain) && spawned_terrain->atlas.IsSet()) {
+        spawned_terrain->atlas.GetValue().broadcast_loaded_tiles();
+    } else if (IsValid(spawned_terrain)) {
+        UE_LOGFMT(LogTemp, Warning, "Cannot broadcast loaded tile info: spawned terrain has no atlas");
+    } else {
+        UE_LOGFMT(LogTemp, Warning, "Cannot broadcast loaded tile info: no spawned terrain");
+    }
+}
+
 void ATerrainParentActor::set_auto_spawned_by_world_subsystem(const bool bInAutoSpawned) {
     auto_spawned_by_world_subsystem = bInAutoSpawned;
 }
@@ -486,6 +496,20 @@ bool ATerrainParentActor::has_pending_runtime_load() const {
         terrain::has_pending_load_flags(spawned_fallback_component)) { return true; }
 
     return false;
+}
+
+bool ATerrainParentActor::needs_runtime_rebuild() const {
+    if (!runtime_settings.has_loaded_terrain_config()) { return false; }
+
+    if (applied_runtime_settings_revision != runtime_settings_revision) { return true; }
+
+    if (!IsValid(spawned_terrain)) { return true; }
+
+    if (!config.IsSet() || !view_component.IsSet() || !tile_atlas.IsSet()) { return true; }
+
+    if (!spawned_terrain->IsRegistered()) { return true; }
+
+    return spawned_terrain->GetAttachParent() != root;
 }
 
 bool ATerrainParentActor::ensure_runtime_terrain_config_loaded(const bool bForceReload) {
@@ -551,20 +575,6 @@ void ATerrainParentActor::invalidate_runtime_settings(const bool bResetDebugCont
         spawned_terrain->render_resources->reset_view_states();
         spawned_terrain->render_resources->reset_cpu_view_states();
     }
-}
-
-bool ATerrainParentActor::needs_runtime_rebuild() const {
-    if (!runtime_settings.has_loaded_terrain_config()) { return false; }
-
-    if (applied_runtime_settings_revision != runtime_settings_revision) { return true; }
-
-    if (!IsValid(spawned_terrain)) { return true; }
-
-    if (!config.IsSet() || !view_component.IsSet() || !tile_atlas.IsSet()) { return true; }
-
-    if (!spawned_terrain->IsRegistered()) { return true; }
-
-    return spawned_terrain->GetAttachParent() != root;
 }
 
 void ATerrainParentActor::sync_runtime_state_from_spawned_terrain() {

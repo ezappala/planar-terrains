@@ -206,12 +206,10 @@ struct FGpuTerrainView {
     }
 
     static void initialize(
-        FRDGBuilder& gb,
+        [[maybe_unused]] FRDGBuilder& gb,
         TOptional<FGpuTerrainView>& gpu_terrain_views,
         const FTileTree* tile_tree
     ) {
-        (void)gb;
-
         const FRDGBufferDesc temporary_tiles_desc = FRDGBufferDesc::CreateStructuredDesc<
             TileCoordinate>(tile_tree->geometry_tile_count);
         const FRDGBufferDesc final_tiles_desc = FRDGBufferDesc::CreateStructuredDesc<

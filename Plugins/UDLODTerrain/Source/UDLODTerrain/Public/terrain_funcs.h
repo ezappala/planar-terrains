@@ -33,22 +33,24 @@ inline void tile_tree_compute_requests(
     const FMatrix44d& view_from_world,
     const FMatrix44d& clip_from_view
 ) {
-    const FMatrix44d clip_from_world = clip_from_view * view_from_world;
+    const FMatrix44d world_from_local = FMatrix44d{terrain_tf.ToMatrixWithScale()};
+
+    const FMatrix44d clip_from_local =
+        world_from_local * view_from_world * clip_from_view;
+
+    const auto [half_spaces, num_halfspaces] = Frustum::FromClipFromSpaceNoFar(clip_from_local);
 
     const auto hs = ext::iter::map<
         UE::Geometry::FHalfspace3d,
         6,
         FVector4f(*)(const UE::Geometry::FHalfspace3d&)>(
-        // The GPU prepass computes/culls terrain tiles in world space, so the frustum planes
-        // must be derived from the world->clip matrix as well. Feeding clip_from_local here
-        // over-culls once the terrain actor is translated, rotated, or scaled.
-        Frustum::from_clip_from_world(clip_from_world).half_spaces,
+        half_spaces,
         [](const UE::Geometry::FHalfspace3d& space) {
             return FVector4f{
                 static_cast<float>(space.Normal.X),
                 static_cast<float>(space.Normal.Y),
                 static_cast<float>(space.Normal.Z),
-                static_cast<float>(space.Constant)
+                static_cast<float>(-space.Constant)
             };
         });
 
@@ -58,6 +60,9 @@ inline void tile_tree_compute_requests(
         FVector3d(terrain_tf.InverseTransformPosition(FVector(view_world_position)));
 
     tile_tree->half_spaces = hs;
+
+    tile_tree->num_halfspaces = num_halfspaces;
+
     tile_tree->update();
 }
 
