@@ -277,10 +277,6 @@ git submodule update --init --recursive
 
 Also confirm that GDAL and UnrealGDAL are available to the project.
 
-### Build paths are wrong
-
-The provided build script contains local machine paths. Edit `Scripts/run_build_tool.bat` for your Unreal Engine install and local checkout path.
-
 ### Terrain renders flat or invisible
 
 Check that:
