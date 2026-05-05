@@ -1,1 +1,0 @@
-"C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat" PlanarTerrainsEditor Win64 Development -Project="C:\Users\ellie\dev\PlanarTerrains\PlanarTerrains.uproject"
