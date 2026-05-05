@@ -2,7 +2,7 @@
 
 Planar Terrains is an experimental Unreal Engine terrain-rendering project focused on GPU-driven, tiled terrain rendering and GDAL-based terrain preprocessing.
 
-The project is built around a custom UDLOD-style terrain plugin that loads preprocessed terrain tiles, manages runtime terrain attachments such as height and albedo data, and renders terrain through custom Unreal rendering code, shader stages, and a terrain mesh vertex factory. Many of the ideas behind the algorithm design—i.e., the shader code—as well as the general code structure have been adapted from the official [bevy_terrain](https://github.com/kurtkuehnert/bevy_terrain) including my own [unofficial fork](https://github.com/ezappala/bevy_terrain).
+The project is built around a custom UDLOD-style terrain plugin that loads preprocessed terrain tiles, manages runtime terrain attachments such as height and albedo data, and renders terrain through custom Unreal rendering code, shader stages, and a terrain mesh vertex factory. Many of the ideas behind the algorithm design—i.e., the shader code—as well as the general code structure have been adapted from [bevy_terrain](https://github.com/kurtkuehnert/bevy_terrain) including my own [unofficial fork](https://github.com/ezappala/bevy_terrain).
 
 > This is an active research/prototype project. APIs, asset formats, shader interfaces, and setup steps may change as the renderer evolves.
 
