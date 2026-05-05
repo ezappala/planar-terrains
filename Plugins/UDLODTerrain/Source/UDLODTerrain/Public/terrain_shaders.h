@@ -109,6 +109,7 @@ BEGIN_SHADER_PARAMETER_STRUCT(TerrainView, UDLODTERRAIN_API)
     SHADER_PARAMETER(float, height_scale)
     SHADER_PARAMETER(FVector3f, world_position)
     SHADER_PARAMETER_ARRAY(FVector4f, half_spaces, [6])
+    SHADER_PARAMETER(uint32, num_halfspaces)
 END_SHADER_PARAMETER_STRUCT()
 
 struct FTerrainViewUpload {

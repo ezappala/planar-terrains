@@ -275,6 +275,9 @@ public:
         DisplayName="Respawn Native Auto Terrain Parent")
     void RespawnAsAutoSpawnedInstance();
 
+    UFUNCTION(Exec, CallInEditor, Category = "UDLOD|Debug", DisplayName="Broadcast Loaded Tile Info")
+    void DoBroadcastLoadedTileInfo();
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UDLOD")
     FTerrainPreprocessSettings terrain_preprocess_settings;
 

@@ -42,6 +42,7 @@ struct TerrainView {
     float height_scale;
     float3 world_position;
     float4 half_spaces[6];
+    uint num_halfspaces;
 };
 
 static const uint TERRAIN_DEBUG_WIREFRAME = 1u << 0;

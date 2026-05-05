@@ -77,23 +77,25 @@ void subdivide(TileCoordinate tile) {
     }
 }
 
-bool frustum_cull_aabb(Coordinate coordinate) {
-    if (coordinate.lod == 0) { return false; }
+bool frustum_cull_aabb(Coordinate coord) {
+    if (coord.lod == 0) { return false; }
 
     float3 aabb_min = float3(3.40282e+38f, 3.40282e+38f, 3.40282e+38f);
     float3 aabb_max = float3(-3.40282e+38f, -3.40282e+38f, -3.40282e+38f);
 
     [unroll]
     for (uint i = 0u; i < 4u; i = i + 1u) {
-        float2 corner_uv = float2((float)(i & 1u), (float)(i >> 1u & 1u));
-        Coordinate corner_coordinate = make_coordinate(
-            coordinate.face,
-            coordinate.lod,
-            coordinate.xy,
-            corner_uv);
-        WorldCoordinate corner_world_coordinate = compute_world_coordinate(corner_coordinate);
-        float3 corner_low = apply_height(corner_world_coordinate, terrain.min_height);
-        float3 corner_high = apply_height(corner_world_coordinate, terrain.max_height);
+        float2 corner_uv = float2(
+            (float)(i & 1u),
+            (float)((i >> 1u) & 1u)
+        );
+
+        Coordinate corner_coord = make_coordinate(coord.face, coord.lod, coord.xy, corner_uv);
+
+        WorldCoordinate corner_world_coor = compute_world_coordinate(corner_coord);
+
+        float3 corner_low = apply_height(corner_world_coor, terrain.min_height);
+        float3 corner_high = apply_height(corner_world_coor, terrain.max_height);
 
         aabb_min = min(aabb_min, min(corner_low, corner_high));
         aabb_max = max(aabb_max, max(corner_low, corner_high));
@@ -101,14 +103,16 @@ bool frustum_cull_aabb(Coordinate coordinate) {
 
     [unroll]
     for (uint i = 0u; i < 6u; i = i + 1u) {
-        float4 half_space = terrain_view[0].half_spaces[i];
-        float3 closest_corner = float3(
-            half_space.x > 0.0 ? aabb_max.x : aabb_min.x,
-            half_space.y > 0.0 ? aabb_max.y : aabb_min.y,
-            half_space.z > 0.0 ? aabb_max.z : aabb_min.z
+        if (i >= terrain_view[0].num_halfspaces) { continue; }
+
+        float4 hs = terrain_view[0].half_spaces[i];
+        float3 positive_vertex = float3(
+            hs.x >= 0.0f ? aabb_max.x : aabb_min.x,
+            hs.y >= 0.0f ? aabb_max.y : aabb_min.y,
+            hs.z >= 0.0f ? aabb_max.z : aabb_min.z
         );
 
-        if (dot(half_space, float4(closest_corner, 1.0)) < 0.0f) { return true; }
+        if (dot(hs, float4(positive_vertex, 1.0f)) < 0.0f) { return true; }
     }
 
     return false;
@@ -154,13 +158,23 @@ bool frustum_cull_sphere(Coordinate coordinate) {
 }
 
 bool horizon_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
-    (void)coordinate;
-    (void)world_coordinate;
+    if (coordinate.lod < 3) { return false; }
 
-    // The current Unreal runtime only targets planar datasets. The old horizon test came from the
-    // spheroid path and intermittently rejects valid planar tiles as the camera moves, which shows
-    // up as flashing patches and disappearing strips.
-    return false;
+    float3 elipsoid_to_sphere = 1.0 / terrain.scale;
+    float radius = 1.0 + terrain.min_height / terrain.scale.y;
+    float3 view_position = elipsoid_to_sphere * terrain_view[0].world_position;
+    float3 tile_position = elipsoid_to_sphere * apply_height(world_coordinate, terrain.max_height);
+    float3 origin_position = elipsoid_to_sphere *
+        mul(affine3_to_square(terrain.world_from_unit), float4(0.0, 0.0, 0.0, 1.0)).xyz;
+
+    float3 view_tile = tile_position - view_position;;
+    float3 view_origin = origin_position - view_position;
+
+    float3 vh_vh = dot(view_origin, view_origin) - radius * radius;
+    float3 vo_vt = dot(view_origin, view_tile);
+    float3 vt_vt = dot(view_tile, view_tile);
+
+    return and((vo_vt > vh_vh), (vo_vt * vo_vt > vh_vh * vt_vt));
 }
 
 bool no_data_cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
@@ -176,7 +190,7 @@ bool cull(Coordinate coordinate, WorldCoordinate world_coordinate) {
 
     // if (frustum_cull_sphere(coordinate)) { return true; }
 
-    if (horizon_cull(coordinate, world_coordinate)) { return true; }
+    // if (horizon_cull(coordinate, world_coordinate)) { return true; }
 
     if (no_data_cull(coordinate, world_coordinate)) { return true; }
 
