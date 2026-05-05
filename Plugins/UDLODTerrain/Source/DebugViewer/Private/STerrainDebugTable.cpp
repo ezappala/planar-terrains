@@ -77,8 +77,8 @@ void STerrainDebugTable::Refresh() {
     auto* a = actor.Get();
     add(TEXT("Actor"), TEXT("Name"), a->GetName());
 
+    add(TEXT("RuntimeSettings"), a->runtime_settings);
     add(TEXT("TileAtlas"), a->tile_atlas.GetPtrOrNull());
-    add(TEXT("TerrainConfig"), a->terrain.GetPtrOrNull());
     add(TEXT("TileTree"), a->view_component.GetPtrOrNull());
     add(TEXT("GpuTileAtlas"), a->gpu_tile_atlas.GetPtrOrNull());
     add(TEXT("GpuTerrain"), a->gpu_terrain.GetPtrOrNull());
@@ -254,6 +254,19 @@ void STerrainDebugTable::add(const FString& section, const FTerrains* v) {
 
     add(section + TEXT(".terrain_config"), v->terrain_config);
     add(section + TEXT(".terrain_view_config"), v->terrain_view_config);
+}
+
+void STerrainDebugTable::add(const FString& section, const FTerrainActorSettings& v) {
+    add(section, TEXT("terrain_config_path"), v.terrain_config_path.FilePath);
+    add(section, TEXT("material"), to_string(v.material));
+    add(section + TEXT(".terrain_config"), v.terrain_config);
+    add(section + TEXT(".terrain_view_config"), v.terrain_view_config);
+    add(section + TEXT(".render_settings"), v.render_settings);
+}
+
+void STerrainDebugTable::add(const FString& section, const FTerrainSettings& v) {
+    add(section, TEXT("attachments"), FString::Join(v.attachments, TEXT(", ")));
+    add(section, TEXT("atlas_size"), LexToString(v.atlas_size));
 }
 
 void STerrainDebugTable::add(const FString& section, const FTerrainConfig& v) {

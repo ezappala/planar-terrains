@@ -7,6 +7,7 @@
 #include "terrain_shader_helpers.h"
 #include "terrain_tile_state.h"
 #include "Logging/StructuredLog.h"
+#include "Math/UnrealMathUtility.h"
 
 inline static std::atomic<uint64> GTileAtlasInstanceCounter = 1;
 
@@ -30,13 +31,16 @@ struct FTileAtlas {
                 })
         },
         unused_indices{
-            ext::iter::range<TDeque<uint32>, uint32>(0u, settings.atlas_size)
+            ext::iter::range<TDeque<uint32>, uint32>(
+                0u,
+                static_cast<uint32>(FMath::Max(1, settings.atlas_size))
+            )
         },
         existing_tiles{config.tiles},
         lod_count{static_cast<uint32>(config.lod_count)},
         max_height{config.max_height},
         min_height{config.min_height},
-        height_scale{128000.0f},
+        height_scale{128.0f * 4},
         side_length{config.side_length},
         instance_id{GTileAtlasInstanceCounter.fetch_add(1u, std::memory_order_relaxed)} {
         initialize_pinned_tiles();
@@ -183,22 +187,9 @@ struct FTileAtlas {
 
         if (tile_state->state.loading == 1) {
             tile_state->state = FLoadingState{true, 0};
-            // UE_LOGFMT(
-            //     LogTemp,
-            //     Log,
-            //     "Tile loaded: {tc}, atlas index: {ai}",
-            //     tile.coordinate.to_string(),
-            //     tile_state->atlas_index);
         } else if (
             const auto& n = tile_state->state.loading; n > 1) {
             tile_state->state.loading = n - 1;
-            // UE_LOGFMT(
-            //     LogTemp,
-            //     Log,
-            //     "Tile loaded: {tc}, atlas index: {ai}, remaining loading count: {n}",
-            //     tile.coordinate.to_string(),
-            //     tile_state->atlas_index,
-            //     tile_state->state.loading);
         } else {
             UE_LOGFMT(
                 LogTemp,
@@ -209,12 +200,6 @@ struct FTileAtlas {
         }
 
         loaded_tile_data.Add(tile, data);
-        // UE_LOGFMT(
-        //     LogTemp,
-        //     Log,
-        //     "Added loaded tile data to atlas for tile {tc}, label: {label}",
-        //     tile.coordinate.to_string(),
-        //     tile.label);
         uploading_tiles.Push(
             FAttachmentTileWithData{
                 tile_state->atlas_index,
@@ -222,13 +207,42 @@ struct FTileAtlas {
                 data
             }
         );
-        // UE_LOGFMT(
-        //     LogTemp,
-        //     Log,
-        //     "Scheduled tile for upload for tile {tc}, label: {label}, atlas index: {ai}",
-        //     tile.coordinate.to_string(),
-        //     tile.label,
-        //     tile_state->atlas_index);
+    }
+
+    // Can be called to braodcast a debug list of loaded tiles periodicaly (every n ticks, per se)
+    void broadcast_loaded_tiles() {
+        using Lod = uint32;
+        using Count = uint32;
+        using XCount = uint32;
+        using YCount = uint32;
+        TMap<Lod, TTuple<Count, XCount, YCount>> existing_tiles_count;
+        // For all existing tiles, count how many tiles of each LOD we have, and the max X and Y
+        // indices for each LOD
+        for (const auto& tile : existing_tiles) {
+            auto& [count, x_count, y_count] = existing_tiles_count.FindOrAdd(tile.lod);
+            count += 1;
+            x_count = FMath::Max(x_count, static_cast<uint32>(tile.xy.X) + 1);
+            y_count = FMath::Max(y_count, static_cast<uint32>(tile.xy.Y) + 1);
+        }
+
+        FString loaded_tiles_str;
+        for (const auto& [lod, tuple] : existing_tiles_count) {
+            const auto& [count, x_count, y_count] = tuple;
+            loaded_tiles_str += FString::Printf(
+                TEXT("LOD %d: count=%d, x_count=%d, y_count=%d; "),
+                lod,
+                count,
+                x_count,
+                y_count
+            );
+        }
+        UE_LOGFMT(
+            LogTemp,
+            Log,
+            "Loaded tiles in atlas {id}: {tiles}",
+            instance_id,
+            *loaded_tiles_str
+        );
     }
 
     FString to_string() {
@@ -270,42 +284,7 @@ struct FTileAtlas {
         );
     }
 
-    // static void update_terrain_buffer(
-    //     FRDGBuilder& gb,
-    //     TArray<TPair<FTileAtlas, FTransform>>& tile_atlases
-    // ) {
-    //     uint32 counter = 0;
-    //     for (const TPair<FTileAtlas, FTransform>& tile_atlas_data : tile_atlases) {
-    //         const FTileAtlas& tile_atlas = tile_atlas_data.Key;
-    //         const FTransform& transform = tile_atlas_data.Value;
-    //         gb.AddPass(
-    //             RDG_EVENT_NAME("UDLOD.UpdateTerrainBuffer.%d", counter++),
-    //             ERDGPassFlags::NeverCull | ERDGPassFlags::Raster,
-    //             [tile_atlas, transform](FRHICommandList& cmd_list) {
-    //                 const Terrain t = new_terrain(
-    //                     tile_atlas.lod_count,
-    //                     ext::math::scale(tile_atlas.side_length),
-    //                     tile_atlas.min_height,
-    //                     tile_atlas.max_height,
-    //                     tile_atlas.height_scale,
-    //                     transform
-    //                 );
-    //                 cmd_list.UpdateUniformBuffer(
-    //                     reinterpret_cast<FRHIUniformBuffer*>(tile_atlas.terrain_buffer),
-    //                     &t
-    //                 );
-    //             }
-    //         );
-    //     }
-    // }
-
     void request_tile(FTileCoordinate tile_coordinate) {
-        // UE_LOGFMT(
-        //     LogTemp,
-        //     Log,
-        //     "Requesting tile {tc}",
-        //     tile_coordinate.to_string());
-
         if (!existing_tiles.Contains(tile_coordinate)) {
             UE_LOGFMT(
                 LogTemp,
@@ -316,29 +295,17 @@ struct FTileAtlas {
         }
 
         if (FTileLoadingState* tile = tile_states.Find(tile_coordinate)) {
-            // FString logstr = "";
             if (tile->requests == 0) {
-                // logstr += " (was not previously requested)";
                 ext::iter::retain<uint32>(
                     unused_indices,
                     [tile](const uint32 atlas_index) { return atlas_index != tile->atlas_index; });
             }
 
             tile->requests += 1;
-            // logstr += FString::Printf(TEXT(", total requests: %d"), tile->requests);
-            // UE_LOGFMT(
-            //     LogTemp,
-            //     Log,
-            //     "Tile {tc} is already loading or loaded, incrementing request count{logstr}",
-            //     tile_coordinate.to_string(),
-            //     logstr);
         } else {
             uint32 atlas_index;
             if (!unused_indices.TryPopFirst(atlas_index)) {
-                UE_LOGFMT(
-                    LogTemp,
-                    Fatal,
-                    "No more space in the tile atlas!");
+                UE_LOGFMT(LogTemp, Fatal, "No more space in the tile atlas!");
             }
 
             reassign_atlas_index(atlas_index, tile_coordinate);
@@ -356,27 +323,9 @@ struct FTileAtlas {
             );
             atlas_owners.Add(atlas_index, tile_coordinate);
 
-            // UE_LOGFMT(
-            //     LogTemp,
-            //     Log,
-            //     "Tile {tc} is not loaded, starting load with atlas index {ai}",
-            //     tile_coordinate.to_string(),
-            //     atlas_index);
-
             TArray<FString> keys;
             attachments.GetKeys(keys);
-            // FString logstr;
-            for (const auto& label : keys) {
-                to_load.Emplace(tile_coordinate, label);
-                // logstr += FString::Printf(TEXT("%s, "), *label);
-            }
-
-            // UE_LOGFMT(
-            //     LogTemp,
-            //     Log,
-            //     "Requested attachments for tile {tc}: {labels}",
-            //     tile_coordinate.to_string(),
-            //     logstr);
+            for (const auto& label : keys) { to_load.Emplace(tile_coordinate, label); }
         }
     }
 
@@ -413,12 +362,6 @@ struct FTileAtlas {
         if (state->requests == min_requests) { return; }
 
         state->requests -= 1;
-        // UE_LOGFMT(
-        //     LogTemp,
-        //     Log,
-        //     "Releasing tile {tc}, remaining requests: {n}",
-        //     tile_coordinate.to_string(),
-        //     state->requests);
         if (state->requests == 0) { unused_indices.PushLast(state->atlas_index); }
     }
 

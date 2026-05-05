@@ -225,13 +225,15 @@ inline PreprocessResult<void> preprocess(
     const auto data_type = util::transpose_gdal_datatype(context);
 
     switch (data_type) {
-    case GDT_Byte: PREPROCESS_CASE(uint8)
-    case GDT_UInt16: PREPROCESS_CASE(uint16)
-    case GDT_Int16: PREPROCESS_CASE(int16)
-    case GDT_UInt32: PREPROCESS_CASE(uint32)
-    case GDT_Int32: PREPROCESS_CASE(int32)
-    case GDT_Float32: PREPROCESS_CASE(float)
-    case GDT_Float64: PREPROCESS_CASE(double)
+    // ReSharper disable CppRedundantQualifier
+    case ::GDT_Byte: PREPROCESS_CASE(uint8)
+    case ::GDT_UInt16: PREPROCESS_CASE(uint16)
+    case ::GDT_Int16: PREPROCESS_CASE(int16)
+    case ::GDT_UInt32: PREPROCESS_CASE(uint32)
+    case ::GDT_Int32: PREPROCESS_CASE(int32)
+    case ::GDT_Float32: PREPROCESS_CASE(float)
+    case ::GDT_Float64: PREPROCESS_CASE(double)
+    // ReSharper restore CppRedundantQualifier
     default: return std::unexpected{FPreprocessError::UnknownRasterbandDataType()};
     }
 }

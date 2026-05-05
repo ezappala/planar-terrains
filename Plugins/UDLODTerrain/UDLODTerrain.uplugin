@@ -48,19 +48,11 @@
       "Enabled": true
     },
     {
-      "Name": "ExtendedGraphicsProgramming",
-      "Enabled": true
-    },
-    {
       "Name": "GeometryProcessing",
       "Enabled": true
     },
     {
       "Name": "CustomMeshComponent",
-      "Enabled": true
-    },
-    {
-      "Name": "GPURuntimeTessellation",
       "Enabled": true
     }
   ]

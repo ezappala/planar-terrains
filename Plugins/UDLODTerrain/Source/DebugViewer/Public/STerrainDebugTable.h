@@ -54,6 +54,8 @@ private:
     void add(const FString& section, const FTileAtlas* v);
     void add(const FString& section, const FAttachmentConfig& v);
     void add(const FString& section, const FTerrains* v);
+    void add(const FString& section, const FTerrainActorSettings& v);
+    void add(const FString& section, const FTerrainSettings& v);
     void add(const FString& section, const FTerrainConfig& v);
     void add(const FString& section, const FTerrainViewConfig& v);
     void add(const FString& section, const FTileTree* v);

@@ -84,6 +84,7 @@ private:
         const TArray<FTerrainViewSnapshot>& active_views,
         ATerrainParentActor& root_actor
     ) const;
+    void invalidate_cached_runtime_views() const;
     static void release_requested_tiles(FTileAtlas& tile_atlas, const FTileTree& tile_tree);
     void process_gpu_probe_results() const;
     void enqueue_gpu_probe(
@@ -104,6 +105,7 @@ private:
     mutable TMap<uint32, FTileTree> render_tile_trees;
     mutable TMap<uint32, TOptional<FGpuTerrainView>> render_gpu_terrain_views;
     mutable TArray<FPendingGpuProbe> pending_gpu_probes;
+    mutable uint64 cached_runtime_settings_revision = 0;
     mutable uint32 error_spam_buffer = 0;
     mutable bool stopped_error_spam = false;
     mutable bool logged_multiple_cached_views = false;

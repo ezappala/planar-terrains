@@ -56,22 +56,6 @@ void UTerrain::OnRegister() {
 
 void UTerrain::OnUnregister() { Super::OnUnregister(); }
 
-#if WITH_EDITOR
-void UTerrain::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) {
-    Super::PostEditChangeProperty(PropertyChangedEvent);
-
-    if (PropertyChangedEvent.Property != nullptr) {
-        const FName PropertyName = PropertyChangedEvent.Property->GetFName();
-        if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UTerrain, config) ||
-            PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UTerrain, settings) ||
-            PropertyName == GET_MEMBER_NAME_STRING_CHECKED(UTerrain, material)) {
-            UpdateBounds();
-            MarkRenderStateDirty();
-        }
-    }
-}
-#endif
-
 void UTerrain::SetMaterial(const int32 ElementIndex, UMaterialInterface* Material) {
     if (ElementIndex == 0) {
         material = Material;

@@ -137,6 +137,7 @@ struct FTileTree {
     TRefCountPtr<FRDGPooledBuffer> tile_tree_buffer_pooled;
     TRefCountPtr<FRDGPooledBuffer> terrain_view_buffer_pooled;
     TRefCountPtr<FRDGPooledBuffer> approximate_height_buffer_pooled;
+    uint32 num_halfspaces = 5;
 
     friend bool operator==(const FTileTree& a, const FTileTree& b) {
         return a.tree_size == b.tree_size
@@ -284,7 +285,7 @@ struct FTileTree {
         );
 
         view_face = view_coordinate.face;
-        // WARN: Assert face count is 0;
+        // BUG: Asserts that face count is 0 (a single face)
         view_coordinates[0] = view_coordinate;
         auto lods = range<TArray<int32>, int32>(0, lod_count);
         for (const auto& lod : lods) {
