@@ -308,7 +308,7 @@ It is not yet packaged as a stable marketplace-ready Unreal plugin.
 
 ## License
 
-This repository is licensed under the MIT license. Refer to the LICENSE file for details.
+This repository is licensed under the MIT license. Refer to the [./LICENSE] file for details.
 
 ## Author
 
